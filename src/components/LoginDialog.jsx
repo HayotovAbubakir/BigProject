@@ -18,8 +18,13 @@ export default function LoginDialog() {
     else setError('')
   }
 
+  const handleClose = (e, reason) => {
+    // prevent closing on backdrop click or escape
+    if (reason === 'backdropClick' || reason === 'escapeKeyDown') return
+  }
+
   return (
-    <Dialog open={!!showLogin} disableEscapeKeyDown disableBackdropClick>
+    <Dialog open={!!showLogin} disableEscapeKeyDown onClose={handleClose}>
       <DialogTitle>Kirish</DialogTitle>
       <DialogContent>
         <Typography variant="caption">Foydalanuvchi nomi kiriting (username)</Typography>

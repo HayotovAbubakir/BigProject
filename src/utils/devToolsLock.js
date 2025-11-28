@@ -1,10 +1,32 @@
 // DevTools lock — parol qo'yib DevTools ni berkitish
 const DEVTOOLS_PASSWORD = '0000'
-const MAX_ATTEMPTS = 5
-const LOCKOUT_DURATION = 5 * 60 * 1000 // 5 minutes in milliseconds
+// Progressive lockout settings
+const ESCALATION_THRESH = 4 // after 4 consecutive wrong attempts escalate
+const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000] // 1 minute, then 5 minutes
 
-let failedAttempts = 0
+// Restore state from sessionStorage so reloads keep counters
+let consecutiveFailed = 0 // consecutive wrong attempts counter
+let escalationLevel = 0 // which escalation duration to use next
 let lockoutUntil = null
+try {
+  const raw = sessionStorage.getItem('devtools_lock_state')
+  if (raw) {
+    const parsed = JSON.parse(raw)
+    consecutiveFailed = Number(parsed.consecutiveFailed) || 0
+    escalationLevel = Number(parsed.escalationLevel) || 0
+    lockoutUntil = parsed.lockoutUntil ? Number(parsed.lockoutUntil) : null
+  }
+} catch (e) {
+  console.debug('devToolsLock: failed to restore state', e)
+}
+
+function persistState() {
+  try {
+    sessionStorage.setItem('devtools_lock_state', JSON.stringify({ consecutiveFailed, escalationLevel, lockoutUntil }))
+  } catch (e) {
+    console.debug('devToolsLock: persist failed', e)
+  }
+}
 
 export function enableDevToolsLock() {
   // DevTools F12, Ctrl+Shift+I, Ctrl+Shift+C larni blokiralash
@@ -44,7 +66,9 @@ function isLockedOut() {
   if (now < lockoutUntil) return true
   // Lockout expired
   lockoutUntil = null
-  failedAttempts = 0
+  consecutiveFailed = 0
+  escalationLevel = 0
+  persistState()
   return false
 }
 
@@ -60,16 +84,31 @@ function showPasswordPrompt() {
   const password = prompt('DevTools yopilgan. Parol kiriting:', '')
   if (password === DEVTOOLS_PASSWORD) {
     console.log('✓ DevTools unlock qilindi')
-    failedAttempts = 0
+    // Remove overlay and reset counters
+    try { unlockScreen() } catch (e) { /* ignore */ }
+    consecutiveFailed = 0
+    escalationLevel = 0
     lockoutUntil = null
+    persistState()
   } else if (password !== null) {
-    failedAttempts++
-    const remaining = MAX_ATTEMPTS - failedAttempts
-    if (failedAttempts >= MAX_ATTEMPTS) {
-      lockoutUntil = Date.now() + LOCKOUT_DURATION
-      alert(`❌ Parol noto'g'ri!\n\n5 daqiqaga pin-kod qilinadi.`)
+    // Wrong password entered
+    consecutiveFailed++
+    console.debug('devToolsLock: wrong password, consecutiveFailed=', consecutiveFailed, 'escalationLevel=', escalationLevel)
+    const remainingToEscalate = Math.max(ESCALATION_THRESH - consecutiveFailed, 0)
+
+    if (consecutiveFailed >= ESCALATION_THRESH) {
+      // apply escalation duration for current escalation level
+      const idx = Math.min(escalationLevel, ESCALATION_DURATIONS.length - 1)
+      const dur = ESCALATION_DURATIONS[idx]
+      lockoutUntil = Date.now() + dur
+      const minutes = Math.ceil(dur / 60000)
+      alert(`❌ Parol noto'g'ri!\n\nHimoya faollashtirildi: ${minutes} daqiqa kuting.`)
+      // prepare for next escalation (if further abuse)
+      escalationLevel = Math.min(escalationLevel + 1, ESCALATION_DURATIONS.length - 1)
+      consecutiveFailed = 0
+      persistState()
     } else {
-      alert(`❌ Parol noto'g'ri!\n\nQolgan urinishlar: ${remaining}`)
+      alert(`❌ Parol noto'g'ri!\n\nQolgan urinishlar bosqichga yetish uchun: ${remainingToEscalate}`)
     }
     lockScreen()
   }
@@ -101,6 +140,13 @@ function lockScreen() {
       </div>
     `
     document.body.appendChild(overlay)
+  }
+}
+
+function unlockScreen() {
+  const overlay = document.querySelector('#devtools-lock-overlay')
+  if (overlay) {
+    try { overlay.remove() } catch (err) { console.debug('unlockScreen failed', err) }
   }
 }
 

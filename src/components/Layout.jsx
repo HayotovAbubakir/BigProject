@@ -8,6 +8,7 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
 import Brightness7Icon from '@mui/icons-material/Brightness7'
 import AccountManager from './AccountManager'
+import AccountLock from './AccountLock'
 import { useAuth } from '../context/AuthContext'
 import { useLocale } from '../context/LocaleContext'
 import { useApp } from '../context/AppContext'
@@ -27,6 +28,7 @@ function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [accountManagerOpen, setAccountManagerOpen] = React.useState(false)
   const [accountSnackbarOpen, setAccountSnackbarOpen] = React.useState(false)
+  const [accountLockOpen, setAccountLockOpen] = React.useState(false)
 
   const { t, locale, setLocale } = useLocale()
   const { state, dispatch } = useApp()
@@ -76,7 +78,7 @@ function Layout({ children }) {
               </FormControl>
             </Box>
 
-            <Button variant="outlined" startIcon={<LogoutIcon />} onClick={() => logout()} fullWidth>
+            <Button variant="outlined" startIcon={<LogoutIcon />} onClick={() => setAccountLockOpen(true)} fullWidth>
               Lock
             </Button>
         </Box>
@@ -139,6 +141,7 @@ function Layout({ children }) {
         </Box>
       </Box>
       <AccountManager open={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
+      <AccountLock open={accountLockOpen} onClose={() => setAccountLockOpen(false)} />
       <Snackbar open={accountSnackbarOpen} autoHideDuration={3500} onClose={() => setAccountSnackbarOpen(false)} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
         <Alert onClose={() => setAccountSnackbarOpen(false)} severity="warning" sx={{ width: '100%' }}>
           Sizda akkauntlarni boshqarish ruxsati yo'q.

@@ -26,6 +26,7 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28']
 
 function Dashboard() {
   const { state } = useApp()
+  const displayCurrency = state?.ui?.displayCurrency || 'UZS'
   
 
   
@@ -45,30 +46,43 @@ function Dashboard() {
   }
 
   
+  const { rate: usdToUzs } = useExchangeRate()
+
   const sampleMonthly = React.useMemo(() => {
-    const monthlyMap = {} 
+    const monthlyMap = {}
+    const getBaseUzs = (l) => {
+      const a = l && (l.total_uzs ?? l.amount_uzs)
+      if (a != null) return parseNumber(a)
+      if ((l && l.currency) === 'USD') return parseNumber(l.amount || 0) * (usdToUzs || 0)
+      return parseNumber(l && l.amount || 0)
+    }
     logs.forEach(l => {
-      
-      const amt = parseNumber(l.total_uzs ?? l.amount_uzs ?? l.amount ?? 0)
+      const amt = getBaseUzs(l)
       if (!amt) return
       const d = l.date || new Date().toISOString().slice(0, 10)
       const m = monthShortFromISO(d) || (new Date().toLocaleString('default', { month: 'short' }))
       if (!monthlyMap[m]) monthlyMap[m] = { month: m, sold: 0, in: 0 }
-      
       if (l.kind === 'SELL') monthlyMap[m].sold += amt
       else monthlyMap[m].in += amt
     })
     const vals = Object.values(monthlyMap)
     return vals.length ? vals : sampleMonthlyInit
-  }, [logs])
+  }, [logs, usdToUzs])
 
   
-  const { PIE_DATA, topProduct } = React.useMemo(() => {
+    const { PIE_DATA, topProduct } = React.useMemo(() => {
     const categoryMap = { Qahva: 0, Choy: 0, Non: 0, Boshqa: 0 }
     const productQty = {}
     
+    const getBaseUzs = (l) => {
+      const a = l && (l.total_uzs ?? l.amount_uzs)
+      if (a != null) return parseNumber(a)
+      if ((l && l.currency) === 'USD') return parseNumber(l.amount || 0) * (usdToUzs || 0)
+      return parseNumber(l && l.amount || 0)
+    }
+
     logs.filter(l => l.kind === 'SELL').forEach(l => {
-      const amt = parseNumber(l.total_uzs ?? l.amount_uzs ?? l.amount ?? 0)
+      const amt = getBaseUzs(l)
       if (amt) {
         const text = (l.detail || '').toLowerCase()
         if (text.includes('qahva')) categoryMap.Qahva += amt
@@ -133,12 +147,6 @@ function Dashboard() {
   
   const chartHeight = isXs ? 260 : isSm ? 220 : 200
   const chartMaxWidth = isXs ? '100%' : '100%'
-
-  
-  const { rate: usdToUzs } = useExchangeRate()
-
-  
-  
   const { warehouseValue, warehouseSkipped } = (state.warehouse || []).reduce((acc, it) => {
     const qty = Number(it.qty || 0)
     let unit = parseNumber(it.cost || 0)
@@ -238,7 +246,7 @@ function Dashboard() {
                         {labels.map((lab, idx) => (
                           <Box key={lab} sx={{ display: 'flex', justifyContent: 'space-between', minWidth: 180 }}>
                             <Typography variant="body2">{lab}</Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>{pct[idx]}% • {formatMoney(data[idx])} UZS</Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>{pct[idx]}% • {displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round((data[idx] || 0) / usdToUzs)) + ' USD' : formatMoney(data[idx]) + ' UZS'}</Typography>
                           </Box>
                         ))}
                       </Box>
@@ -335,7 +343,7 @@ function Dashboard() {
                       <Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                           <Typography variant="subtitle2" color="text.secondary">{t('warehouse')}</Typography>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{formatMoney(warehouseValue)} UZS</Typography>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round(warehouseValue / usdToUzs)) + ' USD' : formatMoney(warehouseValue) + ' UZS'}</Typography>
                         </Box>
                         <Box sx={{ height: 14, borderRadius: 2, background: 'rgba(15,23,36,0.08)', overflow: 'hidden' }}>
                           <Box sx={{ height: '100%', width: `${whPct}%`, background: 'linear-gradient(90deg,#8884d8,#7b61ff)' }} />
@@ -345,7 +353,7 @@ function Dashboard() {
                       <Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                           <Typography variant="subtitle2" color="text.secondary">{t('store')}</Typography>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{formatMoney(storeValue)} UZS</Typography>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round(storeValue / usdToUzs)) + ' USD' : formatMoney(storeValue) + ' UZS'}</Typography>
                         </Box>
                         <Box sx={{ height: 14, borderRadius: 2, background: 'rgba(15,23,36,0.08)', overflow: 'hidden' }}>
                           <Box sx={{ height: '100%', width: `${stPct}%`, background: 'linear-gradient(90deg,#82ca9d,#2bb673)' }} />
@@ -353,7 +361,7 @@ function Dashboard() {
                       </Box>
 
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
-                        <Typography variant="caption" color="text.secondary">{t('total_value', { value: formatMoney(warehouseValue + storeValue) })} UZS</Typography>
+                        <Typography variant="caption" color="text.secondary">{t('total_value', { value: displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round((warehouseValue + storeValue) / usdToUzs)) : formatMoney(warehouseValue + storeValue) })} {displayCurrency}</Typography>
                         <Typography variant="caption" color="text.secondary">{t('warehouse_store_pct', { whPct, stPct })}</Typography>
                       </Box>
                       {(storeSkipped + warehouseSkipped) > 0 ? (
