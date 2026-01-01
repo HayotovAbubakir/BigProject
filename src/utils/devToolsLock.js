@@ -81,7 +81,14 @@ function showPasswordPrompt() {
     return
   }
 
+  // show full-screen overlay before native prompt so background is dimmed
+  try { lockScreen() } catch (err) { /* ignore overlay errors */ }
   const password = prompt('DevTools yopilgan. Parol kiriting:', '')
+  // if user cancelled the prompt, remove overlay and return
+  if (password === null) {
+    try { unlockScreen() } catch (err) { /* ignore */ }
+    return
+  }
   if (password === DEVTOOLS_PASSWORD) {
     console.log('✓ DevTools unlock qilindi')
     // Remove overlay and reset counters

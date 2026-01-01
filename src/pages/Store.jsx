@@ -26,7 +26,7 @@ export default function Store() {
   const [confirm, setConfirm] = useState({ open: false, id: null })
   const [historyFor, setHistoryFor] = useState(null)
 
-  const { user } = useAuth()
+  const { user, username } = useAuth()
   const { t } = useLocale()
   const [sellItemLocal, setSellItemLocal] = useState(null)
   const { rate: usdToUzs } = useExchangeRate()
@@ -34,7 +34,7 @@ export default function Store() {
   const [openWholesale, setOpenWholesale] = useState(false)
 
   
-  const acctStore = state.accounts?.find(a => a.username === (user?.username || '').toLowerCase())
+  const acctStore = state.accounts?.find(a => a.username === (username || '').toLowerCase())
   const canWholesale = acctStore ? !!acctStore.permissions?.wholesale_allowed : true
   const canAddProducts = acctStore ? !!acctStore.permissions?.add_products : true
 
@@ -42,7 +42,7 @@ export default function Store() {
     const item = state.store.find(s => s.id === id)
   const price = parseNumber(item?.price || 0)
   const amount = Number(qty) * price
-  const log = { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: 'Mahsulot sotildi', kind: 'SELL', productId: id, productName: item?.name || id, qty, unitPrice: price, amount, currency: item?.currency || 'UZS', detail: `Mahsulot ${item?.name || id} dan ${qty} ta sotildi`, source: 'store' }
+  const log = { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Mahsulot sotildi', kind: 'SELL', productId: id, productName: item?.name || id, qty, unitPrice: price, amount, currency: item?.currency || 'UZS', detail: `Mahsulot ${item?.name || id} dan ${qty} ta sotildi`, source: 'store' }
     
     try {
       if ((item?.currency || 'UZS') === 'USD') {
@@ -64,12 +64,12 @@ export default function Store() {
   const handleAddOrEdit = (payload) => {
     if (editItem) {
   const amount = Number(payload.qty) * parseNumber(payload.price || 0)
-  dispatch({ type: 'DELETE_STORE', payload: { id: payload.id }, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: "Do'kon mahsuloti yangilandi", kind: 'EDIT', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.price || 0), amount, currency: payload.currency || 'UZS', detail: `Mahsulot ${payload.name} yangilandi` } })
+  dispatch({ type: 'DELETE_STORE', payload: { id: payload.id }, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Do'kon mahsuloti yangilandi", kind: 'EDIT', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.price || 0), amount, currency: payload.currency || 'UZS', detail: `Mahsulot ${payload.name} yangilandi` } })
       
-  dispatch({ type: 'ADD_STORE', payload, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: "Do'kon mahsuloti yangilandi", kind: 'ADD', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.price || 0), amount, currency: payload.currency || 'UZS', detail: `Mahsulot ${payload.name} yangilandi` } })
+  dispatch({ type: 'ADD_STORE', payload, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Do'kon mahsuloti yangilandi", kind: 'ADD', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.price || 0), amount, currency: payload.currency || 'UZS', detail: `Mahsulot ${payload.name} yangilandi` } })
     } else {
   const amount = Number(payload.qty) * parseNumber(payload.price || 0)
-  dispatch({ type: 'ADD_STORE', payload, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: "Do'konga mahsulot qo'shildi", kind: 'ADD', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.price || 0), amount, currency: payload.currency || 'UZS', detail: `Mahsulot ${payload.name} qo'shildi` } })
+  dispatch({ type: 'ADD_STORE', payload, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Do'konga mahsulot qo'shildi", kind: 'ADD', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.price || 0), amount, currency: payload.currency || 'UZS', detail: `Mahsulot ${payload.name} qo'shildi` } })
     }
     setSnack({ open: true, text: t('saved') })
   }
@@ -77,7 +77,7 @@ export default function Store() {
   const remove = (id) => {
     const it = state.store.find(s => s.id === id)
     const amount = Number(it?.qty || 0) * parseNumber(it?.price || 0)
-    dispatch({ type: 'DELETE_STORE', payload: { id }, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: "Do'kon mahsuloti o'chirildi", kind: 'DELETE', productId: id, productName: it?.name || id, qty: Number(it?.qty || 0), unitPrice: parseNumber(it?.price || 0), amount, currency: it?.currency || 'UZS', detail: `Mahsulot ${it?.name || id} o'chirildi` } })
+    dispatch({ type: 'DELETE_STORE', payload: { id }, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Do'kon mahsuloti o'chirildi", kind: 'DELETE', productId: id, productName: it?.name || id, qty: Number(it?.qty || 0), unitPrice: parseNumber(it?.price || 0), amount, currency: it?.currency || 'UZS', detail: `Mahsulot ${it?.name || id} o'chirildi` } })
     setSnack({ open: true, text: t('deleted') })
     setConfirm({ open: false, id: null })
   }

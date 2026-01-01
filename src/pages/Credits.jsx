@@ -18,14 +18,14 @@ export default function Credits() {
   const [confirm, setConfirm] = useState({ open: false, id: null })
   const [snack, setSnack] = useState({ open: false, text: '' })
 
-  const { user } = useAuth() 
+  const { user, username } = useAuth() 
   const { t } = useLocale() 
   const { rate: usdToUzs } = useExchangeRate()
   const { displayCurrency, formatForDisplay } = useDisplayCurrency()
 
   
-  const acct = state.accounts?.find(a => a.username === (user?.username || '').toLowerCase())
-  const canManageCredits = acct ? !!acct.permissions?.credits_manage : (user?.username || '').toLowerCase() !== 'shogirt'
+  const acct = state.accounts?.find(a => a.username === (username || '').toLowerCase())
+  const canManageCredits = acct ? !!acct.permissions?.credits_manage : (username || '').toLowerCase() !== 'shogirt'
 
   const handleAdd = (payload) => {
     if (!canManageCredits) {
@@ -44,7 +44,7 @@ export default function Credits() {
       amountUsd = usdToUzs ? Number((Number(amountUzs) / usdToUzs).toFixed(2)) : null
     }
 
-    dispatch({ type: 'ADD_CREDIT', payload, log: { date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: 'Nasiya qo\'shildi', kind: 'CREDIT', name: payload.name, amount_usd: amountUsd, amount_uzs: amountUzs, currency: payload.currency || 'UZS', detail: `${payload.name} ga nasiya qo'shildi` } })
+    dispatch({ type: 'ADD_CREDIT', payload, log: { date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Nasiya qo\'shildi', kind: 'CREDIT', name: payload.name, amount_usd: amountUsd, amount_uzs: amountUzs, currency: payload.currency || 'UZS', detail: `${payload.name} ga nasiya qo'shildi` } })
     setSnack({ open: true, text: t('credit_added') })
   }
 
@@ -65,7 +65,7 @@ export default function Credits() {
       amountUsd = usdToUzs ? Number((Number(amountUzs) / usdToUzs).toFixed(2)) : null
     }
 
-    dispatch({ type: 'EDIT_CREDIT', payload: { id: payload.id, updates: payload }, log: { date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: 'Nasiya tahrirlandi', kind: 'CREDIT_EDIT', name: payload.name, amount_usd: amountUsd, amount_uzs: amountUzs, currency: payload.currency || 'UZS', detail: `${payload.name} tahrirlandi` } })
+    dispatch({ type: 'EDIT_CREDIT', payload: { id: payload.id, updates: payload }, log: { date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Nasiya tahrirlandi', kind: 'CREDIT_EDIT', name: payload.name, amount_usd: amountUsd, amount_uzs: amountUzs, currency: payload.currency || 'UZS', detail: `${payload.name} tahrirlandi` } })
     setSnack({ open: true, text: t('credit_updated') })
   }
 
@@ -79,7 +79,7 @@ export default function Credits() {
   
   const delAmountUsd = c?.currency === 'USD' ? Number(amount) : (usdToUzs ? Number((Number(c?.amount_uzs ?? amount) / usdToUzs).toFixed(2)) : null)
   const delAmountUzs = c?.currency === 'USD' ? (usdToUzs ? Math.round(Number(amount) * usdToUzs) : Number(c?.amount_uzs ?? amount)) : (c?.amount_uzs ?? Math.round(Number(amount) || 0))
-  dispatch({ type: 'DELETE_CREDIT', payload: { id }, log: { date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: 'Nasiya o\'chirildi', kind: 'CREDIT_DELETE', name: c?.name || id, amount_usd: delAmountUsd, amount_uzs: delAmountUzs, currency: c?.currency || 'UZS', detail: `Nasiya ${id} o'chirildi` } })
+  dispatch({ type: 'DELETE_CREDIT', payload: { id }, log: { date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Nasiya o\'chirildi', kind: 'CREDIT_DELETE', name: c?.name || id, amount_usd: delAmountUsd, amount_uzs: delAmountUzs, currency: c?.currency || 'UZS', detail: `Nasiya ${id} o'chirildi` } })
     setSnack({ open: true, text: t('credit_deleted') })
   }
 

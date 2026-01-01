@@ -1,6 +1,6 @@
 
 import React, { createContext, useReducer, useContext } from 'react'
-import { loadAppState, saveAppState } from '../utils/storage'
+import { loadAppState, saveAppState } from '../firebase/db'
 import { useAuth } from './AuthContext'
 
 
@@ -143,7 +143,7 @@ function reducer(state, action) {
 
 export const AppProvider = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const { user } = useAuth()
+  const { user, username } = useAuth()
   
   const [hydrated, setHydrated] = React.useState(false)
   const LOCAL_BACKUP_KEY = 'shop_state_backup_v1'
@@ -153,7 +153,7 @@ export const AppProvider = ({ children }) => {
     let mounted = true
     ;(async () => {
       try {
-        const remote = await loadAppState(user?.username)
+        const remote = await loadAppState(username)
         if (!mounted) return
         if (remote) {
           
@@ -183,7 +183,7 @@ export const AppProvider = ({ children }) => {
       }
     })()
     return () => { mounted = false }
-  }, [user?.username])
+  }, [username])
 
   
   const [syncState, setSyncState] = React.useState('idle')
@@ -196,7 +196,7 @@ export const AppProvider = ({ children }) => {
 
     const t = setTimeout(async () => {
       try {
-        const success = await saveAppState(state, user?.username)
+        const success = await saveAppState(state, username)
         setSyncState(success ? 'synced' : 'error')
         console.log('Saqlash natijasi:', success ? 'Muvaffaqiyatli' : 'Xatolik')
       } catch (err) {
@@ -209,7 +209,7 @@ export const AppProvider = ({ children }) => {
       clearTimeout(t)
       setSyncState('pending')
     }
-  }, [state, hydrated, user?.username])
+  }, [state, hydrated, username])
 
   
   React.useEffect(() => {

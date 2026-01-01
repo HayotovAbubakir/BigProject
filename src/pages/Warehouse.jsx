@@ -27,28 +27,28 @@ export default function Warehouse() {
   const [confirm, setConfirm] = useState({ open: false, id: null })
   const [snack, setSnack] = useState({ open: false, text: '' })
 
-  const { user } = useAuth()
+  const { user, username } = useAuth()
   const { t } = useLocale()
 
   const { rate: usdToUzs } = useExchangeRate()
   const { displayCurrency, formatForDisplay } = useDisplayCurrency()
-  const acctWh = state.accounts?.find(a => a.username === (user?.username || '').toLowerCase())
+  const acctWh = state.accounts?.find(a => a.username === (username || '').toLowerCase())
   const canWholesale = acctWh ? !!acctWh.permissions?.wholesale_allowed : true
   const canAddProducts = acctWh ? !!acctWh.permissions?.add_products : true
 
   const add = (payload) => {
     const amount = Number(payload.qty) * parseNumber(payload.cost || 0)
-  dispatch({ type: 'ADD_WAREHOUSE', payload, log: { date: payload.date || new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: "Mahsulot qo'shildi", kind: 'ADD', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.cost || 0), amount, currency: payload.currency || 'UZS', detail: `${payload.name} qo'shildi.` } })
+    dispatch({ type: 'ADD_WAREHOUSE', payload, log: { date: payload.date || new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Mahsulot qo'shildi", kind: 'ADD', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.cost || 0), amount, currency: payload.currency || 'UZS', detail: `${payload.name} qo'shildi.` } })
   setSnack({ open: true, text: t('product_added') })
   }
 
   const edit = (payload) => {
-  dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: payload.id, updates: payload }, log: { date: payload.date || new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: 'Mahsulot tahrirlandi', kind: 'EDIT', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.cost || 0), currency: payload.currency || 'UZS', detail: `${payload.name} tahrirlandi.` } })
+  dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: payload.id, updates: payload }, log: { date: payload.date || new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Mahsulot tahrirlandi', kind: 'EDIT', productId: payload.id, productName: payload.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.cost || 0), currency: payload.currency || 'UZS', detail: `${payload.name} tahrirlandi.` } })
     setSnack({ open: true, text: t('product_updated') })
   }
 
   const remove = (id) => {
-  dispatch({ type: 'DELETE_WAREHOUSE', payload: { id }, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: "Mahsulot o'chirildi", kind: 'DELETE', productId: id, productName: id, detail: `Mahsulot ${id} o'chirildi.` } })
+  dispatch({ type: 'DELETE_WAREHOUSE', payload: { id }, log: { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Mahsulot o'chirildi", kind: 'DELETE', productId: id, productName: id, detail: `Mahsulot ${id} o'chirildi.` } })
     setSnack({ open: true, text: t('product_deleted') })
   }
 
@@ -148,7 +148,7 @@ export default function Warehouse() {
         <MoveToStoreForm open={!!moveItem} initial={moveItem} onClose={() => setMoveItem(null)} onSubmit={(payload) => {
         const itemPrice = parseNumber(payload.item.price || 0)
         const amount = Number(payload.qty) * itemPrice
-        const log = { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: "Ombordan do'konga o'tkazish", kind: 'MOVE', productId: payload.item.id, productName: payload.item.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.item.price || payload.item.cost || 0), amount, currency: payload.item.currency || 'UZS', detail: `${payload.item.name} ${payload.qty} ta ombordan do'konga o'tkazildi` }
+        const log = { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Ombordan do'konga o'tkazish", kind: 'MOVE', productId: payload.item.id, productName: payload.item.name, qty: Number(payload.qty), unitPrice: parseNumber(payload.item.price || payload.item.cost || 0), amount, currency: payload.item.currency || 'UZS', detail: `${payload.item.name} ${payload.qty} ta ombordan do'konga o'tkazildi` }
         try {
                 if ((payload.item.currency || 'UZS') === 'USD') {
                   if (usdToUzs) log.total_uzs = Math.round(amount * usdToUzs)
@@ -162,7 +162,7 @@ export default function Warehouse() {
       <WarehouseSellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={(payload) => {
   const unitPrice = parseNumber(payload.price || 0)
   const amount = Number(payload.qty) * unitPrice
-  const log = { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: user?.username || 'Admin', action: 'Mahsulot sotildi (ombor)', kind: 'SELL', productId: payload.id, productName: sellItem?.name || '', qty: Number(payload.qty), unitPrice, amount, currency: sellItem?.currency || 'UZS', detail: `${sellItem?.name || ''} sotildi ${payload.qty} dona` }
+  const log = { date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Mahsulot sotildi (ombor)', kind: 'SELL', productId: payload.id, productName: sellItem?.name || '', qty: Number(payload.qty), unitPrice, amount, currency: sellItem?.currency || 'UZS', detail: `${sellItem?.name || ''} sotildi ${payload.qty} dona` }
   log.source = 'warehouse'
   try {
     if ((sellItem?.currency || 'UZS') === 'USD') {

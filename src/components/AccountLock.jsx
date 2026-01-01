@@ -138,7 +138,12 @@ export default function AccountLock({ open, onClose }) {
   }
 
   return (
-    <Dialog open={!!open} onClose={() => {}} disableEscapeKeyDown>
+    <Dialog
+      open={!!open}
+      onClose={() => {}}
+      disableEscapeKeyDown
+      BackdropProps={{ style: { backgroundColor: 'rgba(0,0,0,0.96)' } }}
+    >
       <DialogTitle>Hisobni bloklash / Qayta kirish</DialogTitle>
       <DialogContent>
         <Typography variant="body2" sx={{ mb: 1 }}>Hisobni bloklashdan keyin qayta kirish uchun parolni kiriting.</Typography>

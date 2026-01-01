@@ -1,12 +1,61 @@
-# React + Vite
+# BigProject - Inventory Management System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React-based inventory management application with Supabase backend.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-## Expanding the ESLint configuration
+2. **Set up Supabase:**
+   - Create a new project at [supabase.com](https://supabase.com)
+   - Go to Settings > API to get your project URL and anon key
+   - Copy `.env.example` to `.env` and fill in your Supabase credentials:
+     ```
+     VITE_SUPABASE_URL=your_project_url
+     VITE_SUPABASE_KEY=your_anon_key
+     ```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+3. **Set up the database:**
+   - In your Supabase dashboard, go to SQL Editor
+   - Run the SQL from `supabase/schema.sql` to create the necessary tables and policies
+
+4. **Initialize admin users:**
+   - After running the schema, run the SQL from `supabase/init_admins.sql` in Supabase SQL Editor
+   - Edit the file to set actual passwords for hamdamjon and habibjon before running
+
+5. **Create additional users:**
+   - Admin users (hamdamjon, habibjon) can create new users through the app's "Foydalanuvchi qo'shish" tab
+   - Regular users can login with username/password created by admins
+
+6. **Run the app:**
+   ```bash
+   npm run dev
+   ```
+
+## Features
+
+- Warehouse management
+- Store inventory
+- Sales tracking
+- Credit management
+- Custom username/password authentication
+- Admin-managed user accounts
+- Real-time data sync with Supabase
+
+## Authentication System
+
+- **Admins**: hamdamjon and habibjon can create new user accounts
+- **Users**: Login with username/password provided by admins
+- **No email registration**: All accounts are created by admins only
+- **Session management**: 24-hour sessions stored in browser
+
+## Migration from Local Storage
+
+This app previously used local IndexedDB storage. It has been migrated to use Supabase for cloud storage.
+
+- All data is now stored in Supabase PostgreSQL
+- Authentication uses custom username/password system
+- Data is synced across devices
