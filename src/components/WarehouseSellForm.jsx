@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment, TextField } from '@mui/material'
+import NumberField from './NumberField'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { formatMoney } from '../utils/format'
 
@@ -42,13 +43,12 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
       <DialogContent>
         <TextField label="Mahsulot" fullWidth margin="dense" value={initial?.name || ''} disabled />
         <Typography variant="caption" color="text.secondary">Mavjud: {available} dona</Typography>
-        <TextField
+        <NumberField
           label="Soni"
-          type="number"
           fullWidth
           margin="dense"
           value={qty}
-          onChange={(e) => setQty(e.target.value)}
+          onChange={(v) => setQty(Number(v || 0))}
           error={invalid}
           helperText={invalid ? (parsedQty <= 0 ? 'Iltimos 1 yoki undan ko\'p kiriting' : 'Mavjud sondan ortiq kiritdingiz') : ''}
         />
@@ -60,7 +60,7 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
           </Select>
         </FormControl>
 
-        <TextField label="Sotish narxi (bir dona)" type="number" fullWidth margin="dense" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <NumberField label="Sotish narxi (bir dona)" fullWidth margin="dense" value={price} onChange={(v) => setPrice(Number(v || 0))} />
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>

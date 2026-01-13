@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Box, FormHelperText } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, FormHelperText } from '@mui/material'
+import NumberField from './NumberField'
 
 export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
   const [qty, setQty] = useState(1)
@@ -33,8 +34,8 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
       <DialogTitle sx={{ fontSize: { xs: '1.05rem', md: '1.15rem' } }}>Ombordan Do'konga o'tkazish</DialogTitle>
       <DialogContent>
         <Box sx={{ mt: 1, display: 'grid', gap: 2 }}>
-          <TextField label="Soni" type="number" value={qty} onChange={(e) => setQty(e.target.value)} fullWidth />
-          <TextField label="Do'kon narxi (sozlanadigan)" type="number" value={price} onChange={(e) => setPrice(e.target.value)} fullWidth />
+          <NumberField label="Soni" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth />
+          <NumberField label="Do'kon narxi (sozlanadigan)" value={price} onChange={(v) => setPrice(String(v || ''))} fullWidth />
           {error && <FormHelperText error>{error}</FormHelperText>}
         </Box>
       </DialogContent>

@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react'
 import { Box, Typography, TextField, Table, TableHead, TableRow, TableCell, TableBody, Paper, Button, TableContainer, useTheme, useMediaQuery, Card, CardContent, Grid, IconButton } from '@mui/material'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
-import { useApp } from '../context/AppContext'
-import { useAuth } from '../context/AuthContext'
+import { useApp } from '../context/useApp'
+import { useAuth } from '../hooks/useAuth'
 import { useLocale } from '../context/LocaleContext'
 import useExchangeRate from '../hooks/useExchangeRate'
 
@@ -21,7 +21,7 @@ function roundUsd(n) {
 export default function DailySalesByDate({ selectedDate: propDate, onDateChange }) {
   const { state } = useApp()
   const { dispatch } = useApp()
-  const { user } = useAuth()
+  const { user, hasPermission, verifyLocalPassword, isDeveloper } = useAuth()
   const { t } = useLocale()
   const today = new Date().toISOString().slice(0, 10)
   const [internalDate, setInternalDate] = useState(today)
@@ -34,7 +34,7 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
   const salesForDate = useMemo(() => {
     if (!state || !Array.isArray(state.logs)) return []
     return state.logs.filter((l) => {
-      
+      if (!l) return false
       const kind = (l.kind || '').toString().toUpperCase()
       return kind === 'SELL' && (l.date || '').toString().slice(0, 10) === selectedDate
     })
@@ -74,28 +74,28 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
             variant="contained"
             size="small"
             color="error"
-            onClick={async () => {
-              try {
-                const uname = (user && user.username) ? user.username.toString().toLowerCase() : ''
-                if (uname !== 'hamdamjon' && uname !== 'habibjon') {
-                  window.alert(t('permissionDenied') || 'Permission denied: admin only')
-                  return
-                }
-                const pwd = window.prompt(t('enterAdminPassword') || 'Enter admin password to confirm deletion')
-                if (pwd === null) return
-                if (String(pwd) !== '0000') {
-                  window.alert(t('incorrectPassword') || 'Incorrect password')
-                  return
-                }
-                const count = salesForDate.length
-                if (!window.confirm((t('confirmDeleteSales') || 'Are you sure you want to delete all sales for this date?') + ` (${count} items)`)) return
-                dispatch({ type: 'DELETE_LOGS_FOR_DATE', payload: { date: selectedDate, user: user && user.username } })
-                window.alert(t('deletedSuccess') || 'Deleted')
-              } catch (err) {
-                console.error('Delete logs error', err)
-                window.alert(t('deleteFailed') || 'Delete failed')
-              }
-            }}
+                onClick={async () => {
+                  try {
+                    if (!hasPermission || !hasPermission('logs_manage') || !hasPermission('credits_manage')) {
+                      window.alert(t('permissionDenied') || 'Permission denied: admin only')
+                      return
+                    }
+                    const pwd = window.prompt(t('enterAdminPassword') || 'Enter admin password to confirm deletion')
+                    if (pwd === null) return
+                    // developer bypasses local password check
+                    if (!isDeveloper && !(verifyLocalPassword && verifyLocalPassword(user?.username, pwd))) {
+                      window.alert(t('incorrectPassword') || 'Incorrect password')
+                      return
+                    }
+                    const count = salesForDate.length
+                    if (!window.confirm((t('confirmDeleteSales') || 'Are you sure you want to delete all sales for this date?') + ` (${count} items)`)) return
+                    dispatch({ type: 'DELETE_LOGS_FOR_DATE', payload: { date: selectedDate, user: user && user.username } })
+                    window.alert(t('deletedSuccess') || 'Deleted')
+                  } catch (err) {
+                    console.error('Delete logs error', err)
+                    window.alert(t('deleteFailed') || 'Delete failed')
+                  }
+                }}
           >
             {t('delete') || 'Delete'}
           </Button>
@@ -136,7 +136,7 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
                             if (unit != null && qty) return <Typography variant="body2">{t('amount')}: <strong>{l.currency === 'USD' ? `$${roundUsd(unit * qty)}` : `${formatNumber(unit * qty)} UZS`}</strong></Typography>
                             return null
                           })()}
-                          <Typography variant="body2">{t('source')}: <strong>{l.source || (l.action && l.action.includes('ombor') ? 'warehouse' : 'store')}</strong></Typography>
+                          <Typography variant="body2">{t('source')}: <strong>{l.source ? (t(l.source) || l.source) : (l.action && l.action.includes('ombor') ? t('warehouse') : t('store'))}</strong></Typography>
                         </Box>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'start' }}>
@@ -191,7 +191,7 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
                       return <TableCell align="right"></TableCell>
                     })()}
                     <TableCell align="right">{formatNumber(l.total_uzs ?? l.amount_uzs ?? (l.currency === 'USD' && usdToUzs ? Math.round((l.amount || 0) * usdToUzs) : (l.currency === 'USD' ? (l.amount_uzs ?? 0) : l.amount)) ?? 0)} UZS</TableCell>
-                    <TableCell align="right">{l.source || ''}</TableCell>
+                    <TableCell align="right">{l.source ? (t(l.source) || l.source) : ''}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -201,7 +201,7 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
       )}
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-        <Typography variant="subtitle1">Total (UZS): <strong>{formatNumber(totalUzs)} UZS</strong></Typography>
+        <Typography variant="subtitle1">{t('totalUzs', { amount: formatNumber(totalUzs) })}</Typography>
       </Box>
     </Paper>
   )

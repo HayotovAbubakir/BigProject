@@ -1,120 +1,87 @@
-import React from 'react'
-import { Typography, Card, CardContent, Grid, Box } from '@mui/material'
-import { formatMoney } from '../utils/format'
-import { useApp } from '../context/AppContext'
-import useExchangeRate from '../hooks/useExchangeRate'
-import useDisplayCurrency from '../hooks/useDisplayCurrency'
+import React from 'react';
+import { Typography, Card, CardContent, Grid, Box } from '@mui/material';
+import { formatWithSpaces } from '../utils/format';
+import { useApp } from '../context/useApp';
+import useExchangeRate from '../hooks/useExchangeRate';
+import { useLocale } from '../context/LocaleContext';
 
 export default function Accounts() {
-  const { state } = useApp()
+  const { state } = useApp();
+  const { rate: usdToUzs } = useExchangeRate();
+  const { t } = useLocale();
 
-  const { displayCurrency, formatForDisplay } = useDisplayCurrency()
-  const { rate: usdToUzs } = useExchangeRate()
-
-  
-  const warehouseValueUzs = state.warehouse.reduce((s, it) => {
-    const qty = Number(it.qty || 0)
-    let unit = Number(it.cost || 0)
-    if ((it.currency || 'UZS') === 'USD') {
-      if (typeof it.cost_uzs === 'number' && !Number.isNaN(it.cost_uzs)) unit = Number(it.cost_uzs)
-      else if (usdToUzs) unit = unit * usdToUzs
-      else unit = 0
+  // Calculate warehouse value in UZS
+  const warehouseValueUzs = state.warehouse.reduce((sum, item) => {
+    const qty = Number(item.qty || 0);
+    let cost = Number(item.cost || 0);
+    if (item.currency === 'USD') {
+      cost = item.cost_uzs || (usdToUzs ? cost * usdToUzs : 0);
     }
-    return s + qty * unit
-  }, 0)
+    return sum + qty * cost;
+  }, 0);
 
-  const storeValueUzs = state.store.reduce((s, it) => {
-    const qty = Number(it.qty || 0)
-    let unit = Number(it.price || it.cost || 0)
-    if ((it.currency || 'UZS') === 'USD') {
-      if (typeof it.price_uzs === 'number' && !Number.isNaN(it.price_uzs)) unit = Number(it.price_uzs)
-      else if (usdToUzs) unit = unit * usdToUzs
-      else unit = 0
+  // Calculate store value in UZS
+  const storeValueUzs = state.store.reduce((sum, item) => {
+    const qty = Number(item.qty || 0);
+    let price = Number(item.price || item.cost || 0);
+    if (item.currency === 'USD') {
+      price = item.price_uzs || (usdToUzs ? price * usdToUzs : 0);
     }
-    return s + qty * unit
-  }, 0)
+    return sum + qty * price;
+  }, 0);
 
-  
-  const totalOlinganUZS = state.credits.filter(c => c.type === 'olingan').reduce((s, c) => {
-    const amt = Number(c.amount || 0)
-    const cur = (c.currency || 'UZS')
-    if (cur === 'USD') {
-      if (usdToUzs) return s + Math.round(amt * usdToUzs)
-      if (c.amount_uzs !== undefined) return s + Number(c.amount_uzs)
-      return s + Math.round(amt)
-    }
-    return s + (Number(c.amount_uzs ?? amt) || 0)
-  }, 0)
+  // Total inventory value
+  const totalInventoryValueUzs = warehouseValueUzs + storeValueUzs;
 
-  const totalBerilganUZS = state.credits.filter(c => c.type === 'berilgan').reduce((s, c) => {
-    const amt = Number(c.amount || 0)
-    const cur = (c.currency || 'UZS')
-    if (cur === 'USD') {
-      if (usdToUzs) return s + Math.round(amt * usdToUzs)
-      if (c.amount_uzs !== undefined) return s + Number(c.amount_uzs)
-      return s + Math.round(amt)
-    }
-    return s + (Number(c.amount_uzs ?? amt) || 0)
-  }, 0)
+  // Calculate total debts (olingan nasiyalar)
+  const totalDebtsUzs = state.credits
+    .filter(c => c.type === 'olingan' && !c.completed)
+    .reduce((sum, c) => {
+      const amount = Number(c.amount || 0);
+      if (c.currency === 'USD') {
+        return sum + Math.round(c.amount_uzs || (usdToUzs ? amount * usdToUzs : amount));
+      }
+      return sum + amount;
+    }, 0);
 
-  
-  const netUzs = warehouseValueUzs + storeValueUzs
-  
-  const warehouseValueUsd = usdToUzs && usdToUzs > 0 ? Number((warehouseValueUzs / usdToUzs).toFixed(2)) : null
-  const storeValueUsd = usdToUzs && usdToUzs > 0 ? Number((storeValueUzs / usdToUzs).toFixed(2)) : null
-  const netUsd = usdToUzs && usdToUzs > 0 ? Number((netUzs / usdToUzs).toFixed(2)) : null
+  // Calculate total receivables (berilgan nasiyalar)
+  const totalReceivablesUzs = state.credits
+    .filter(c => c.type !== 'olingan' && !c.completed)
+    .reduce((sum, c) => {
+      const amount = Number(c.amount || 0);
+      if (c.currency === 'USD') {
+        return sum + Math.round(c.amount_uzs || (usdToUzs ? amount * usdToUzs : amount));
+      }
+      return sum + amount;
+    }, 0);
 
-  
-  const creditsByCurrency = state.credits.reduce((acc, c) => { const cur = c.currency || 'UZS'; acc[cur] = acc[cur] || 0; acc[cur] += Number(c.amount || 0); return acc }, {})
+  const SummaryCard = ({ title, value }) => (
+    <Grid item xs={12} sm={6} md={4}>
+      <Card>
+        <CardContent>
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            {title}
+          </Typography>
+          <Typography variant="h4" component="div">
+            {formatWithSpaces(value)} UZS
+          </Typography>
+        </CardContent>
+      </Card>
+    </Grid>
+  );
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'start', alignItems:'center' }}>
-  <Box sx={{ width: '100%', px: { xs: 2, sm: 2, md: 0 } }}>
-      <Typography variant="h4" gutterBottom>Hisob</Typography>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography>Ombordagi jami qiymat</Typography>
-              <Typography variant="h6">{displayCurrency === 'UZS' ? `${formatMoney(warehouseValueUzs)} UZS` : (warehouseValueUsd !== null ? `${formatMoney(warehouseValueUsd)} USD` : `${formatMoney(warehouseValueUzs)} UZS`)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography>Do'kondagi jami qiymat</Typography>
-              <Typography variant="h6">{displayCurrency === 'UZS' ? `${formatMoney(storeValueUzs)} UZS` : (storeValueUsd !== null ? `${formatMoney(storeValueUsd)} USD` : `${formatMoney(storeValueUzs)} UZS`)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography>Olingan nasiyalar jami</Typography>
-              <Typography variant="h6">{displayCurrency === 'UZS' ? `${formatMoney(totalOlinganUZS)} UZS` : (usdToUzs ? `${formatMoney(Number((totalOlinganUZS / usdToUzs).toFixed(2)))} USD` : `${formatMoney(totalOlinganUZS)} UZS`)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography>Berilgan nasiyalar jami</Typography>
-              <Typography variant="h6">{displayCurrency === 'UZS' ? `${formatMoney(totalBerilganUZS)} UZS` : (usdToUzs ? `${formatMoney(Number((totalBerilganUZS / usdToUzs).toFixed(2)))} USD` : `${formatMoney(totalBerilganUZS)} UZS`)}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <Card>
-            <CardContent>
-              <Typography>Net balans</Typography>
-              <Typography variant="h6">{displayCurrency === 'UZS' ? `${formatMoney(netUzs)} UZS` : (netUsd !== null ? `${formatMoney(netUsd)} USD` : `${formatMoney(netUzs)} UZS`)}</Typography>
-              <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>Kreditlar alohida ko'rsatildi</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+    <Box sx={{ width: '100%', px: { xs: 2, sm: 3 } }}>
+      <Typography variant="h4" gutterBottom>
+        {t('accounts_summary')}
+      </Typography>
+      <Grid container spacing={3}>
+        <SummaryCard title={t('total_receivables')} value={totalReceivablesUzs} />
+        <SummaryCard title={t('total_debts')} value={totalDebtsUzs} />
+        <SummaryCard title={t('store_inventory_value')} value={storeValueUzs} />
+        <SummaryCard title={t('warehouse_inventory_value')} value={warehouseValueUzs} />
+        <SummaryCard title={t('total_inventory_value')} value={totalInventoryValueUzs} />
       </Grid>
-      </Box>
     </Box>
-  )
+  );
 }

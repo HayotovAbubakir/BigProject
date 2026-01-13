@@ -14,6 +14,7 @@ import {
 import { useApp } from '../context/useApp';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../context/LocaleContext';
+import { useNotification } from '../context/NotificationContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CreditsDialog from '../components/CreditsDialog';
 import { insertLog } from '../firebase/supabaseLogs';
@@ -36,7 +37,7 @@ function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canM
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
           <Tooltip title={t('viewCredits')}><IconButton onClick={onViewCredits}><CreditCardIcon /></IconButton></Tooltip>
           <Tooltip title={t('addCredit')}><IconButton onClick={onAddCredit} color="primary" disabled={!canManageCredits}><AddCardIcon /></IconButton></Tooltip>
-          <Tooltip title={t('edit')}><IconButton onClick={() => { if (!canManageCredits) return } } disabled={!canManageCredits}><EditIcon /></IconButton></Tooltip>
+          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={!canManageCredits}><EditIcon /></IconButton></Tooltip>
           <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error" disabled={!canManageCredits}><DeleteIcon /></IconButton></Tooltip>
         </Box>
       </Paper>
@@ -48,6 +49,7 @@ export default function Clients() {
   const { state, dispatch, addClient, updateClient, deleteClient, addCredit } = useApp();
   const { t } = useLocale();
   const { username, hasPermission } = useAuth();
+  const { notify } = useNotification();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -100,9 +102,9 @@ export default function Clients() {
 
 
   const handleSave = () => {
-    if (!(hasPermission && hasPermission('credits_manage'))) return alert(t('permissionDenied') || 'Permission denied');
+    if (!(hasPermission && hasPermission('credits_manage'))) { notify('Error', t('permissionDenied') || 'Permission denied', 'error'); return; }
     if (!name.trim()) return;
-    if (rawPhone.length !== 9) return alert('Telefon raqami 9 ta raqam bo\'lishi kerak');
+    if (rawPhone.length !== 9) { notify('Warning', 'Telefon raqami 9 ta raqam bo\'lishi kerak', 'warning'); return; }
     const formattedPhone = formatPhone(rawPhone);
     const payload = { id: uuidv4(), name: name.trim(), phone: formattedPhone, owner: username };
     addClient(payload, { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CLIENT_ADD', kind: 'CLIENT_ADD', product_name: payload.name, qty: 1, unit_price: 0, amount: 0, currency: 'UZS', detail: `Added client ${payload.name}` });
@@ -110,9 +112,10 @@ export default function Clients() {
   };
 
   const handleEditSave = () => {
-    if (!(hasPermission && hasPermission('credits_manage'))) return alert(t('permissionDenied') || 'Permission denied');
+      const handleEditSave = () => {
+    if (!(hasPermission && hasPermission('credits_manage'))) { notify('Error', t('permissionDenied') || 'Permission denied', 'error'); return; }
     if (!editClient || !name.trim()) return;
-    if (rawPhone.length !== 9) return alert('Telefon raqami 9 ta raqam bo\'lishi kerak');
+    if (rawPhone.length !== 9) { notify('Warning', 'Telefon raqami 9 ta raqam bo\'lishi kerak', 'warning'); return; }
     const formattedPhone = formatPhone(rawPhone);
     updateClient(editClient.id, { name: name.trim(), phone: formattedPhone }, { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CLIENT_EDIT', kind: 'CLIENT_EDIT', product_name: name.trim(), qty: 1, unit_price: 0, amount: 0, currency: 'UZS', detail: `Edited client ${name.trim()}` });
     setEditClient(null);
@@ -137,7 +140,7 @@ export default function Clients() {
       if (!creditAmount) return;
       const totalAmount = Number(creditAmount);
       if (initialPayAmount > totalAmount) {
-        return alert("Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas");
+        notify('Warning', "Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas", 'warning'); return;
       }
       amount = totalAmount;
       currency = creditCurrency;
@@ -150,7 +153,7 @@ export default function Clients() {
       amount = products.reduce((sum, p) => sum + Number(p.qty) * Number(creditSubtype === 'olingan' ? p.receivePrice : p.sellPrice), 0);
       currency = products[0][creditSubtype === 'olingan' ? 'receiveCurrency' : 'sellCurrency'];
       if (initialPayAmount > amount) {
-        return alert("Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas");
+        notify('Warning', "Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas", 'warning'); return;
       }
       const productDetails = products.map(p => `${p.qty} x ${p.name}`).join(', ');
       detail = `Added product credit for ${creditClient.name}: ${productDetails}`;
@@ -158,20 +161,6 @@ export default function Clients() {
         detail += `, with an initial payment of ${initialPayAmount} ${currency}`;
       }
     }
-    const payload = {
-      id: uuidv4(),
-      name: creditClient.name,
-      clientId: creditClient.id,
-      clientName: creditClient.name,
-      date: creditDate,
-      amount,
-      currency,
-      type: creditSubtype,
-      note: creditNote,
-      bosh_toluv: initialPayAmount,
-      creditType,
-      ...(creditType === 'mahsulot' && { products })
-    };
 
     const logPayload = {
         id: uuidv4(),
@@ -185,14 +174,14 @@ export default function Clients() {
         amount: amount,
         currency: currency,
     };
-    insertLog(logPayload);
+    // insertLog(logPayload); // Removed: addCredit action already handles logging
 
     // Use AppContext action which enforces permissions
     try {
       await addCredit(payload, { id: uuidv4(), user: username, action: 'CREDIT_ADD', detail: `Added credit for ${creditClient.name}` });
     } catch (e) {
       console.error('addCredit failed', e);
-      window.alert(t('permissionDenied') || 'Permission denied');
+      // window.alert(t('permissionDenied') || 'Permission denied'); // Removed as AppContext's addCredit handles this
       return;
     }
     
@@ -209,13 +198,13 @@ export default function Clients() {
           amount: initialPayAmount,
           currency: currency,
       };
-      insertLog(paymentLog);
+      await insertLog(paymentLog); // Await this as it's an async operation
     }
 
     if (creditType === 'mahsulot') {
-      products.forEach(p => {
+      for (const p of products) { // Use for...of for async operations in loop
         if (creditSubtype === 'olingan') {
-          // Add to inventory
+          // Add to inventory using useApp action creator
           const productPayload = {
             id: uuidv4(),
             name: p.name,
@@ -224,22 +213,33 @@ export default function Clients() {
             cost: Number(p.sellPrice),
             currency: p.receiveCurrency
           };
+          const logData = { id: uuidv4(), user_name: username, action: 'WAREHOUSE_ADD', detail: `Added ${p.qty} ${p.name} from client ${creditClient.name}` };
           if (location === 'warehouse') {
-            dispatch({ type: 'ADD_WAREHOUSE', payload: productPayload, log: { id: uuidv4(), user: username, action: 'WAREHOUSE_ADD', detail: `Added ${p.qty} ${p.name} from client ${creditClient.name}` } });
+            await addWarehouseProduct(productPayload, logData);
           } else {
-            dispatch({ type: 'ADD_STORE', payload: productPayload, log: { id: uuidv4(), user: username, action: 'STORE_ADD', detail: `Added ${p.qty} ${p.name} from client ${creditClient.name}` } });
+            await addStoreProduct(productPayload, logData);
           }
         } else {
-          // Subtract from inventory
+          // Subtract from inventory using useApp action creator
           const inventory = location === 'warehouse' ? state.warehouse : state.store;
           const existing = inventory.find(item => item.name === p.name);
-          if (existing && Number(existing.qty) >= Number(p.qty)) {
-            dispatch({ type: location === 'warehouse' ? 'ADJUST_WAREHOUSE_QTY' : 'ADJUST_STORE_QTY', payload: { id: existing.id, delta: -Number(p.qty) }, log: { id: uuidv4(), user: username, action: 'INVENTORY_SELL', detail: `Sold ${p.qty} ${p.name} to client ${creditClient.name}` } });
+          if (existing) {
+            const newQty = Number(existing.qty) - Number(p.qty);
+            if (newQty < 0) {
+              notify('Warning', `Not enough ${p.name} in ${location}. Available: ${existing.qty}, trying to sell: ${p.qty}`, 'warning');
+              continue; // Skip this product or handle error more robustly
+            }
+            const logData = { id: uuidv4(), user_name: username, action: 'INVENTORY_SELL', detail: `Sold ${p.qty} ${p.name} to client ${creditClient.name}` };
+            if (location === 'warehouse') {
+              await updateWarehouseProduct(existing.id, { qty: newQty }, logData);
+            } else {
+              await updateStoreProduct(existing.id, { qty: newQty }, logData);
+            }
           } else {
-            // Not enough, but for now, proceed (could add error)
+            notify('Error', `Product ${p.name} not found in ${location}.`, 'error');
           }
         }
-      });
+      }
     }
     setCreditOpen(false);
     setCreditClient(null);
@@ -293,13 +293,15 @@ export default function Clients() {
         <DialogTitle>{editClient ? t('editClient') : t('addClient')}</DialogTitle>
         <DialogContent>
           <TextField autoFocus margin="dense" label={t('clientNameLabel')} type="text" fullWidth value={name} onChange={(e) => setName(e.target.value)} />
-          <TextField margin="dense" label={t('clientPhoneLabel')} type="text" fullWidth value={`+998 ${rawPhone}`} onChange={(e) => {
-            const val = e.target.value;
-            if (val.startsWith('+998 ')) {
-              const digits = val.slice(5).replace(/\D/g, '').slice(0, 9);
-              setRawPhone(digits);
-            }
-          }} />
+          <TextField
+            margin="dense"
+            label={t('clientPhoneLabel')}
+            type="text"
+            fullWidth
+            value={phone} // Display the formatted phone
+            onChange={(e) => handlePhoneChange(e.target.value)} // Use the dedicated handler
+            InputLabelProps={{ shrink: true }} // Keep label from overlapping
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setOpen(false); setEditClient(null); }}>{t('cancel')}</Button>

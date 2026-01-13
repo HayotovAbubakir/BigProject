@@ -15,30 +15,27 @@ export async function loadAppState(username) {
     return null
   }
   try {
-    // Check if user is authenticated via sessionStorage (custom auth)
-    const stored = sessionStorage.getItem('app_auth_v1')
-    if (!stored) {
-      console.warn('User not authenticated, cannot load remote state')
-      return null
-    }
+    // No client-side storage checks here — rely on Supabase auth/session
 
+    // Use maybeSingle to avoid throwing when no row exists
     const { data, error } = await supabase
       .from('app_states')
       .select('state_json')
       .eq('username', username || 'shared')
-      .single()
+      .maybeSingle()
 
     if (error) {
-      if (error.code === 'PGRST116') { // Not found
-        console.log('No saved state found for user:', username || 'shared')
-        return null
-      }
-      console.error('loadAppState: Supabase error:', error.message)
+      console.error('loadAppState: Supabase error:', error.message || error)
       return null
     }
 
     if (data && data.state_json) {
-      return JSON.parse(data.state_json)
+      try {
+        return JSON.parse(data.state_json)
+      } catch (e) {
+        console.error('loadAppState: failed to parse state_json', e)
+        return null
+      }
     }
 
     // Fallback to shared state if user-specific not found
@@ -72,12 +69,7 @@ export async function saveAppState(state, username) {
     return false
   }
   try {
-    // Check if user is authenticated via sessionStorage (custom auth)
-    const stored = sessionStorage.getItem('app_auth_v1')
-    if (!stored) {
-      console.warn('User not authenticated, cannot save remote state')
-      return false
-    }
+    // No client-side storage checks here — write directly to Supabase
 
     const payload = JSON.stringify(state)
     const { error } = await supabase
@@ -109,12 +101,7 @@ export async function clearAppState(username) {
     return false
   }
   try {
-    // Check if user is authenticated via sessionStorage (custom auth)
-    const stored = sessionStorage.getItem('app_auth_v1')
-    if (!stored) {
-      console.warn('User not authenticated, cannot clear remote state')
-      return false
-    }
+    // No client-side storage checks here — delete directly from Supabase
 
     const { error } = await supabase
       .from('app_states')

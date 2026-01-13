@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useApp } from '../context/AppContext'
-import { Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, Box } from '@mui/material'
+import { useApp } from '../context/useApp'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, TextField } from '@mui/material'
+import NumberField from './NumberField'
 import CurrencyModal from './CurrencyModal'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { v4 as uuidv4 } from 'uuid'
@@ -57,7 +58,9 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
     let payload = { id: initial?.id || uuidv4(), ...form, date: toISODate(form.date) }
     try {
       if (payload.currency === 'USD' && usdToUzs) payload = { ...payload, cost_uzs: Number(payload.cost) * Number(usdToUzs) }
-    } catch {  }
+    } catch { 
+      // ignore
+    }
     onSubmit(payload)
     try { dispatch({ type: 'CLEAR_DRAFT', payload: { key: getDraftKey() } }) } catch (err) { void err }
     onClose()
@@ -76,8 +79,8 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
           <Button variant="outlined" onClick={() => setCurrencyOpen(true)}>Valyuta: {form.currency || 'UZS'}</Button>
         </Box>
         <TextField label="Nomi" fullWidth margin="dense" value={form.name} onChange={handle('name')} />
-        <TextField label="Soni" fullWidth type="number" margin="dense" value={form.qty} onChange={handle('qty')} />
-        <TextField label="Narxi (omborda)" fullWidth type="number" margin="dense" value={form.cost} onChange={handle('cost')} />
+        <NumberField label="Soni" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: Number(v || 0) }))} />
+        <NumberField label="Narxi (omborda)" fullWidth margin="dense" value={form.cost} onChange={(v) => setForm(prev => ({ ...prev, cost: Number(v || 0) }))} />
         <TextField label="Kelgan sana" fullWidth margin="dense" value={form.date} onChange={handle('date')} />
         <TextField label="Izoh" fullWidth margin="dense" value={form.note} onChange={handle('note')} />
       </DialogContent>

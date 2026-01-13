@@ -1,34 +1,52 @@
 // DevTools lock — parol qo'yib DevTools ni berkitish
-const DEVTOOLS_PASSWORD = '0000'
+const DEVTOOLS_PASSWORD = '0'
 // Progressive lockout settings
 const ESCALATION_THRESH = 4 // after 4 consecutive wrong attempts escalate
 const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000] // 1 minute, then 5 minutes
 
-// Restore state from sessionStorage so reloads keep counters
+// Control flag to enable/disable the lock
+let isDevToolsLockEnabled = false // Temporarily disabled - DevTools open without PIN
+
+// Persist lock state in Supabase (shared snapshot) — no browser storage
+import { loadAppState, saveAppState } from '../firebase/db'
+
 let consecutiveFailed = 0 // consecutive wrong attempts counter
 let escalationLevel = 0 // which escalation duration to use next
 let lockoutUntil = null
-try {
-  const raw = sessionStorage.getItem('devtools_lock_state')
-  if (raw) {
-    const parsed = JSON.parse(raw)
-    consecutiveFailed = Number(parsed.consecutiveFailed) || 0
-    escalationLevel = Number(parsed.escalationLevel) || 0
-    lockoutUntil = parsed.lockoutUntil ? Number(parsed.lockoutUntil) : null
+
+;(async () => {
+  try {
+    const remote = await loadAppState(null)
+    if (remote && remote.devtools_lock_state) {
+      const parsed = remote.devtools_lock_state
+      consecutiveFailed = Number(parsed.consecutiveFailed) || 0
+      escalationLevel = Number(parsed.escalationLevel) || 0
+      lockoutUntil = parsed.lockoutUntil ? Number(parsed.lockoutUntil) : null
+    }
+  } catch (e) {
+    console.debug('devToolsLock: failed to restore state', e)
   }
-} catch (e) {
-  console.debug('devToolsLock: failed to restore state', e)
-}
+})()
 
 function persistState() {
-  try {
-    sessionStorage.setItem('devtools_lock_state', JSON.stringify({ consecutiveFailed, escalationLevel, lockoutUntil }))
-  } catch (e) {
-    console.debug('devToolsLock: persist failed', e)
-  }
+  ;(async () => {
+    try {
+      const remote = (await loadAppState(null)) || {}
+      remote.devtools_lock_state = { consecutiveFailed, escalationLevel, lockoutUntil }
+      await saveAppState(remote, null)
+    } catch (e) {
+      console.debug('devToolsLock: persist failed', e)
+    }
+  })()
 }
 
 export function enableDevToolsLock() {
+  // Check if DevTools lock is enabled
+  if (!isDevToolsLockEnabled) {
+    console.log('DevTools lock disabled - PIN code not required')
+    return
+  }
+
   // DevTools F12, Ctrl+Shift+I, Ctrl+Shift+C larni blokiralash
   document.addEventListener('keydown', (e) => {
     const isCtrlShift = (e.ctrlKey || e.metaKey) && e.shiftKey
@@ -158,3 +176,21 @@ function unlockScreen() {
 }
 
 export default enableDevToolsLock
+
+// Functions to control DevTools lock from console
+export function disableDevToolsLock() {
+  isDevToolsLockEnabled = false
+  unlockScreen() // Remove any existing overlay
+  console.log('🔓 DevTools lock disabled - PIN code not required')
+}
+
+export function enableDevToolsLockAgain() {
+  isDevToolsLockEnabled = true
+  console.log('🔒 DevTools lock enabled - PIN code required')
+}
+
+// Make functions available globally for console access
+if (typeof window !== 'undefined') {
+  window.disableDevToolsLock = disableDevToolsLock
+  window.enableDevToolsLockAgain = enableDevToolsLockAgain
+}

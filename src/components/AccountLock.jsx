@@ -1,35 +1,41 @@
 import React from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Typography } from '@mui/material'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../hooks/useAuth'
+import { loadAppState, saveAppState } from '../firebase/db'
 
 const ESCALATION_THRESH = 4
 const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000]
 
-function storageKey(username) {
-  return `account_lock_state_${username}`
-}
-
-function readState(username) {
+async function readState(username) {
   try {
-    const raw = sessionStorage.getItem(storageKey(username))
-    if (!raw) return { consecutiveFailed: 0, escalationLevel: 0, lockoutUntil: null }
-    const p = JSON.parse(raw)
+    const remote = await loadAppState(username)
+    if (!remote || !remote.account_lock_state) return { consecutiveFailed: 0, escalationLevel: 0, lockoutUntil: null }
+    const p = remote.account_lock_state
     return { consecutiveFailed: Number(p.consecutiveFailed) || 0, escalationLevel: Number(p.escalationLevel) || 0, lockoutUntil: p.lockoutUntil ? Number(p.lockoutUntil) : null }
-  } catch {
+  } catch (e) {
+    console.error('AccountLock readState error:', e)
     return { consecutiveFailed: 0, escalationLevel: 0, lockoutUntil: null }
   }
 }
 
-function writeState(username, state) {
+async function writeState(username, state) {
   try {
-    sessionStorage.setItem(storageKey(username), JSON.stringify(state))
-  } catch {
-    // ignore
+    const remote = (await loadAppState(username)) || {}
+    remote.account_lock_state = state
+    await saveAppState(remote, username)
+  } catch (e) {
+    console.error('AccountLock writeState error:', e)
   }
 }
 
-function clearState(username) {
-  try { sessionStorage.removeItem(storageKey(username)) } catch (err) { console.debug('clearState failed', err) }
+async function clearState(username) {
+  try {
+    const remote = (await loadAppState(username)) || {}
+    if (remote && remote.account_lock_state) delete remote.account_lock_state
+    await saveAppState(remote, username)
+  } catch (e) {
+    console.error('AccountLock clearState error:', e)
+  }
 }
 
 export default function AccountLock({ open, onClose }) {
@@ -49,13 +55,18 @@ export default function AccountLock({ open, onClose }) {
 
   React.useEffect(() => {
     if (!enteredUsername) return
-    const s = readState(enteredUsername)
-    setLockedUntil(s.lockoutUntil || null)
-    if (s.lockoutUntil && Date.now() < s.lockoutUntil) {
-      setRemainingSec(Math.ceil((s.lockoutUntil - Date.now()) / 1000))
-    } else {
-      setRemainingSec(0)
-    }
+    let mounted = true
+    ;(async () => {
+      const s = await readState(enteredUsername)
+      if (!mounted) return
+      setLockedUntil(s.lockoutUntil || null)
+      if (s.lockoutUntil && Date.now() < s.lockoutUntil) {
+        setRemainingSec(Math.ceil((s.lockoutUntil - Date.now()) / 1000))
+      } else {
+        setRemainingSec(0)
+      }
+    })()
+    return () => { mounted = false }
   }, [enteredUsername, stateVersion, open])
 
   // live countdown
@@ -91,7 +102,7 @@ export default function AccountLock({ open, onClose }) {
       return
     }
 
-    const sTarget = readState(target)
+    const sTarget = await readState(target)
     if (sTarget.lockoutUntil && Date.now() < sTarget.lockoutUntil) {
       setLockedUntil(sTarget.lockoutUntil)
       setRemainingSec(Math.ceil((sTarget.lockoutUntil - Date.now())/1000))
@@ -132,7 +143,7 @@ export default function AccountLock({ open, onClose }) {
       const remaining = Math.max(ESCALATION_THRESH - next.consecutiveFailed, 0)
       setError(`Parol noto'g'ri. Bosqichga yetish uchun qolgan urinishlar: ${remaining}`)
     }
-    writeState(target, next)
+    await writeState(target, next)
     setStateVersion(v => v + 1)
     setPassword('')
   }

@@ -1,154 +1,164 @@
-import { createTheme, responsiveFontSizes } from '@mui/material/styles'
+import { createTheme, responsiveFontSizes } from '@mui/material/styles';
 
-export const lightTheme = createTheme({
+// --- Base Settings ---
+const baseTheme = {
+  shape: {
+    borderRadius: 12,
+  },
+  typography: {
+    fontFamily: "'Inter', sans-serif",
+    h1: { fontWeight: 800, fontSize: '3.5rem' },
+    h2: { fontWeight: 700, fontSize: '3rem' },
+    h3: { fontWeight: 700, fontSize: '2.5rem' },
+    h4: { fontWeight: 700, fontSize: '2rem' },
+    h5: { fontWeight: 600, fontSize: '1.5rem' },
+    h6: { fontWeight: 600, fontSize: '1.25rem' },
+    button: {
+      textTransform: 'none',
+      fontWeight: 600,
+      letterSpacing: '0.5px',
+    },
+  },
+};
+
+// --- Light Theme ---
+export let lightTheme = createTheme({
+  ...baseTheme,
   palette: {
     mode: 'light',
-    primary: { main: '#0b84ff', contrastText: '#fff' },
-    secondary: { main: '#ffb400' },
-    background: { default: '#f6f9fc', paper: '#ffffff' },
-    success: { main: '#28a745' },
-    error: { main: '#e53935' },
-  },
-  shape: { borderRadius: 10 },
-  typography: {
-    fontFamily: "Inter, Roboto, 'Helvetica Neue', Arial",
-    h4: { fontWeight: 700 },
-    h5: { fontWeight: 700 },
-    h6: { fontWeight: 600 },
-    button: { textTransform: 'none', fontWeight: 600 }
+    primary: { main: '#007BFF' },
+    secondary: { main: '#6F42C1' },
+    background: {
+      default: '#F8F9FA',
+      paper: '#FFFFFF',
+    },
+    text: {
+      primary: '#212529',
+      secondary: '#6C757D',
+    },
   },
   components: {
     MuiCssBaseline: {
-      styleOverrides: {
-        'html, body, #root': { height: '100%', width: '100%' },
-        body: { backgroundColor: '#f6f9fc' }
-      }
+      styleOverrides: `
+        body {
+          transition: background-color 0.3s ease;
+        }
+        .page-enter {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        .page-enter-active {
+          opacity: 1;
+          transform: translateY(0);
+          transition: opacity 300ms, transform 300ms;
+        }
+      `,
     },
     MuiAppBar: {
       styleOverrides: {
-        root: { backdropFilter: 'saturate(180%) blur(6px)', backgroundColor: 'rgba(11,132,255,0.95)' }
-      }
+        root: {
+          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+          color: '#212529',
+          backdropFilter: 'saturate(200%) blur(10px)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+        },
+      },
     },
     MuiButton: {
-      defaultProps: { disableElevation: true },
       styleOverrides: {
         root: {
-          borderRadius: 10,
-          paddingLeft: 14,
-          paddingRight: 14,
-          transition: 'transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease',
+          transition: 'all 0.25s ease-in-out',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+          },
         },
-        containedPrimary: {
-          backgroundImage: 'linear-gradient(90deg, #0b84ff 0%, #0b6bff 100%)',
-          color: '#fff',
-          boxShadow: '0 6px 18px rgba(11,132,255,0.12)',
-          '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 10px 30px rgba(11,132,255,0.16)' },
-          '&:active': { transform: 'translateY(0)', boxShadow: '0 4px 12px rgba(11,132,255,0.08)' }
-        },
-        outlined: {
-          borderWidth: 1,
-          borderColor: 'rgba(16,24,40,0.06)'
-        }
-      }
+      },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
-          boxShadow: '0 6px 18px rgba(16,24,40,0.06)',
-          border: '1px solid rgba(16,24,40,0.03)'
-        }
-      }
+          transition: 'all 0.3s ease-in-out',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
+          },
+        },
+      },
     },
-    MuiPaper: {
-      styleOverrides: {
-        root: { backgroundClip: 'padding-box' }
-      }
-    },
-    MuiTooltip: {
-      styleOverrides: { tooltip: { borderRadius: 8, fontSize: '0.85rem' } }
-    }
-  }
-})
+  },
+});
 
-export const darkTheme = createTheme({
+// --- Dark Theme ---
+export let darkTheme = createTheme({
+  ...baseTheme,
   palette: {
     mode: 'dark',
-    primary: { main: '#2196f3', contrastText: '#fff' },
-    secondary: { main: '#ffb400' },
-    background: { default: '#121212', paper: '#1e1e1e' },
-    success: { main: '#4caf50' },
-    error: { main: '#f44336' },
-    text: { primary: '#e0e0e0', secondary: '#b0b0b0' },
-  },
-  shape: { borderRadius: 10 },
-  typography: {
-    fontFamily: "Inter, Roboto, 'Helvetica Neue', Arial",
-    h4: { fontWeight: 700 },
-    h5: { fontWeight: 700 },
-    h6: { fontWeight: 600 },
-    button: { textTransform: 'none', fontWeight: 600 }
+    primary: { main: '#3498DB' },
+    secondary: { main: '#8E44AD' },
+    background: {
+      default: '#1C2833',
+      paper: '#212F3D',
+    },
+    text: {
+      primary: '#EAECEE',
+      secondary: '#ABB2B9',
+    },
   },
   components: {
     MuiCssBaseline: {
-      styleOverrides: {
-        'html, body, #root': { height: '100%', width: '100%' },
-        body: { backgroundColor: '#121212' }
-      }
+      styleOverrides: `
+        body {
+          transition: background-color 0.3s ease;
+        }
+        .page-enter {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        .page-enter-active {
+          opacity: 1;
+          transform: translateY(0);
+          transition: opacity 300ms, transform 300ms;
+        }
+      `,
     },
     MuiAppBar: {
       styleOverrides: {
-        root: { backdropFilter: 'saturate(180%) blur(6px)', backgroundColor: 'rgba(60,60,60,0.95)' }
-      }
+        root: {
+          backgroundColor: 'rgba(28, 40, 51, 0.8)',
+          backdropFilter: 'saturate(200%) blur(10px)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        },
+      },
     },
     MuiButton: {
-      defaultProps: { disableElevation: true },
       styleOverrides: {
         root: {
-          borderRadius: 10,
-          paddingLeft: 14,
-          paddingRight: 14,
-          transition: 'transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease',
+          transition: 'all 0.25s ease-in-out',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+          },
         },
-        containedPrimary: {
-          backgroundImage: 'linear-gradient(90deg, #2196f3 0%, #1976d2 100%)',
-          color: '#fff',
-          boxShadow: '0 6px 18px rgba(33,150,243,0.12)',
-          '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 10px 30px rgba(33,150,243,0.16)' },
-          '&:active': { transform: 'translateY(0)', boxShadow: '0 4px 12px rgba(33,150,243,0.08)' }
-        },
-        outlined: {
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.12)'
-        }
-      }
+      },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
-          boxShadow: '0 6px 18px rgba(0,0,0,0.3)',
-          border: '1px solid rgba(255,255,255,0.05)'
-        }
-      }
+          transition: 'all 0.3s ease-in-out',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+          backgroundImage: 'none', // override potential inherited gradients
+          '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+          },
+        },
+      },
     },
-    MuiPaper: {
-      styleOverrides: {
-        root: { backgroundClip: 'padding-box' }
-      }
-    },
-    MuiTooltip: {
-      styleOverrides: { tooltip: { borderRadius: 8, fontSize: '0.85rem' } }
-    },
-    MuiDrawer: {
-      styleOverrides: {
-        paper: { backgroundColor: '#1e1e1e' }
-      }
-    }
-  }
-})
+  },
+});
 
-let theme = lightTheme
-theme = responsiveFontSizes(theme)
-
-export default theme
+// Apply responsive font sizes
+lightTheme = responsiveFontSizes(lightTheme);
+darkTheme = responsiveFontSizes(darkTheme);

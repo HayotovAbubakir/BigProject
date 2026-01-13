@@ -1,88 +1,218 @@
--- Supabase Database Schema for BigProject
--- Run this in your Supabase SQL Editor
+-- =====================================================
+-- BIGPROJECT — FINAL, CLEAN, STABLE SUPABASE SETUP
+-- Custom Auth (NO Supabase Auth)
+-- Safe to re-run
+-- =====================================================
 
--- Enable Row Level Security
-ALTER TABLE IF EXISTS app_states ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS user_credentials ENABLE ROW LEVEL SECURITY;
+-- =========================
+-- 0. CLEANUP
+-- =========================
+DROP POLICY IF EXISTS allow_all_users ON user_credentials;
+DROP POLICY IF EXISTS allow_all_states ON app_states;
+DROP POLICY IF EXISTS allow_all_products ON public.products;
+DROP POLICY IF EXISTS "Allow operations on own clients" ON clients;
 
--- Create user_credentials table for custom authentication
-CREATE TABLE IF NOT EXISTS user_credentials (
+DROP TABLE IF EXISTS public.products CASCADE;
+DROP TABLE IF EXISTS app_states CASCADE;
+DROP TABLE IF EXISTS user_credentials CASCADE;
+DROP TABLE IF EXISTS public.logs CASCADE;
+DROP TABLE IF EXISTS public.clients CASCADE;
+DROP TABLE IF EXISTS public.credits CASCADE;
+
+DROP FUNCTION IF EXISTS public.update_updated_at_column CASCADE;
+
+-- =========================
+-- 1. EXTENSIONS
+-- =========================
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- =========================
+-- 2. TABLES
+-- =========================
+
+CREATE TABLE user_credentials (
   id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  role TEXT DEFAULT 'user',
+  permissions JSONB DEFAULT '{}'::jsonb,
   created_by TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Create index for faster queries
-CREATE INDEX IF NOT EXISTS idx_user_credentials_username ON user_credentials(username);
-
--- Create app_states table to store application state as JSON
-CREATE TABLE IF NOT EXISTS app_states (
+CREATE TABLE app_states (
   id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   state_json JSONB NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Create index for faster queries
-CREATE INDEX IF NOT EXISTS idx_app_states_username ON app_states(username);
+CREATE TABLE public.products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  qty INTEGER DEFAULT 0,
+  cost NUMERIC DEFAULT 0,
+  price NUMERIC DEFAULT 0,
+  price_uzs NUMERIC,
+  cost_uzs NUMERIC,
+  currency TEXT DEFAULT 'UZS',
+  location TEXT,
+  note TEXT,
+  date DATE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 
--- Create function to update updated_at
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+CREATE TABLE public.logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE,
+  time TEXT,
+  ts BIGINT,
+  user_name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  kind TEXT,
+  product_id UUID,
+  product_name TEXT,
+  qty NUMERIC,
+  unit_price NUMERIC,
+  amount NUMERIC,
+  total_uzs NUMERIC,
+  currency TEXT,
+  type TEXT,
+  detail TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE public.clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  phone TEXT,
+  owner TEXT DEFAULT 'shared',
+  created_at BIGINT,
+  created_by TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE public.credits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT,
+  date DATE,
+  amount NUMERIC DEFAULT 0,
+  amount_uzs NUMERIC,
+  currency TEXT DEFAULT 'UZS',
+  type TEXT,
+  product_id UUID,
+  product_name TEXT,
+  qty INTEGER,
+  price NUMERIC,
+  price_uzs NUMERIC,
+  client_id UUID,
+  bosh_toluv NUMERIC,
+  bosh_toluv_note TEXT,
+  stored BOOLEAN DEFAULT false,
+  given BOOLEAN DEFAULT false,
+  location TEXT,
+  note TEXT,
+  completed BOOLEAN DEFAULT false,
+  completed_at BIGINT,
+  completed_by TEXT,
+  created_at BIGINT,
+  created_by TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- =========================
+-- 3. INDEXES
+-- =========================
+CREATE INDEX idx_users_username ON user_credentials(username);
+CREATE INDEX idx_states_username ON app_states(username);
+
+-- =========================
+-- 4. UPDATED_AT FUNCTION
+-- =========================
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS trigger AS $$
 BEGIN
-  NEW.updated_at = NOW();
+  NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
--- Create trigger for updated_at on user_credentials
-CREATE TRIGGER update_user_credentials_updated_at
-  BEFORE UPDATE ON user_credentials
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- =========================
+-- 5. TRIGGERS
+-- =========================
+CREATE TRIGGER trg_users_updated
+BEFORE UPDATE ON user_credentials
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
--- Create trigger for updated_at on app_states
-CREATE TRIGGER update_app_states_updated_at
-  BEFORE UPDATE ON app_states
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_states_updated
+BEFORE UPDATE ON app_states
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
--- Row Level Security policies for user_credentials
--- Only admins can view all users, regular users can only see themselves
-CREATE POLICY "Admins can view all user credentials" ON user_credentials
-  FOR SELECT USING (auth.jwt() ->> 'username' IN ('hamdamjon', 'habibjon'));
+CREATE TRIGGER trg_products_updated
+BEFORE UPDATE ON public.products
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE POLICY "Users can view their own credentials" ON user_credentials
-  FOR SELECT USING (username = auth.jwt() ->> 'username');
+CREATE TRIGGER trg_logs_updated
+BEFORE UPDATE ON public.logs
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE POLICY "Admins can insert user credentials" ON user_credentials
-  FOR INSERT WITH CHECK (auth.jwt() ->> 'username' IN ('hamdamjon', 'habibjon'));
+CREATE TRIGGER trg_clients_updated
+BEFORE UPDATE ON public.clients
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE POLICY "Admins can update user credentials" ON user_credentials
-  FOR UPDATE USING (auth.jwt() ->> 'username' IN ('hamdamjon', 'habibjon'));
+CREATE TRIGGER trg_credits_updated
+BEFORE UPDATE ON public.credits
+FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE POLICY "Admins can delete user credentials" ON user_credentials
-  FOR DELETE USING (auth.jwt() ->> 'username' IN ('hamdamjon', 'habibjon'));
+-- =========================
+-- 6. RLS
+-- =========================
+ALTER TABLE user_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.credits DISABLE ROW LEVEL SECURITY;
 
--- Row Level Security policies for app_states
--- Users can only access their own state or shared state
-CREATE POLICY "Users can view their own app state" ON app_states
-  FOR SELECT USING (auth.uid() IS NOT NULL AND username = auth.jwt() ->> 'username');
+-- =========================
+-- 7. DEV MODE POLICIES
+-- =========================
+CREATE POLICY allow_all_users
+ON user_credentials FOR ALL
+USING (true) WITH CHECK (true);
 
-CREATE POLICY "Users can view shared app state" ON app_states
-  FOR SELECT USING (username = 'shared');
+CREATE POLICY allow_all_states
+ON app_states FOR ALL
+USING (true) WITH CHECK (true);
 
-CREATE POLICY "Users can insert their own app state" ON app_states
-  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL AND username = auth.jwt() ->> 'username');
+CREATE POLICY allow_all_products
+ON public.products FOR ALL
+USING (true) WITH CHECK (true);
 
-CREATE POLICY "Users can update their own app state" ON app_states
-  FOR UPDATE USING (auth.uid() IS NOT NULL AND username = auth.jwt() ->> 'username');
+-- =========================
+-- 8. DEFAULT USERS
+-- =========================
+INSERT INTO user_credentials (username, password_hash, role, permissions, created_by)
+VALUES
+('developer', 'developer', 'developer',
+ '{"full_access": true, "manage_accounts": true}'::jsonb, 'system'),
+('hamdamjon', '1010', 'admin',
+ '{"credits_manage": true, "clients_manage": true, "add_products": true, "logs_manage": true}'::jsonb, 'system'),
+('habibjon', '0000', 'admin',
+ '{"credits_manage": true, "clients_manage": true, "add_products": true, "logs_manage": true}'::jsonb, 'system')
+ON CONFLICT (username) DO NOTHING;
 
-CREATE POLICY "Users can delete their own app state" ON app_states
-  FOR DELETE USING (auth.uid() IS NOT NULL AND username = auth.jwt() ->> 'username');
+-- =========================
+-- 9. TEST PRODUCT
+-- =========================
+INSERT INTO public.products (name, qty, cost, currency, location)
+VALUES ('Test Product', 10, 1000, 'UZS', 'store');
 
--- Allow shared state operations (for admin users)
-CREATE POLICY "Admins can manage shared state" ON app_states
-  FOR ALL USING (username = 'shared' AND auth.jwt() ->> 'username' IN ('hamdamjon', 'habibjon'));
+-- =========================
+-- END
+-- =========================
+SELECT * FROM public.products;

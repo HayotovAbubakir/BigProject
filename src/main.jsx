@@ -3,24 +3,22 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 import { AppProvider } from './context/AppContext'
+import { NotificationProvider } from './context/NotificationContext'
 import { AuthProvider } from './context/AuthContext'
 import LoginDialog from './components/LoginDialog'
-import { ThemeProvider, CssBaseline } from '@mui/material'
-import theme from './theme'
 import { LocaleProvider } from './context/LocaleContext'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <LocaleProvider>
-        <AuthProvider>
+    <LocaleProvider>
+      <AuthProvider>
+        <NotificationProvider>
           <AppProvider>
             <App />
             <LoginDialog />
           </AppProvider>
-        </AuthProvider>
-      </LocaleProvider>
-    </ThemeProvider>
+        </NotificationProvider>
+      </AuthProvider>
+    </LocaleProvider>
   </StrictMode>,
 )

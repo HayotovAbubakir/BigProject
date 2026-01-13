@@ -1,10 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_KEY
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Supabase environment variables not set. Please check your .env file.')
+export const isSupabaseConfigured = () => {
+  return !!(supabaseUrl && supabaseAnonKey && !supabaseUrl.includes('placeholder') && !supabaseAnonKey.includes('placeholder'))
 }
 
-export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseKey || 'placeholder-key')
+if (!isSupabaseConfigured()) {
+  console.warn('Supabase not configured: check VITE_SUPABASE_URL and VITE_SUPABASE_KEY in .env')
+}
+
+export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder-key')
+
+if (isSupabaseConfigured() && import.meta.env.DEV) {
+  console.log('Supabase client configured; URL:', supabaseUrl)
+}

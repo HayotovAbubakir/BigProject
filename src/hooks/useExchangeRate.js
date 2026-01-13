@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 
 export default function useExchangeRate() {
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const [rate, setRate] = useState(state?.exchangeRate || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -19,6 +19,7 @@ export default function useExchangeRate() {
       const r = data && data.rates && data.rates.UZS ? Number(data.rates.UZS) : null
       if (r) {
         setRate(r)
+        dispatch({ type: 'SET_EXCHANGE_RATE', payload: r })
       } else {
         throw new Error('No rate')
       }
@@ -27,7 +28,7 @@ export default function useExchangeRate() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dispatch])
 
   useEffect(() => {
     

@@ -1,123 +1,194 @@
-import React from 'react'
-import { Box, Typography, Card, CardContent, Table, TableHead, TableRow, TableCell, TableBody, TableContainer, Grid, TextField, Button, useMediaQuery, IconButton } from '@mui/material'
-import { useApp } from '../context/AppContext'
-import { useAuth } from '../context/AuthContext'
-import { useLocale } from '../context/LocaleContext'
-import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
+import React, { useState } from 'react';
+import {
+  Box, Typography, Paper, Grid, TextField, Button, useMediaQuery, useTheme, Chip, Tooltip, IconButton, Card, CardContent, Divider
+} from '@mui/material';
+import {
+  CalendarToday as CalendarTodayIcon,
+  DeleteSweep as DeleteSweepIcon,
+  Info as InfoIcon,
+  ShoppingCart as ShoppingCartIcon,
+  AddShoppingCart as AddShoppingCartIcon,
+  Warning as WarningIcon,
+  MoveDown as MoveDownIcon,
+  CreditCard as CreditCardIcon,
+  Person as PersonIcon
+} from '@mui/icons-material';
+import { useApp } from '../context/useApp';
+import { useAuth } from '../hooks/useAuth';
+import { useLocale } from '../context/LocaleContext';
+import { formatMoney } from '../utils/format';
 
-export default function Logs() {
-  const { state, dispatch } = useApp()
-  const { user } = useAuth()
-  
-  const { t } = useLocale()
-  const isNarrow = useMediaQuery('(max-width:500px)')
-  const today = new Date().toISOString().slice(0,10)
-  const [selectedDate, setSelectedDate] = React.useState(today)
+const logIcons = {
+  SELL: <ShoppingCartIcon />,
+  ADD: <AddShoppingCartIcon />,
+  MOVE: <MoveDownIcon />,
+  DELETE: <DeleteSweepIcon />,
+  CREDIT_ADD: <CreditCardIcon />,
+  CREDIT_EDIT: <CreditCardIcon />,
+  CREDIT_DELETE: <CreditCardIcon />,
+  CLIENT_ADD: <PersonIcon />,
+  CLIENT_EDIT: <PersonIcon />,
+  CLIENT_DELETE: <PersonIcon />,
+  DEFAULT: <InfoIcon />
+};
+
+const logColors = {
+  SELL: 'primary.main',
+  ADD: 'success.main',
+  MOVE: 'info.main',
+  DELETE: 'error.main',
+  CREDIT_ADD: 'secondary.main',
+  CREDIT_EDIT: 'secondary.main',
+  CREDIT_DELETE: 'error.main',
+  CLIENT_ADD: 'success.main',
+  CLIENT_EDIT: 'info.main',
+  CLIENT_DELETE: 'error.main',
+  DEFAULT: 'text.secondary'
+}
+
+function getLogMeta(log) {
+  const kind = (log.kind || 'DEFAULT').toUpperCase();
+  const icon = logIcons[kind] || logIcons.DEFAULT;
+  const color = logColors[kind] || logColors.DEFAULT;
+  return { icon, color };
+}
+
+function LogItem({ log }) {
+  const meta = getLogMeta(log);
+  const theme = useTheme();
+  const isCreditLog = log.kind?.includes('CREDIT');
+  const { t } = useLocale();
+
+  // Parse detail for credit logs
+  const parseCreditDetail = (detail) => {
+    const parsed = {};
+    if (!detail) return parsed;
+    const parts = detail.split(', ');
+    parts.forEach(part => {
+      const [key, value] = part.split(': ');
+      if (key && value) {
+        parsed[key] = value;
+      }
+    });
+    return parsed;
+  };
+
+  const creditDetail = isCreditLog ? parseCreditDetail(log.detail) : {};
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'start', alignItems:'center' }}>
-  <Box sx={{ width: '100%', px: { xs: 2, sm: 2, md: 0 } }}>
-  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 2, flexWrap: 'wrap' }}>
-    <Typography variant="h4" gutterBottom>{t('logs')}</Typography>
-    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-      <TextField
-        size="small"
-        type="date"
-        value={selectedDate}
-        onChange={(e) => setSelectedDate(e.target.value)}
-        InputLabelProps={{ shrink: true }}
-      />
-      <Button size="small" variant="outlined" onClick={() => setSelectedDate(today)}>{t('today')}</Button>
-      <Button
-        variant="contained"
-        size="small"
-        color="error"
-        onClick={async () => {
-          try {
-            const uname = (user && user.username) ? user.username.toString().toLowerCase() : ''
-            if (uname !== 'hamdamjon' && uname !== 'habibjon') {
-              window.alert(t('permissionDenied') || 'Permission denied: admin only')
-              return
-            }
-            const pwd = window.prompt(t('enterAdminPassword') || 'Enter admin password to confirm deletion')
-            if (pwd === null) return
-            if (String(pwd) !== '0000') {
-              window.alert(t('incorrectPassword') || 'Incorrect password')
-              return
-            }
-            const logsForDate = state.logs.filter(l => (l.date || '').toString().slice(0,10) === selectedDate)
-            const count = logsForDate.length
-            if (!window.confirm((t('confirmDeleteLogs') || 'Are you sure you want to delete all logs for this date?') + ` (${count} items)`)) return
-            dispatch({ type: 'DELETE_LOGS_FOR_DATE', payload: { date: selectedDate, user: user && user.username } })
-            window.alert(t('deletedSuccess') || 'Deleted')
-          } catch (err) {
-            console.error('Delete logs error', err)
-            window.alert(t('deleteFailed') || 'Delete failed')
-          }
-        }}
-      >
-        {t('delete') || 'Delete'}
-      </Button>
-    </Box>
-  </Box>
-
-        <Card>
-          <CardContent>
-            <TableContainer sx={{ overflowX: 'auto', display: { xs: 'none', md: 'block' } }}>
-              <Table sx={{ tableLayout: 'fixed', minWidth: 700 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ whiteSpace: 'nowrap', minWidth: 160 }}>{t('date')}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap', minWidth: 120 }}>{t('time')}</TableCell>
-                  <TableCell sx={{ minWidth: 180 }}>{t('user')}</TableCell>
-                  <TableCell sx={{ minWidth: 200, textAlign: 'center' }}>{t('action')}</TableCell>
-                  <TableCell sx={{ minWidth: 420, wordBreak: 'break-word', textAlign: 'center' }}>{t('detail')}</TableCell>
-                </TableRow> 
-              </TableHead>
-              <TableBody>
-                {state.logs.filter(l => (l.date || '').toString().slice(0,10) === selectedDate).map((l, i) => (
-                  <TableRow key={i}>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{l.date}</TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{l.time}</TableCell>
-                      <TableCell sx={{ minWidth: 180 }}>{l.user}</TableCell>
-                      <TableCell sx={{ minWidth: 200, textAlign: 'center' }}>{l.action}</TableCell>
-                      <TableCell sx={{ minWidth: 420, wordBreak: 'break-word', textAlign: 'left' }}>
-                        <Typography sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{l.detail}</Typography>
-                      </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              </Table>
-            </TableContainer>
-
-            {}
-            <Box sx={{ display: { xs: 'block', md: 'none' } }}>
-                <Grid container spacing={2}>
-                  {state.logs.filter(l => (l.date || '').toString().slice(0,10) === selectedDate).map((l, i) => (
-                    <Grid item xs={12} key={i}>
-                      <Card>
-                        <CardContent sx={{ py: 1, px: 2 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                              <Typography sx={{ fontWeight: 700, fontSize: isNarrow ? 14 : 16, mb: 0.25 }}>{l.action}</Typography>
-                              <Typography variant="caption" color="text.secondary">{l.date} {l.time} • {l.user}</Typography>
-                              <Typography variant="body2" sx={{ mt: 1, fontSize: isNarrow ? 13 : 14, display: '-webkit-box', WebkitLineClamp: isNarrow ? 3 : 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{l.detail}</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <IconButton size="small" aria-label="more">
-                                <MoreHorizIcon />
-                              </IconButton>
-                            </Box>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
+    <Card sx={{ 
+      mb: 2, 
+      borderLeft: `5px solid ${theme.palette.primary.main}`,
+      borderColor: meta.color,
+      transition: 'box-shadow 0.3s',
+      '&:hover': {
+        boxShadow: theme.shadows[4]
+      }
+    }}>
+      <CardContent>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={1}>
+            <Box sx={{ color: meta.color }}>
+              {meta.icon}
             </Box>
-          </CardContent>
-        </Card>
-      </Box>
+          </Grid>
+          <Grid item xs={11}>
+            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{t(log.action) || log.action}</Typography>
+            <Chip label={log.kind} size="small" sx={{ mr: 1, backgroundColor: meta.color, color: 'white' }} />
+            <Typography variant="caption" color="text.secondary">
+              {log.date} {log.time} &bull; {log.user_name}
+            </Typography>
+          </Grid>
+        </Grid>
+        <Divider sx={{ my: 1.5 }} />
+        {isCreditLog ? (
+          <Box>
+            {creditDetail.Klient && <Typography variant="body2"><strong>Klient:</strong> {creditDetail.Klient}</Typography>}
+            {creditDetail.Mahsulot && <Typography variant="body2"><strong>Mahsulot:</strong> {creditDetail.Mahsulot}</Typography>}
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 1 }}>
+              {creditDetail.Soni && <Typography variant="body2"><strong>Soni:</strong> {creditDetail.Soni}</Typography>}
+              {creditDetail.Narx && <Typography variant="body2"><strong>Narx:</strong> {creditDetail.Narx}</Typography>}
+              {creditDetail.Jami && <Typography variant="body2"><strong>Jami:</strong> {creditDetail.Jami}</Typography>}
+              {creditDetail['Bosh to\'lov'] && <Typography variant="body2"><strong>Bosh to'lov:</strong> {creditDetail['Bosh to\'lov']}</Typography>}
+              {creditDetail.Qolgan && <Typography variant="body2"><strong>Qolgan:</strong> {creditDetail.Qolgan}</Typography>}
+            </Box>
+            {log.detail && <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic', fontSize: '0.8rem', color: 'text.secondary' }}>{log.detail}</Typography>}
+          </Box>
+        ) : (
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              {log.product_name && <Typography variant="body2"><strong>Mahsulot:</strong> {log.product_name}</Typography>}
+              {log.detail && <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>{log.detail}</Typography>}
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                {log.qty && <Typography variant="body2"><strong>Soni:</strong> {log.qty}</Typography>}
+                {log.unit_price != null && <Typography variant="body2"><strong>Narx:</strong> {formatMoney(log.unit_price)} {log.currency}</Typography>}
+                {log.amount != null && <Typography variant="body2"><strong>Jami:</strong> {formatMoney(log.amount)} {log.currency}</Typography>}
+              </Box>
+            </Grid>
+          </Grid>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+export default function Logs() {
+  const { state, dispatch } = useApp();
+  const { user, hasPermission, verifyLocalPassword, isDeveloper } = useAuth();
+  const { t } = useLocale();
+  const theme = useTheme();
+  const today = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState(today);
+
+  const handleDeleteLogs = async () => {
+    if (!hasPermission('logs_manage') || !hasPermission('credits_manage')) return alert(t('permissionDenied'));
+    const pwd = prompt(t('enterAdminPassword'));
+    if (pwd === null) return;
+    if (!isDeveloper && !verifyLocalPassword(user?.username, pwd)) return alert(t('incorrectPassword'));
+    if (!confirm(`${t('confirmDeleteLogs')} (${filteredLogs.length})`)) return;
+
+    dispatch({ type: 'DELETE_LOGS_FOR_DATE', payload: { date: selectedDate, user: user?.username } });
+  };
+
+  const filteredLogs = state.logs.filter(l => l && l.date === selectedDate).sort((a, b) => new Date(b.date + ' ' + b.time) - new Date(a.date + ' ' + a.time));
+
+  return (
+    <Box>
+      <Paper sx={{ p: 2, mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h4">{t('logs')}</Typography>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <TextField
+            size="small"
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <IconButton size="small">
+                  <CalendarTodayIcon />
+                </IconButton>
+              )
+            }}
+          />
+           <Tooltip title={t('delete_logs_for_date')}>
+             <IconButton onClick={handleDeleteLogs} color="error" disabled={!hasPermission('logs_manage') || !hasPermission('credits_manage')}>
+              <DeleteSweepIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Paper>
+      
+      {filteredLogs.length > 0 ? (
+        filteredLogs.map((log, i) => <LogItem key={i} log={log} />)
+      ) : (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6">{t('no_logs_for_date')}</Typography>
+        </Paper>
+      )}
+
     </Box>
-  )
+  );
 }

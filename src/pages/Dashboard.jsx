@@ -1,385 +1,371 @@
-import React, { useState, useEffect } from 'react'
-import { Grid, Card, CardContent, Typography, useTheme, useMediaQuery, Box, TextField, Button } from '@mui/material'
-import { useApp } from '../context/AppContext'
-import useExchangeRate from '../hooks/useExchangeRate'
-import { formatMoney, parseNumber } from '../utils/format'
-import ReactApexChart from 'react-apexcharts'
-import { monthShortFromISO } from '../utils/date'
-import { useLocale } from '../context/LocaleContext'
-import DailySalesByDate from '../components/DailySalesByDate'
-import MostSoldPie from '../components/MostSoldPie'
+import React, { useState, useMemo } from 'react';
+import { Grid, Card, CardContent, Typography, useTheme, Box, TextField, Paper, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import {
+  BarChart as BarChartIcon,
+  PieChart as PieChartIcon,
+  ShowChart as ShowChartIcon,
+  CalendarToday as CalendarTodayIcon,
+} from '@mui/icons-material';
+import ReactApexChart from 'react-apexcharts';
 
-const sampleMonthlyInit = [
-  { month: 'Yan', sold: 120, in: 200 },
-  { month: 'Feb', sold: 90, in: 150 },
-  { month: 'Mar', sold: 200, in: 180 },
-  { month: 'Apr', sold: 170, in: 140 },
-  { month: 'May', sold: 220, in: 210 },
-]
+import { useApp } from '../context/useApp';
+import useExchangeRate from '../hooks/useExchangeRate';
+import { formatMoney } from '../utils/format';
+import { monthShortFromISO } from '../utils/date';
+import { useLocale } from '../context/LocaleContext';
+import DailySalesByDate from '../components/DailySalesByDate';
 
-const PIE_DATA_INIT = [
-  { name: 'Choy', value: 400 },
-  { name: 'Qahva', value: 300 },
-  { name: 'Non', value: 300 },
-]
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28']
+const ChartCard = ({ title, icon, children }) => (
+  <Card sx={{ height: '100%' }}>
+    <CardContent>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        {icon}
+        <Typography variant="h6" component="div" sx={{ ml: 1 }}>
+          {title}
+        </Typography>
+      </Box>
+      {children}
+    </CardContent>
+  </Card>
+);
 
 function Dashboard() {
-  const { state } = useApp()
-  const displayCurrency = state?.ui?.displayCurrency || 'UZS'
-  
+  const { state } = useApp();
+  const { t } = useLocale();
+  const theme = useTheme();
+  const { rate: usdToUzs } = useExchangeRate();
+  const today = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [period, setPeriod] = useState('overall');
 
-  
-  const logs = React.useMemo(() => state.logs || [], [state.logs])
-  
+  const logs = useMemo(() => state.logs || [], [state.logs]);
 
-  
-
-  
-
-  
-  if (typeof window !== 'undefined' && import.meta.env && import.meta.env.DEV) {
-    try {
-    } catch {
-      
-    }
-  }
-
-  
-  const { rate: usdToUzs } = useExchangeRate()
-
-  const sampleMonthly = React.useMemo(() => {
-    const monthlyMap = {}
-    const getBaseUzs = (l) => {
-      const a = l && (l.total_uzs ?? l.amount_uzs)
-      if (a != null) return parseNumber(a)
-      if ((l && l.currency) === 'USD') return parseNumber(l.amount || 0) * (usdToUzs || 0)
-      return parseNumber(l && l.amount || 0)
-    }
-    logs.forEach(l => {
-      const amt = getBaseUzs(l)
-      if (!amt) return
-      const d = l.date || new Date().toISOString().slice(0, 10)
-      const m = monthShortFromISO(d) || (new Date().toLocaleString('default', { month: 'short' }))
-      if (!monthlyMap[m]) monthlyMap[m] = { month: m, sold: 0, in: 0 }
-      if (l.kind === 'SELL') monthlyMap[m].sold += amt
-      else monthlyMap[m].in += amt
-    })
-    const vals = Object.values(monthlyMap)
-    return vals.length ? vals : sampleMonthlyInit
-  }, [logs, usdToUzs])
-
-  
-    const { PIE_DATA, topProduct } = React.useMemo(() => {
-    const categoryMap = { Qahva: 0, Choy: 0, Non: 0, Boshqa: 0 }
-    const productQty = {}
+      const monthlyAnalysisData = useMemo(() => {
+        const monthlyMap = {};
+        logs.forEach(log => {
+          if (!log) return; // Add null check for log
+          const amount = log.total_uzs || 0;
+          if (!amount) return;
+          const month = monthShortFromISO(log.date);
+          if (!monthlyMap[month]) monthlyMap[month] = { month, sold: 0 };
+          if (log.kind === 'SELL') monthlyMap[month].sold += amount;
+        });
+        const sortedMonths = Object.values(monthlyMap).sort((a, b) => new Date(a.month + '-01-2000') - new Date(b.month + '-01-2000'));
+        return sortedMonths;
+      }, [logs]);
     
-    const getBaseUzs = (l) => {
-      const a = l && (l.total_uzs ?? l.amount_uzs)
-      if (a != null) return parseNumber(a)
-      if ((l && l.currency) === 'USD') return parseNumber(l.amount || 0) * (usdToUzs || 0)
-      return parseNumber(l && l.amount || 0)
-    }
+      const topSoldProducts = useMemo(() => {
+        let filteredLogs = logs.filter(l => l && l.kind === 'SELL');
+        if (period === 'daily') {
+          filteredLogs = filteredLogs.filter(l => l.date === selectedDate);
+        } else if (period === 'weekly') {
+          const startOfWeek = new Date(selectedDate);
+          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setDate(startOfWeek.getDate() + 6);
+          filteredLogs = filteredLogs.filter(l => {
+            const d = new Date(l.date);
+            return d >= startOfWeek && d <= endOfWeek;
+          });
+        } else if (period === 'monthly') {
+          const month = selectedDate.slice(0, 7);
+          filteredLogs = filteredLogs.filter(l => l.date.startsWith(month));
+        } else if (period === 'yearly') {
+          const year = selectedDate.slice(0, 4);
+          filteredLogs = filteredLogs.filter(l => l.date.startsWith(year));
+        }
+        const productQty = {};
+        const allProducts = [...(state.warehouse || []), ...(state.store || [])];
+        filteredLogs.forEach(l => {
+          let name = l.productName || l.product_name;
+          if (!name && l.productId) {
+            const product = allProducts.find(p => p.id === l.productId);
+            if (product) {
+              name = product.name;
+            }
+          }
+          if (!name) {
+            name = 'Unknown';
+          }
+          productQty[name] = (productQty[name] || 0) + (Number(l.qty) || 0);
+        });
+        return Object.entries(productQty)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5);
+      }, [logs, period, selectedDate, state.warehouse, state.store]);
 
-    logs.filter(l => l.kind === 'SELL').forEach(l => {
-      const amt = getBaseUzs(l)
-      if (amt) {
-        const text = (l.detail || '').toLowerCase()
-        if (text.includes('qahva')) categoryMap.Qahva += amt
-        else if (text.includes('choy') || text.includes('chai')) categoryMap.Choy += amt
-        else if (text.includes('non')) categoryMap.Non += amt
-        else categoryMap.Boshqa += amt
-      }
+      const dailySalesByAccount = useMemo(() => {
+        const accountSales = {};
+        const total = { amount: 0 };
+        logs.filter(l => l && l.kind === 'SELL' && l.date === selectedDate).forEach(l => {
+          const username = l.user || l.user_name || 'Unknown';
+          const account = state.accounts.find(a => a.username === username);
+          const user = account ? account.label : username;
+          const amount = l.total_uzs || 0;
+          accountSales[user] = (accountSales[user] || 0) + amount;
+          total.amount += amount;
+        });
+        const withPercent = Object.entries(accountSales).map(([user, amount]) => ({
+          user,
+          amount,
+          percent: total.amount > 0 ? ((amount / total.amount) * 100).toFixed(1) : 0
+        }));
+        return { accounts: withPercent, total: total.amount };
+      }, [logs, selectedDate, state.accounts]);
 
-      const name = (l.productName || "Noma'lum").toString()
-      const qty = Number(l.qty || 0)
-      if (!productQty[name]) productQty[name] = 0
-      productQty[name] += qty
-    })
+      const topExpensiveProducts = useMemo(() => {
+        const month = selectedDate.slice(0, 7);
+        const filteredLogs = logs.filter(l => l && l.kind === 'SELL' && l.date.startsWith(month));
+        const products = {};
+        filteredLogs.forEach(l => {
+          const name = l.productName || 'Unknown';
+          const unitPrice = l.unitPrice || 0;
+          if (!products[name] || products[name].price < unitPrice) {
+            products[name] = { name, price: unitPrice };
+          }
+        });
+        return Object.values(products).sort((a, b) => b.price - a.price).slice(0, 5);
+      }, [logs, selectedDate]);
 
-    
-    const categoryTotal = Object.values(categoryMap).reduce((s, v) => s + (Number(v) || 0), 0)
-    let PIE_DATA = []
-    if (categoryTotal > 0) {
-      PIE_DATA = Object.keys(categoryMap).map(k => ({ name: k, value: categoryMap[k] }))
-    } else {
-      const entries = Object.entries(productQty)
-      if (!entries.length) {
-        PIE_DATA = PIE_DATA_INIT
-      } else {
-        entries.sort((a, b) => b[1] - a[1])
-        const topN = 6
-        const topEntries = entries.slice(0, topN)
-        const other = entries.slice(topN).reduce((s, [, v]) => s + v, 0)
-        PIE_DATA = topEntries.map(([name, qty]) => ({ name, value: qty }))
-        if (other > 0) PIE_DATA.push({ name: 'Boshqa', value: other })
-      }
-    }
-
-    let top = null
-    const prodEntries = Object.entries(productQty)
-    if (prodEntries.length) {
-      prodEntries.sort((a, b) => b[1] - a[1])
-      const [name, qty] = prodEntries[0]
-      top = { name, qty }
-    }
-    return { PIE_DATA, topProduct: top }
-  }, [logs])
-
-  const theme = useTheme()
-  const isXs = useMediaQuery(theme.breakpoints.down('sm'))
-  const isSm = useMediaQuery(theme.breakpoints.between('sm', 'md'))
-  const { t } = useLocale()
-  
-  const today = new Date().toISOString().slice(0, 10)
-  const [selectedDate, setSelectedDate] = React.useState(today)
-  const [acctFilterDate, setAcctFilterDate] = React.useState(today)
-
-
-  
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    
-    const id = requestAnimationFrame(() => setMounted(true))
-    return () => cancelAnimationFrame(id)
-  }, [])
-
-  
-  const chartHeight = isXs ? 260 : isSm ? 220 : 200
-  const chartMaxWidth = isXs ? '100%' : '100%'
-  const { warehouseValue, warehouseSkipped } = (state.warehouse || []).reduce((acc, it) => {
-    const qty = Number(it.qty || 0)
-    let unit = parseNumber(it.cost || 0)
-    if ((it.currency || 'UZS') === 'USD') {
-      if (typeof it.cost_uzs === 'number' && !Number.isNaN(it.cost_uzs)) unit = Number(it.cost_uzs)
-      else if (usdToUzs) unit = unit * usdToUzs
-      else {
-        
-        return { warehouseValue: acc.warehouseValue, warehouseSkipped: acc.warehouseSkipped + 1 }
-      }
-    }
-    return { warehouseValue: acc.warehouseValue + qty * unit, warehouseSkipped: acc.warehouseSkipped }
-  }, { warehouseValue: 0, warehouseSkipped: 0 })
-
-  const { storeValue, storeSkipped } = (state.store || []).reduce((acc, it) => {
-    const qty = Number(it.qty || 0)
-    let unit = parseNumber(it.price || it.cost || 0)
-    if ((it.currency || 'UZS') === 'USD') {
-      if (typeof it.price_uzs === 'number' && !Number.isNaN(it.price_uzs)) unit = Number(it.price_uzs)
-      else if (usdToUzs) unit = unit * usdToUzs
-      else {
-        return { storeValue: acc.storeValue, storeSkipped: acc.storeSkipped + 1 }
-      }
-    }
-    return { storeValue: acc.storeValue + qty * unit, storeSkipped: acc.storeSkipped }
-  }, { storeValue: 0, storeSkipped: 0 })
+      const creditsSummary = useMemo(() => {
+        const summary = { given: 0, received: 0, completed: 0 };
+        (state.credits || []).forEach(c => {
+          if (c.type === 'berilgan') summary.given += c.amount_uzs || c.amount || 0;
+          else if (c.type === 'olingan') summary.received += c.amount_uzs || c.amount || 0;
+          if (c.completed) summary.completed += c.amount_uzs || c.amount || 0;
+        });
+        return summary;
+      }, [state.credits]);
+  const chartOptions = {
+    chart: {
+      animations: {
+        speed: 400,
+        animateGradually: { enabled: true, delay: 150 },
+      },
+      toolbar: { show: false },
+      parentHeightOffset: 0,
+    },
+    stroke: { curve: 'smooth', width: 3 },
+    markers: { size: 0 },
+    xaxis: {
+      labels: { style: { colors: theme.palette.text.secondary } },
+    },
+    yaxis: {
+      labels: {
+        style: { colors: theme.palette.text.secondary },
+        formatter: (v) => formatMoney(v),
+      },
+    },
+    tooltip: {
+      theme: theme.palette.mode,
+      y: { formatter: (v) => `${formatMoney(v)} UZS` },
+    },
+    legend: { labels: { colors: theme.palette.text.primary } },
+    grid: { borderColor: theme.palette.divider },
+  };
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'start', alignItems: 'center' }}>
-      <Box sx={{ width: '100%', px: { xs: 2, sm: 2, md: 0 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant={isXs ? 'h5' : 'h4'} gutterBottom>{t('overview')}</Typography>
-        </Box>
-
-        <Grid container spacing={2}>
-          {}
-          <Grid item xs={12} md={6} sx={{ order: { xs: 4, md: 0 } }}>
-            <DailySalesByDate selectedDate={selectedDate} onDateChange={setSelectedDate} />
-          </Grid>
-
-          {}
-          <Grid item xs={12} md={6} sx={{ order: { xs: 5, md: 0 } }}>
-            <Card sx={{ overflow: 'visible' }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 1, flexWrap: 'wrap' }}>
-                  <Typography variant={isXs ? 'subtitle1' : 'h6'}>{t('accounts_sales_share')}</Typography>
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <TextField size="small" type="date" value={acctFilterDate} onChange={(e) => setAcctFilterDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-                    <Button size="small" variant="outlined" onClick={() => setAcctFilterDate(today)}>{t('today')}</Button>
-                  </Box>
-                </Box>
-                {mounted ? (() => {
-                  // Build account list dynamically from state.accounts
-                  const acctList = (state.accounts || [])
-                    .filter(a => a && a.username)
-                    // Exclude the specific 'shogirt' account from chart as requested
-                    .filter(a => (a.username || '').toString().toLowerCase() !== 'shogirt')
-                    .map(a => ({ username: (a.username || '').toString().toLowerCase(), label: a.label || a.username }))
-
-                  if (!acctList.length) {
-                    return <Box sx={{ height: 220 }} />
-                  }
-
-                  // Initialize counts
-                  const counts = {}
-                  acctList.forEach(a => { counts[a.username] = 0 })
-
-                  // Sum sales per account for selected date
-                  logs.filter(l => (l.kind === 'SELL') && (l.date || '').slice(0,10) === acctFilterDate).forEach(l => {
-                    const amt = Number(l.total_uzs ?? l.amount_uzs ?? (l.currency === 'USD' && usdToUzs ? Math.round(Number(l.amount || 0) * usdToUzs) : (l.currency === 'USD' ? (l.amount_uzs ?? Math.round(Number(l.amount || 0))) : Number(l.amount || 0)))) || 0
-                    const who = (l.user || '').toString().toLowerCase()
-                    if (!who) return
-                    // assign to matching account if username appears in the log's user string
-                    for (const a of acctList) {
-                      if (who.includes(a.username)) {
-                        counts[a.username] = (counts[a.username] || 0) + amt
-                        return
-                      }
-                    }
-                    // If no matching account, ignore (do not display 'Other')
-                  })
-
-                  const labels = acctList.map(a => a.label || a.username)
-                  const data = acctList.map(a => counts[a.username] || 0)
-                  const total = data.reduce((s, v) => s + v, 0) || 1
-                  const pct = data.map(v => Math.round((v / total) * 100))
-
-                  // Colors: reuse preset COLORS, repeat if needed
-                  const colors = acctList.map((_, i) => COLORS[i % COLORS.length])
-
-                  return (
-                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'center', flexDirection: { xs: 'column', md: 'row' } }}>
-                      <Box sx={{ width: { xs: '100%', md: 220 }, height: 220 }}>
-                        <ReactApexChart type="pie" series={data} options={{ labels, legend: { show: false }, colors, tooltip: { y: { formatter: (v) => `${formatMoney(v)} UZS` } } }} height={220} />
-                      </Box>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        {labels.map((lab, idx) => (
-                          <Box key={lab} sx={{ display: 'flex', justifyContent: 'space-between', minWidth: 180 }}>
-                            <Typography variant="body2">{lab}</Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>{pct[idx]}% • {displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round((data[idx] || 0) / usdToUzs)) + ' USD' : formatMoney(data[idx]) + ' UZS'}</Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
-                  )
-                })() : <Box sx={{ height: 220 }} />}
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {}
-
-          {}
-
-          <Grid item xs={12} md={6} sx={{ order: { xs: 2, md: 0 } }}>
-            <Card sx={{ overflow: 'visible' }}>
-              <CardContent>
-                <Typography variant={isXs ? 'subtitle1' : 'h6'}>{t('monthly_analysis')}</Typography>
-                <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-                  <Box sx={{ width: '100%', px: { xs: 0, sm: 0 }, height: chartHeight + (isXs ? 80 : 0), minHeight: 160, overflow: 'visible', position: 'relative', minWidth: 0 }}>
-                    {mounted ? (
-                      <div style={{ width: '100%', height: '100%' }}>
-                        <ReactApexChart
-                          type="line"
-                          series={[
-                            { name: t('sold') || 'Sold', data: sampleMonthly.map(m => m.sold) },
-                            { name: t('in') || 'In', data: sampleMonthly.map(m => m.in) },
-                          ]}
-                          options={{
-                            chart: { toolbar: { show: false }, animations: { enabled: true }, zoom: { enabled: false } },
-                            stroke: { curve: 'smooth', width: 2 },
-                            colors: ['#8884d8', '#82ca9d'],
-                            markers: { size: 0 },
-                            xaxis: { categories: sampleMonthly.map(m => m.month), labels: { style: { colors: 'rgba(15,23,36,0.6)' } }, axisBorder: { color: 'rgba(15,23,36,0.08)' } },
-                            yaxis: { labels: { formatter: (v) => formatMoney(v), style: { colors: 'rgba(15,23,36,0.6)' } } },
-                            tooltip: { y: { formatter: (v) => `${formatMoney(v)} UZS` } },
-                            legend: { show: false },
-                            grid: { borderColor: 'rgba(15,23,36,0.04)' },
-                            responsive: [
-                              { breakpoint: 768, options: { chart: { height: chartHeight } } }
-                            ]
-                          }}
-                          height={chartHeight}
-                        />
-                      </div>
-                    ) : <div style={{ width: chartMaxWidth, height: chartHeight }} />}
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-
-          <Grid item xs={12} md={6} sx={{ order: { xs: 1, md: 0 } }}>
-            <Card sx={{ overflow: 'visible' }}>
-              <CardContent>
-                <Typography variant={isXs ? 'subtitle1' : 'h6'}>{t('most_sold')}</Typography>
-                {topProduct ? (
-                  <Box sx={{ mb: 1 }}>
-                    <Typography variant={isXs ? 'h6' : 'h5'} sx={{ fontWeight: 600 }}>{topProduct.name}</Typography>
-                    <Typography variant="body2">{t('total_sold', { count: topProduct.qty })}</Typography>
-                  </Box>
-                ) : (
-                  <Typography variant="body2" sx={{ mb: 1 }}>{t('no_data')}</Typography>
-                )}
-                <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-                  <Box sx={{ width: { xs: '100%', sm: '100%', md: '100%' }, maxWidth: 420, overflow: 'visible', position: 'relative', minWidth: 0, display: 'flex', justifyContent: 'center' }}>
-                    {(() => {
-                      const data = PIE_DATA.filter(d => d.value > 0).map((d, i) => ({ ...d, color: COLORS[i % COLORS.length] }))
-                      if (!data || data.length === 0) return <Typography variant="body2" color="text.secondary">{t('chartNoData')}</Typography>
-                      const size = isXs ? 140 : isSm ? 180 : 200
-                      const centerLabel = topProduct ? { title: topProduct.name, subtitle: `${t('total_sold', { count: topProduct.qty })}` } : null
-                      return <MostSoldPie data={data} size={size} innerRadius={Math.round(size * 0.26)} centerLabel={centerLabel} />
-                    })()}
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {}
-          <Grid item xs={12} sx={{ flexBasis: { md: '100%' }, maxWidth: { md: '100%' }, order: { xs: 3, md: 0 } }}>
-            <Card>
-              <CardContent>
-                <Typography variant={isXs ? 'subtitle1' : 'h6'} sx={{ mb: 1 }}>{t('warehouse_store_comparison')}</Typography>
-
-                {}
-                {(() => {
-                  const total = (warehouseValue + storeValue) || 1
-                  const whPct = Math.round((warehouseValue / total) * 100)
-                  const stPct = 100 - whPct
-                  return (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="subtitle2" color="text.secondary">{t('warehouse')}</Typography>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round(warehouseValue / usdToUzs)) + ' USD' : formatMoney(warehouseValue) + ' UZS'}</Typography>
-                        </Box>
-                        <Box sx={{ height: 14, borderRadius: 2, background: 'rgba(15,23,36,0.08)', overflow: 'hidden' }}>
-                          <Box sx={{ height: '100%', width: `${whPct}%`, background: 'linear-gradient(90deg,#8884d8,#7b61ff)' }} />
-                        </Box>
-                      </Box>
-
-                      <Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="subtitle2" color="text.secondary">{t('store')}</Typography>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round(storeValue / usdToUzs)) + ' USD' : formatMoney(storeValue) + ' UZS'}</Typography>
-                        </Box>
-                        <Box sx={{ height: 14, borderRadius: 2, background: 'rgba(15,23,36,0.08)', overflow: 'hidden' }}>
-                          <Box sx={{ height: '100%', width: `${stPct}%`, background: 'linear-gradient(90deg,#82ca9d,#2bb673)' }} />
-                        </Box>
-                      </Box>
-
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
-                        <Typography variant="caption" color="text.secondary">{t('total_value', { value: displayCurrency === 'USD' && usdToUzs ? formatMoney(Math.round((warehouseValue + storeValue) / usdToUzs)) : formatMoney(warehouseValue + storeValue) })} {displayCurrency}</Typography>
-                        <Typography variant="caption" color="text.secondary">{t('warehouse_store_pct', { whPct, stPct })}</Typography>
-                      </Box>
-                      {(storeSkipped + warehouseSkipped) > 0 ? (
-                        <Typography variant="caption" color="warning.main" sx={{ mt: 1, display: 'block' }}>{t('excluded_usd_items', { count: (storeSkipped + warehouseSkipped) })}</Typography>
-                      ) : null}
-                    </Box>
-                  )
-                })()}
-
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {}
-        </Grid>
+    <Box>
+      <Typography variant="h4" gutterBottom>
+        {t('dashboard')}
+      </Typography>
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+        <TextField
+          label={t('select_date') || 'Select Date'}
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          size="small"
+        />
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>{t('period') || 'Period'}</InputLabel>
+          <Select value={period} onChange={(e) => setPeriod(e.target.value)} label={t('period') || 'Period'}>
+            <MenuItem value="daily">Daily</MenuItem>
+            <MenuItem value="weekly">Weekly</MenuItem>
+            <MenuItem value="monthly">Monthly</MenuItem>
+            <MenuItem value="yearly">Yearly</MenuItem>
+            <MenuItem value="overall">Overall</MenuItem>
+          </Select>
+        </FormControl>
       </Box>
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={8}>
+          <ChartCard title={t('monthly_analysis')} icon={<ShowChartIcon color="primary" />}>
+            <ReactApexChart
+              type="area"
+              height={300}
+              options={{
+                ...chartOptions,
+                colors: [theme.palette.primary.main, theme.palette.secondary.main],
+                xaxis: { ...chartOptions.xaxis, categories: monthlyAnalysisData.map(m => m.month) },
+              }}
+              series={[
+                { name: t('sold'), data: monthlyAnalysisData.map(m => m.sold) },
+              ]}
+            />            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+              {t('monthly_sales_trend') || 'Tracks monthly sales trends over time. Only outgoing sales are included.'}
+            </Typography>          </ChartCard>
+        </Grid>
+
+        <Grid item xs={12} lg={4}>
+          <ChartCard title={`${t('most_sold')} (${period})`} icon={<BarChartIcon color="secondary" />}>
+            <ReactApexChart
+              type="bar"
+              height={300}
+              options={{
+                ...chartOptions,
+                plotOptions: {
+                  bar: {
+                    horizontal: true,
+                    barHeight: '50%',
+                    borderRadius: 4,
+                    distributed: true,
+                    dataLabels: {
+                      position: 'bottom'
+                    }
+                  }
+                },
+                colors: [
+                  theme.palette.primary.light,
+                  theme.palette.secondary.light,
+                  theme.palette.error.light,
+                  theme.palette.warning.light,
+                  theme.palette.success.light
+                ],
+                dataLabels: {
+                  enabled: true,
+                  textAnchor: 'start',
+                  style: {
+                    colors: [theme.palette.text.primary]
+                  },
+                  formatter: (val, opt) => (`${opt.w.globals.labels[opt.dataPointIndex]}: ${val}`),
+                  offsetX: 0,
+                  dropShadow: {
+                    enabled: true
+                  }
+                },
+                xaxis: {
+                  ...chartOptions.xaxis,
+                  categories: topSoldProducts.map(([name]) => name),
+                },
+                yaxis: {
+                  labels: {
+                    show: false
+                  }
+                },
+                grid: {
+                  ...chartOptions.grid,
+                  show: false
+                },
+                legend: { show: false },
+                tooltip: {
+                  theme: theme.palette.mode,
+                  y: {
+                    title: {
+                      formatter: (seriesName, opt) => (
+                        opt.w.globals.labels[opt.dataPointIndex]
+                      )
+                    }
+                  }
+                }
+              }}
+              series={[{ name: t('quantity_sold'), data: topSoldProducts.map(([, qty]) => qty) }]}
+            />
+            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+              {t('top_products_description') || `Top 5 products by quantity sold in the selected ${period} period.`}
+            </Typography>
+          </ChartCard>
+        </Grid>
+
+        <Grid item xs={12} lg={6}>
+          <ChartCard title={`${t('daily_sales_by_account')} (${selectedDate})`} icon={<BarChartIcon color="primary" />}>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              {t('total_sales')}: {formatMoney(dailySalesByAccount.total)} UZS
+            </Typography>
+            <ReactApexChart
+              type="bar"
+              height={300}
+              options={{
+                ...chartOptions,
+                xaxis: { categories: dailySalesByAccount.accounts.map(a => a.user) },
+                plotOptions: {
+                  bar: { horizontal: false, dataLabels: { position: 'top' } }
+                },
+                dataLabels: {
+                  enabled: true,
+                  formatter: (val, opts) => {
+                    const amount = dailySalesByAccount.accounts[opts.dataPointIndex].amount;
+                    return `${formatMoney(amount)} (${val}%)`;
+                  },
+                  style: { colors: [theme.palette.text.primary], fontSize: '12px' }
+                },
+                tooltip: {
+                  ...chartOptions.tooltip,
+                  y: {
+                    formatter: (val, opts) => {
+                      const amount = dailySalesByAccount.accounts[opts.dataPointIndex].amount;
+                      return `${formatMoney(amount)} UZS (${val}%)`;
+                    }
+                  }
+                }
+              }}
+              series={[
+                { name: t('percentage'), data: dailySalesByAccount.accounts.map(a => Number(a.percent)) }
+              ]}
+            />
+            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+              {t('sales_percentage_description') || 'Shows the percentage contribution of each account to total daily sales. Hover for amounts.'}
+            </Typography>
+          </ChartCard>
+        </Grid>
+
+        <Grid item xs={12} lg={6}>
+          <ChartCard title={`${t('top_expensive_products')} (${selectedDate.slice(0, 7)})`} icon={<ShowChartIcon color="error" />}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {topExpensiveProducts.map((p, idx) => (
+                <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                  <Typography>{p.name}</Typography>
+                  <Typography sx={{ fontWeight: 'bold' }}>{formatMoney(p.price)} UZS</Typography>
+                </Box>
+              ))}
+            </Box>
+            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+              {t('top_expensive_description') || 'Highest unit price products sold in the selected month.'}
+            </Typography>
+          </ChartCard>
+        </Grid>
+
+        <Grid item xs={12} lg={4}>
+          <ChartCard title={t('credits_summary')} icon={<CalendarTodayIcon color="info" />}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography>{t('given')}</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'error.main' }}>{formatMoney(creditsSummary.given)} UZS</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography>{t('received')}</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'success.main' }}>{formatMoney(creditsSummary.received)} UZS</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography>{t('completed')}</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'primary.main' }}>{formatMoney(creditsSummary.completed)} UZS</Typography>
+              </Box>
+            </Box>
+            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+              {t('credits_summary_description') || 'Total credits given to clients, received from suppliers, and completed payments.'}
+            </Typography>
+          </ChartCard>
+        </Grid>
+        
+        <Grid item xs={12}>
+          <Paper elevation={0} variant="outlined" sx={{p: 2}}>
+             <DailySalesByDate selectedDate={selectedDate} onDateChange={setSelectedDate} />
+          </Paper>
+        </Grid>
+      </Grid>
     </Box>
-  )
+  );
 }
 
-export default React.memo(Dashboard)
+export default Dashboard;

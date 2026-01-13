@@ -6,6 +6,14 @@ export function formatMoney(value) {
   return new Intl.NumberFormat('de-DE').format(n)
 }
 
+export function formatWithSpaces(value) {
+  if (value === null || value === undefined) return ''
+  const n = Number(value)
+  if (Number.isNaN(n)) return String(value)
+  const s = Math.round(n).toString()
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
+
 export default formatMoney
 
 export function parseNumber(value) {

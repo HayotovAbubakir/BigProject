@@ -1,7 +1,7 @@
 
 
-import React, { useEffect, useMemo, useRef } from 'react'
-import { useApp } from '../context/AppContext'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useApp } from '../context/useApp'
 
 
 
@@ -80,7 +80,10 @@ export default function ReceiptApp({ items: propItems }) {
 
   const onRateChange = (v) => {
     const n = Number(String(v).replace(/[^0-9.]/g, ''))
-    if (!Number.isNaN(n) && n > 0) dispatch({ type: 'SET_UI', payload: { receiptRate: n } })
+    if (!Number.isNaN(n) && n > 0) {
+      dispatch({ type: 'SET_UI', payload: { receiptRate: n } })
+      dispatch({ type: 'SET_EXCHANGE_RATE', payload: n })
+    }
   }
 
   useEffect(() => {
@@ -159,7 +162,7 @@ export default function ReceiptApp({ items: propItems }) {
             <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-white/6 px-3 py-2 rounded-lg border border-white/6 backdrop-blur-sm">
               <label className="text-sm text-slate-200 mr-2">1 USD =</label>
-              <input type="number" value={rate} onChange={(e) => onRateChange(e.target.value)} className="w-28 bg-transparent text-white placeholder:text-slate-300 outline-none text-right" step="1" min="1" />
+              <input type="text" value={rate} onChange={(e) => onRateChange(e.target.value)} className="w-28 bg-transparent text-white placeholder:text-slate-300 outline-none text-right" />
               <span className="ml-2 text-sm text-slate-200">UZS</span>
             </div>
 

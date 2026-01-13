@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment } from '@mui/material'
+import NumberField from './NumberField'
 import useExchangeRate from '../hooks/useExchangeRate'
 
 export default function SellForm({ open, onClose, onSubmit, initial }) {
@@ -37,7 +38,7 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
       <DialogTitle>Mahsulot sotish</DialogTitle>
       <DialogContent>
         <Typography variant="caption" color="text.secondary">Mavjud: {available} dona</Typography>
-        <TextField label="Soni" type="number" value={qty} onChange={(e) => setQty(e.target.value)} fullWidth sx={{ mt: 2 }} error={parsedQty <= 0 || parsedQty > available} helperText={(parsedQty <= 0 ? '1 yoki undan ko\'p kiriting' : (parsedQty > available ? 'Mavjud sondan ortiq' : ''))} />
+        <NumberField label="Soni" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth sx={{ mt: 2 }} error={parsedQty <= 0 || parsedQty > available} helperText={(parsedQty <= 0 ? '1 yoki undan ko\'p kiriting' : (parsedQty > available ? 'Mavjud sondan ortiq' : ''))} />
 
         <FormControl fullWidth sx={{ mt: 2 }}>
           <InputLabel id="sell-currency-label">Valyuta</InputLabel>
@@ -47,7 +48,7 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
           </Select>
         </FormControl>
 
-        <TextField label="Birlik narxi" type="number" value={price} onChange={(e) => setPrice(e.target.value)} fullWidth sx={{ mt: 2 }} error={parsedPrice <= 0} helperText={parsedPrice <= 0 ? 'Musbat narx kiriting' : ''} />
+        <NumberField label="Birlik narxi" value={price} onChange={(v) => setPrice(Number(v || 0))} fullWidth sx={{ mt: 2 }} error={parsedPrice <= 0} helperText={parsedPrice <= 0 ? 'Musbat narx kiriting' : ''} />
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>

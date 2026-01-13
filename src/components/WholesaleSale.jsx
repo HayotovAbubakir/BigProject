@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Box, Grid, Typography, FormControl, InputLabel, Select, MenuItem, InputAdornment } from '@mui/material'
-import { useApp } from '../context/AppContext'
-import { useAuth } from '../context/AuthContext'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Grid, Typography, FormControl, InputLabel, Select, MenuItem, InputAdornment, TextField } from '@mui/material'
+import NumberField from './NumberField'
+import { useApp } from '../context/useApp'
+import { useAuth } from '../hooks/useAuth'
 import { v4 as uuidv4 } from 'uuid'
 import useExchangeRate from '../hooks/useExchangeRate'
+import { useLocale } from '../context/LocaleContext'
 import { formatMoney } from '../utils/format'
 import jsPDF from 'jspdf'
+import { insertLog } from '../firebase/supabaseLogs'
 
 export default function WholesaleSale({ open, onClose, source = 'store', onComplete }) {
   const { state, dispatch } = useApp()
   const { user } = useAuth()
   const { rate: usdToUzs } = useExchangeRate()
+  const { t } = useLocale()
   const [items, setItems] = useState([]) 
   const [selectedSource, setSelectedSource] = useState(source)
 
@@ -41,28 +45,21 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
 
   const canCheckout = lines.length > 0 && lines.every(l => l.qty > 0 && l.qty <= l.available)
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!canCheckout) return
     
     const ts = Date.now()
-  lines.forEach(l => {
+    lines.forEach(async l => {
       const payload = { id: l.id, qty: l.qty }
-  const log = { id: uuidv4(), ts, date: new Date(ts).toISOString().slice(0,10), time: new Date(ts).toLocaleTimeString(), user: user?.username || 'Admin', action: 'Optom sotuv', kind: 'SELL', productId: l.id, productName: l.name, qty: l.qty, currency: l.currency }
-      if (l.currency === 'USD') {
-        
-        log.total_usd = Number((l.qty * l.unitPrice).toFixed(2))
-        if (usedRate) log.total_uzs = Math.round(l.qty * l.unitPrice * usedRate)
-      } else {
-        
-        log.total_uzs = Math.round(l.qty * l.unitPrice)
-        if (usedRate && usedRate > 0) log.total_usd = Number(((l.qty * l.unitPrice) / usedRate).toFixed(2))
-      }
+        const rateText = (l.currency === 'USD' && usedRate) ? `, ${t('rate_text', { rate: Math.round(usedRate) })}` : '';
+      const log = { id: uuidv4(), ts, date: new Date(ts).toISOString().slice(0,10), time: new Date(ts).toLocaleTimeString(), user_name: user?.username || 'Admin', action: 'wholesale_sale', kind: 'SELL', product_name: l.name, qty: l.qty, unit_price: l.unitPrice, amount: l.qty * l.unitPrice, currency: l.currency, total_uzs: l.currency === 'USD' ? Math.round((l.qty * l.unitPrice) * (usedRate || 1)) : Math.round(l.qty * l.unitPrice), detail: `Kim: ${user?.username || 'Admin'}, Vaqt: ${new Date(ts).toLocaleTimeString()}, Harakat: Optom sotuv, Mahsulot: ${l.name}, Soni: ${l.qty}, Narx: ${l.unitPrice} ${l.currency || 'UZS'}, Jami: ${l.qty * l.unitPrice} ${l.currency || 'UZS'}${rateText}` }
       
       if (selectedSource === 'warehouse') {
         dispatch({ type: 'SELL_WAREHOUSE', payload, log })
       } else {
         dispatch({ type: 'SELL_STORE', payload, log })
       }
+      try { await insertLog(log) } catch (e) { console.warn('insertLog failed (wholesale)', e) }
     })
 
     
@@ -79,6 +76,8 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
         let yPos = y + pad
         doc.setFontSize(10)
         doc.text(`Sana: ${new Date(ts).toLocaleString()}`, x + pad, yPos)
+        yPos += 14
+        doc.text(`Sotuvchi: ${user?.username || 'Admin'}`, x + pad, yPos)
         yPos += 14
         doc.setLineWidth(0.5)
         doc.line(x + pad, yPos, x + boxW - pad, yPos)
@@ -131,8 +130,8 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
               <Box sx={{ border: '1px solid rgba(0,0,0,0.06)', p: 1, borderRadius: 1 }}>
                 <Typography sx={{ fontWeight: 600 }}>{it.name}</Typography>
                 <Typography variant="caption">Mavjud: {it.available}</Typography>
-                <TextField label="Soni" type="number" value={it.qty} onChange={(e) => updateQty(it.id, e.target.value)} fullWidth sx={{ mt: 1 }} />
-                <TextField label="Narxi" type="number" value={it.unitPrice} onChange={(e) => updatePrice(it.id, e.target.value)} fullWidth sx={{ mt: 1 }} InputProps={{ endAdornment: <InputAdornment position="end">{it.currency}</InputAdornment> }} />
+                <NumberField label="Soni" value={it.qty} onChange={(v) => updateQty(it.id, Number(v || 0))} fullWidth sx={{ mt: 1 }} />
+                <NumberField label="Narxi" value={it.unitPrice} onChange={(v) => updatePrice(it.id, Number(v || 0))} fullWidth sx={{ mt: 1 }} InputProps={{ endAdornment: <InputAdornment position="end">{it.currency}</InputAdornment> }} />
                 <Typography variant="body2" sx={{ mt: 1 }}>{it.currency === 'USD' ? `Jami: ${it.qty * it.unitPrice} $` : `Jami: ${formatMoney(it.qty * it.unitPrice)} UZS`}</Typography>
               </Box>
             </Grid>
@@ -141,7 +140,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
 
           <Box sx={{ mt: 2 }}>
           {}
-          <TextField label="1 USD =" type="number" value={usdToUzs || ''} InputProps={{ endAdornment: <InputAdornment position="end">UZS</InputAdornment>, readOnly: true }} fullWidth />
+          <TextField label="1 USD =" type="text" value={usdToUzs || ''} InputProps={{ endAdornment: <InputAdornment position="end">UZS</InputAdornment>, readOnly: true }} fullWidth />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
             <Typography>Jami (USD): {subtotalUsdRounded.toFixed(2)}</Typography>
             <Typography>Jami (UZS): {formatMoney(subtotalUzs)}</Typography>

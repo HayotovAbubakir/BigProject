@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useApp } from '../context/AppContext'
-import { Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, Box } from '@mui/material'
+import { useApp } from '../context/useApp'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, TextField } from '@mui/material'
+import NumberField from './NumberField'
 import CurrencyModal from './CurrencyModal'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { v4 as uuidv4 } from 'uuid'
@@ -62,7 +63,7 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
         payload = { ...payload, price_uzs: Number(payload.price) * Number(usdToUzs) }
       }
     } catch {
-      
+      // ignore
     }
     onSubmit(payload)
     
@@ -91,8 +92,8 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
             <Button variant="outlined" onClick={() => setCurrencyOpenInternal(true)}>Valyuta: {form.currency || 'UZS'}</Button>
           </Box>
           <TextField label="Nomi" fullWidth margin="dense" value={form.name} onChange={handle('name')} />
-          <TextField label="Soni" fullWidth type="number" margin="dense" value={form.qty} onChange={handle('qty')} />
-          <TextField label="Narxi (do'konda)" fullWidth type="number" margin="dense" value={form.price} onChange={handle('price')} />
+          <NumberField label="Soni" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: Number(v || 0) }))} />
+          <NumberField label="Narxi (do'konda)" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: Number(v || 0) }))} />
           <TextField label="Olingan sana" fullWidth margin="dense" value={form.date} onChange={handle('date')} />
           <TextField label="Izoh" fullWidth margin="dense" value={form.note} onChange={handle('note')} />
         </DialogContent>
