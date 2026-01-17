@@ -77,6 +77,7 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
         <TextField label="Nomi" fullWidth margin="dense" value={form.name} onChange={handle('name')} />
         <NumberField label="Soni" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: Number(v || 0) }))} />
         <CurrencyField label="Narxi (omborda)" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v }))} currency={form.currency} />
+        <TextField label="Kelgan sana" type="date" fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
       </DialogContent>
       <DialogActions sx={{ px: 2, pb: 2 }}>
         <Button onClick={handleClose} sx={{ minWidth: 100 }}>Bekor qilish</Button>
