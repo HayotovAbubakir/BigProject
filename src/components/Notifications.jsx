@@ -6,9 +6,9 @@ import NotificationsModal from './NotificationsModal';
 import { useApp } from '../context/useApp';
 
 const jokes = [
-    "Nega kompyuterlar sovuq qotmaydi? Chunki ularda Windows bor! 썰렁",
-    "Daraxtlar nega internetga kira olmaydi? Chunki ularda login (log-in) yo'q!",
-    "Qaysi klaviatura kuladi? Xa-xa-xa type qiladigani!",
+    "Savdo yaxshi bo'lsa, kayfiyat ham a'lo bo'ladi!",
+    "Har bir sotilgan mahsulot - bu bir tabassum!",
+    "Ombor to'la bo'lsa, ko'ngil to'q bo'ladi!",
 ];
 
 const Notifications = () => {

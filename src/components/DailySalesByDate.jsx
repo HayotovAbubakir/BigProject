@@ -76,10 +76,6 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
             color="error"
                 onClick={async () => {
                   try {
-                    if (!hasPermission || !hasPermission('logs_manage') || !hasPermission('credits_manage')) {
-                      window.alert(t('permissionDenied') || 'Permission denied: admin only')
-                      return
-                    }
                     const pwd = window.prompt(t('enterAdminPassword') || 'Enter admin password to confirm deletion')
                     if (pwd === null) return
                     // developer bypasses local password check

@@ -25,51 +25,87 @@ export const insertCredit = async (credit) => {
   if (!isSupabaseConfigured()) return null
   try {
     console.log('supabase.insertCredit ->', credit)
-    // Ensure created_at (epoch seconds) and created_by are present
-    // Build a sanitized payload mapping common frontend keys to DB columns
-    const created_at = credit.created_at || Math.floor(Date.now() / 1000)
+    
+    // Ensure created_at is ISO 8601 string format
+    if (typeof credit.created_at === 'number') {
+      credit.created_at = new Date(credit.created_at * 1000).toISOString();
+    } else if (!credit.created_at) {
+      credit.created_at = new Date().toISOString();
+    }
+    
     const created_by = credit.created_by || credit.user || 'shared'
     const allowedMap = {
       id: 'id',
       name: 'name',
+      note: 'note',
       date: 'date',
       amount: 'amount',
-      amount_uzs: 'amount_uzs',
       currency: 'currency',
-      type: 'type',
-      creditType: 'type',
-      credit_type: 'type',
+      creditType: 'credit_type',
+      type: 'credit_type',
       product_id: 'product_id',
       productId: 'product_id',
-      product_name: 'product_name',
-      productName: 'product_name',
       qty: 'qty',
-      price: 'price',
-      unit_price: 'price',
-      price_uzs: 'price_uzs',
-      priceUzs: 'price_uzs',
+      unit_price: 'unit_price',
+      price: 'unit_price',
       client_id: 'client_id',
       clientId: 'client_id',
       bosh_toluv: 'bosh_toluv',
       boshToluv: 'bosh_toluv',
-      bosh_toluv_note: 'bosh_toluv_note',
-      boshToluvNote: 'bosh_toluv_note',
-      stored: 'stored',
-      given: 'given',
-      location: 'location',
-      note: 'note',
       completed: 'completed',
-      completed_at: 'completed_at',
-      completed_by: 'completed_by',
       created_at: 'created_at',
-      created_by: 'created_by'
+      created_by: 'created_by',
+      remaining: 'remaining'
     }
 
-    const payload = { created_at, created_by }
+    const payload = { created_at: credit.created_at, created_by }
     Object.keys(credit || {}).forEach(k => {
       const mapped = allowedMap[k]
-      if (mapped) payload[mapped] = credit[k]
+      if (mapped) {
+        let value = credit[k]
+        
+        // Ensure date is in YYYY-MM-DD format
+        if (mapped === 'date') {
+          if (!value) {
+            value = new Date().toISOString().slice(0, 10)
+          } else if (typeof value === 'string' && !value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            try {
+              const dateObj = new Date(value)
+              if (!isNaN(dateObj.getTime())) {
+                value = dateObj.toISOString().slice(0, 10)
+              } else {
+                value = new Date().toISOString().slice(0, 10)
+              }
+            } catch {
+              value = new Date().toISOString().slice(0, 10)
+            }
+          }
+        }
+        
+        // Validate credit_type field - must be 'product' or 'cash'
+        if (mapped === 'credit_type') {
+          if (!['product', 'cash'].includes(value)) {
+            // Skip invalid credit_type; will be set to default below
+            return
+          }
+        }
+        
+        payload[mapped] = value
+      }
     })
+    
+    // CRITICAL: Ensure credit_type is set to a valid value
+    if (!payload.credit_type) {
+      // Determine from form data: if has product details, it's 'product', else 'cash'
+      const hasProductDetails = credit.qty || credit.price || credit.product_name
+      payload.credit_type = hasProductDetails ? 'product' : 'cash'
+    }
+    
+    if (typeof payload.created_at !== 'string') {
+        payload.created_at = new Date(payload.created_at).toISOString();
+    }
+    
+    console.log('supabase.insertCredit payload ->', payload);
 
     const { data, error } = await supabase
       .from('credits')
@@ -93,11 +129,49 @@ export const updateCredit = async (id, updates) => {
     const { id: _, ...safeUpdatesRaw } = updates
     const safeUpdates = {}
     const allowedMap = {
-      name: 'name', date: 'date', amount: 'amount', amount_uzs: 'amount_uzs', currency: 'currency', type: 'type', creditType: 'type', credit_type: 'type', product_id: 'product_id', productId: 'product_id', product_name: 'product_name', productName: 'product_name', qty: 'qty', price: 'price', unit_price: 'price', price_uzs: 'price_uzs', priceUzs: 'price_uzs', client_id: 'client_id', clientId: 'client_id', bosh_toluv: 'bosh_toluv', boshToluv: 'bosh_toluv', bosh_toluv_note: 'bosh_toluv_note', boshToluvNote: 'bosh_toluv_note', stored: 'stored', given: 'given', location: 'location', note: 'note', completed: 'completed', completed_at: 'completed_at', completed_by: 'completed_by', created_at: 'created_at', created_by: 'created_by'
+      name: 'name',
+      date: 'date',
+      amount: 'amount',
+      currency: 'currency',
+      creditType: 'credit_type',
+      type: 'credit_type',
+      product_id: 'product_id',
+      productId: 'product_id',
+      qty: 'qty',
+      price: 'unit_price',
+      unit_price: 'unit_price',
+      client_id: 'client_id',
+      clientId: 'client_id',
+      bosh_toluv: 'bosh_toluv',
+      boshToluv: 'bosh_toluv',
+      completed: 'completed',
+      completed_at: 'completed_at',
+      completed_by: 'completed_by',
+      note: 'note',
+      remaining: 'remaining',
+      created_by: 'created_by'
     }
     Object.keys(safeUpdatesRaw || {}).forEach(k => {
       const mapped = allowedMap[k]
-      if (mapped) safeUpdates[mapped] = safeUpdatesRaw[k]
+      if (mapped) {
+        let value = safeUpdatesRaw[k]
+        // Ensure date is in YYYY-MM-DD format
+        if (mapped === 'date') {
+          if (!value) {
+            value = new Date().toISOString().slice(0, 10)
+          } else if (typeof value === 'string' && !value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            try {
+              const dateObj = new Date(value)
+              if (!isNaN(dateObj.getTime())) {
+                value = dateObj.toISOString().slice(0, 10)
+              }
+            } catch {
+              value = new Date().toISOString().slice(0, 10)
+            }
+          }
+        }
+        safeUpdates[mapped] = value
+      }
     })
     console.log('supabase.updateCredit ->', id, safeUpdates)
     const { data, error } = await supabase

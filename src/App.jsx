@@ -16,7 +16,7 @@ const Store = React.lazy(() => import('./pages/Store'))
 const Accounts = React.lazy(() => import('./pages/Accounts'))
 const Logs = React.lazy(() => import('./pages/Logs'))
 const Clients = React.lazy(() => import('./pages/Clients'))
-// Credits page removed
+const Credits = React.lazy(() => import('./pages/Credits'))
 
 const App = () => {
   const { t } = useLocale()
@@ -41,23 +41,24 @@ const App = () => {
       <CssBaseline />
       <ThemeModeContext.Provider value={{ isDarkMode, setIsDarkMode }}>
         <NotificationProvider>
-        <BrowserRouter>
-          <Suspense fallback={<div>{t('loading')}</div>}>
-            <Layout>
-              <Routes>  
-                <Route path="/receipt" element={<ReceiptApp />} />
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/warehouse" element={<Warehouse />} />
-                <Route path="/store" element={<Store />} />
-                <Route path="/accounts" element={<Accounts />} />
-                <Route path="/logs" element={<Logs />} />
-                <Route path="/clients" element={<Clients />} />
-              </Routes>
-            </Layout>
-          </Suspense>
-        </BrowserRouter>
-          </NotificationProvider>
-        </ThemeModeContext.Provider>
+          <BrowserRouter>
+            <Suspense fallback={<div>{t('loading')}</div>}>
+              <Layout>
+                <Routes>  
+                  <Route path="/receipt" element={<ReceiptApp />} />
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/warehouse" element={<Warehouse />} />
+                  <Route path="/store" element={<Store />} />
+                  <Route path="/accounts" element={<Accounts />} />
+                  <Route path="/logs" element={<Logs />} />
+                  <Route path="/clients" element={<Clients />} />
+                  <Route path="/credits" element={<Credits />} />
+                </Routes>
+              </Layout>
+            </Suspense>
+          </BrowserRouter>
+        </NotificationProvider>
+      </ThemeModeContext.Provider>
     </ThemeProvider>
   )
 }

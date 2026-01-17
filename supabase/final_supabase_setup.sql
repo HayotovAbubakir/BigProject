@@ -21,7 +21,6 @@ CREATE TABLE user_credentials (
   password_hash TEXT NOT NULL,
   role TEXT DEFAULT 'user',
   permissions JSONB DEFAULT '{}',
-  created_by TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -30,7 +29,6 @@ CREATE TABLE app_states (
   id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   state_json JSONB NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -70,12 +68,30 @@ BEFORE UPDATE ON app_states
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER trg_logs_updated_at
+BEFORE UPDATE ON public.logs
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_clients_updated_at
+BEFORE UPDATE ON public.clients
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_credits_updated_at
+BEFORE UPDATE ON public.credits
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
 -- =====================================================
 -- 5. ENABLE ROW LEVEL SECURITY
 -- =====================================================
 
 ALTER TABLE user_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.credits ENABLE ROW LEVEL SECURITY;
 
 -- =====================================================
 -- 6. OPEN POLICIES (DEV / HACKATHON MODE)
@@ -90,6 +106,24 @@ WITH CHECK (true);
 
 CREATE POLICY allow_all_app_states
 ON app_states
+FOR ALL
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY allow_all_logs
+ON public.logs
+FOR ALL
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY allow_all_clients
+ON public.clients
+FOR ALL
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY allow_all_credits
+ON public.credits
 FOR ALL
 USING (true)
 WITH CHECK (true);
@@ -114,18 +148,46 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
+  name text unique not null,
   qty integer default 0,
-  cost numeric default 0,
-  price numeric,
-  price_uzs numeric,
-  cost_uzs numeric,
-  currency text default 'UZS',
+  price numeric default 0,
+  currency text check (currency in ('UZS','USD')) not null,
   location text,
-  date date,
-  note text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
+);
+
+CREATE TABLE public.logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  action TEXT NOT NULL,
+  kind TEXT,
+  amount NUMERIC,
+  currency TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE public.clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  phone TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE public.credits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID REFERENCES clients(id),
+  date DATE DEFAULT CURRENT_DATE,
+  credit_type TEXT CHECK (credit_type IN ('product','cash')) NOT NULL,
+  amount NUMERIC,
+  currency TEXT CHECK (currency IN ('UZS','USD')),
+  product_id UUID REFERENCES products(id),
+  qty INTEGER,
+  unit_price NUMERIC,
+  bosh_toluv NUMERIC DEFAULT 0,
+  completed BOOLEAN DEFAULT false,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Enable row level security for products
@@ -167,7 +229,8 @@ create trigger set_updated_at
 -- After running this script in Supabase SQL Editor:
 -- 1) Verify tables `user_credentials`, `app_states`, and `products` exist in the Table Editor.
 -- 2) Optionally run a test insert:
---    insert into public.products (name, qty, cost, currency) values ('Test product', 10, 1000, 'UZS');
+INSERT INTO public.products (name, qty, price, currency, location)
+VALUES ('Test Product', 10, 1000, 'UZS', 'store');
 -- 3) Query app_states and user_credentials to confirm defaults:
 --    select * from user_credentials;
 --    select * from app_states;

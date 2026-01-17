@@ -144,7 +144,6 @@ export default function Logs() {
   const [selectedDate, setSelectedDate] = useState(today);
 
   const handleDeleteLogs = async () => {
-    if (!hasPermission('logs_manage') || !hasPermission('credits_manage')) return alert(t('permissionDenied'));
     const pwd = prompt(t('enterAdminPassword'));
     if (pwd === null) return;
     if (!isDeveloper && !verifyLocalPassword(user?.username, pwd)) return alert(t('incorrectPassword'));
@@ -174,7 +173,7 @@ export default function Logs() {
             }}
           />
            <Tooltip title={t('delete_logs_for_date')}>
-             <IconButton onClick={handleDeleteLogs} color="error" disabled={!hasPermission('logs_manage') || !hasPermission('credits_manage')}>
+             <IconButton onClick={handleDeleteLogs} color="error">
               <DeleteSweepIcon />
             </IconButton>
           </Tooltip>

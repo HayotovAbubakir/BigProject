@@ -26,7 +26,7 @@ export const insertClient = async (client) => {
     console.log('supabase.insertClient ->', client)
     const { data, error } = await supabase
       .from('clients')
-      .insert({ ...client, owner: 'shared' })
+      .insert({ ...client })
       .select()
       .single()
     if (error) throw error
@@ -43,7 +43,16 @@ export const updateClient = async (id, updates) => {
   if (!isSupabaseConfigured()) return null
   try {
     // Remove 'id' from updates to avoid trying to update the primary key
-    const { id: _, ...safeUpdates } = updates
+    const { id: _, ...safeUpdatesRaw } = updates
+    const safeUpdates = {}
+    const allowedMap = {
+      name: 'name',
+      phone: 'phone',
+    }
+    Object.keys(safeUpdatesRaw || {}).forEach(k => {
+      const mapped = allowedMap[k]
+      if (mapped) safeUpdates[mapped] = safeUpdatesRaw[k]
+    })
     console.log('supabase.updateClient ->', id, safeUpdates)
     const { data, error } = await supabase
       .from('clients')

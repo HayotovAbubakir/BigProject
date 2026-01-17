@@ -10,19 +10,19 @@ import { useAuth } from '../hooks/useAuth'
 import { useNotification } from './NotificationContext';
 
 const lowStockJokes = [
-  "Looks like {name} is playing hide and seek. And it's winning.",
-  "Warning: {name} is about to become a myth. Restock now!",
-  "The shelf for {name} is looking a bit lonely. And empty.",
-  "Our {name} stock is so low, it could be a snake's belly in a wagon rut.",
-  "We're running out of {name} faster than I run out of good ideas. Help!"
+  "{name} mahsuloti kam qoldi. Yetkazib berish vaqtini o'ylash kerak!",
+  "Diqqat: {name} mahsuloti deyarli tugadi. Yangi zaxira kerak!",
+  "{name} javoni bo'shab qolyapti. Xaridorlar so'rashi mumkin.",
+  "Bizning {name} zaxiramiz juda kamayib ketdi.",
+  "{name} mahsulotini tezroq to'ldirish kerak!"
 ];
 
 const overdueCreditJokes = [
-  "The credit for {name} is older than my last good joke. Please settle up!",
-  "Yo, the credit for {name} is starting to grow cobwebs. Time to pay up!",
-  "The nasiya for {name} is so old, it's about to be a historical artifact.",
-  "I've seen glaciers move faster than this payment for {name}. Just saying.",
-  "Alert: The credit for {name} is so overdue, it's starting to ferment."
+  "{name} nomidagi nasiya ancha vaqtdan beri turibdi. To'lovni so'rash kerak!",
+  "Eslatma: {name} uchun nasiya to'lovi kechikyapti.",
+  "{name} ga berilgan nasiya eskirib ketdi. Tarixiy asarga aylanmasidan undirish kerak.",
+  "To'lovni tezlashtirish uchun {name} bilan bog'laning.",
+  "Diqqat: {name} uchun nasiya muddati o'tib ketdi."
 ];
 
 const initialState = {
@@ -183,8 +183,7 @@ function reducer(state, action) {
       }
     case 'ADD_CLIENT':
       try {
-        const owner = (action.payload && (action.payload.owner || action.log && action.log.user) || 'shared').toString().toLowerCase()
-        const cleanPayload = { ...action.payload, owner }
+        const cleanPayload = { ...action.payload }
         const existing = (state.clients || []).find(c => c.id === cleanPayload.id)
         if (existing) return state
         return { ...state, clients: [...(state.clients || []), cleanPayload], logs: [...state.logs, action.log || { ts: Date.now(), action: `Client ${cleanPayload.name} added` }] }
@@ -286,9 +285,6 @@ export const AppProvider = ({ children }) => {
           const copy = { ...it };
           if (copy.price_uzs !== undefined && Number(copy.price_uzs) === Number(copy.price)) {
             delete copy.price_uzs;
-          }
-          if (copy.cost_uzs !== undefined && Number(copy.cost_uzs) === Number(copy.cost)) {
-            delete copy.cost_uzs;
           }
           return copy;
         };
@@ -460,7 +456,7 @@ export const AppProvider = ({ children }) => {
     try {
       // ensure created_by and created_at for credits (site-wide)
       payload.created_by = payload.created_by || username || 'shared'
-      payload.created_at = payload.created_at || Math.floor(Date.now() / 1000)
+      payload.created_at = payload.created_at || new Date().toISOString()
       const credit = await dbInsertCredit(payload)
       insertCreditLog(logData).catch(e => console.warn('insertCreditLog failed (add credit), continuing with local state update', e))
       dispatch({ type: 'ADD_CREDIT', payload: credit, log: logData })
@@ -497,11 +493,6 @@ export const AppProvider = ({ children }) => {
 
   const addClient = React.useCallback(async (payload, logData) => {
     try {
-      if (typeof hasPermission === 'function' && !hasPermission('credits_manage')) {
-        const msg = 'Permission denied: credits manage required'
-        notify && notify('Permission Denied', msg, 'error')
-        throw new Error('permissionDenied')
-      }
       const client = await dbInsertClient(payload)
       const log = await insertLog(logData)
       dispatch({ type: 'ADD_CLIENT', payload: client, log })
@@ -526,11 +517,6 @@ export const AppProvider = ({ children }) => {
 
   const deleteClient = React.useCallback(async (id, logData) => {
     try {
-      if (typeof hasPermission === 'function' && !hasPermission('credits_manage')) {
-        const msg = 'Permission denied: credits manage required'
-        notify && notify('Permission Denied', msg, 'error')
-        throw new Error('permissionDenied')
-      }
       await dbDeleteClient(id)
       const log = await insertLog(logData)
       dispatch({ type: 'DELETE_CLIENT', payload: { id }, log })
@@ -562,7 +548,7 @@ export const AppProvider = ({ children }) => {
       const overdueIds = []
       ;(state.credits || []).forEach(c => {
         if (!c) return
-        const createdAt = c.created_at ? c.created_at * 1000 : 0
+        const createdAt = c.created_at ? new Date(c.created_at).getTime() : 0
         if (!c.completed && createdAt > 0 && (now - createdAt > ONE_WEEK)) overdueIds.push(c.id)
       })
 
@@ -590,7 +576,7 @@ export const AppProvider = ({ children }) => {
         if (!c) return
         const key = `credit:${c.id}`
         if (!c.completed && !notifiedItems.current.has(key)) {
-          const createdAt = c.created_at ? c.created_at * 1000 : 0;
+          const createdAt = c.created_at ? new Date(c.created_at).getTime() : 0;
           if (createdAt > 0 && (now - createdAt > ONE_WEEK)) {
             const randomJoke = overdueCreditJokes[Math.floor(Math.random() * overdueCreditJokes.length)];
             notify('Overdue Credit!', randomJoke.replace('{name}', c.name), 'error');

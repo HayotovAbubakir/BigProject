@@ -34,7 +34,7 @@ function ProductCard({ product, onEdit, onDelete, onSell, onMove, canAddProducts
       <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="h6">{product.name}</Typography>
-          <Typography variant="h6">{formatForDisplay(product.cost, product.currency)} {displayCurrency}</Typography>
+          <Typography variant="h6">{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
         </Box>
         <Typography variant="body2" color="text.secondary">{t('qty')}: {product.qty}</Typography>
         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
@@ -71,20 +71,20 @@ export default function Warehouse() {
   const canMove = hasPermission ? !!hasPermission('wholesale_allowed') : canWholesale;
 
   const handleAdd = async (payload) => {
-    const amount = Number(payload.qty) * parseNumber(payload.cost || 0);
-    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_added'), kind: 'ADD', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.cost || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.cost || 0)} ${payload.currency || 'UZS'}, Jami: ${amount} ${payload.currency || 'UZS'}` };
+    const amount = Number(payload.qty) * parseNumber(payload.price || 0);
+    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_added'), kind: 'ADD', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.price || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}, Jami: ${amount} ${payload.currency || 'UZS'}` };
     await addWarehouseProduct(payload, logData);
   };
 
   const handleEdit = async (payload) => {
-    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_updated'), kind: 'EDIT', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.cost || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti tahrirlandi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.cost || 0)} ${payload.currency || 'UZS'}, Jami: ${Number(payload.qty) * parseNumber(payload.cost || 0)} ${payload.currency || 'UZS'}` };
+    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_updated'), kind: 'EDIT', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.price || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti tahrirlandi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}, Jami: ${Number(payload.qty) * parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}` };
     await updateWarehouseProduct(payload.id, payload, logData);
   };
 
   const handleRemove = async (id) => {
     const product = state.warehouse.find(p => p.id === id);
     const productName = product ? product.name : id;
-    const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_deleted'), kind: 'DELETE', product_name: productName, qty: Number(product.qty), unit_price: parseNumber(product.cost || 0), currency: product.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti o'chirildi, Mahsulot: ${productName}, Soni: ${Number(product.qty)}, Narx: ${parseNumber(product.cost || 0)} ${product.currency || 'UZS'}, Jami: ${Number(product.qty) * parseNumber(product.cost || 0)} ${product.currency || 'UZS'}` };
+    const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_deleted'), kind: 'DELETE', product_name: productName, qty: Number(product.qty), unit_price: parseNumber(product.price || 0), currency: product.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti o'chirildi, Mahsulot: ${productName}, Soni: ${Number(product.qty)}, Narx: ${parseNumber(product.price || 0)} ${product.currency || 'UZS'}, Jami: ${Number(product.qty) * parseNumber(product.price || 0)} ${product.currency || 'UZS'}` };
     await deleteWarehouseProduct(id, logData);
   };
 
@@ -135,7 +135,7 @@ export default function Warehouse() {
                     <TableCell>{it.name}</TableCell>
                     <TableCell align="center">{it.qty}</TableCell>
                     <TableCell align="right">
-                      {formatForDisplay(it.cost, it.currency)} {displayCurrency}
+                      {formatForDisplay(it.price, it.currency)} {displayCurrency}
                     </TableCell>
                     <TableCell>{it.date}</TableCell>
                     <TableCell>{it.note}</TableCell>
@@ -158,7 +158,7 @@ export default function Warehouse() {
         const itemPrice = parseNumber(payload.item.price || 0);
         const amount = Number(payload.qty) * itemPrice;
             const moveRateText = (payload.item.currency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
-        const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Ombordan do'konga o'tkazish", kind: 'MOVE', productName: payload.item.name, productId: payload.item.id, qty: Number(payload.qty), unitPrice: parseNumber(payload.item.price || payload.item.cost || 0), total: amount, currency: payload.item.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan do'konga o'tkazish, Mahsulot: ${payload.item.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.item.price || payload.item.cost || 0)} ${payload.item.currency || 'UZS'}, Jami: ${amount} ${payload.item.currency || 'UZS'}${moveRateText}` };
+        const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Ombordan do'konga o'tkazish", kind: 'MOVE', productName: payload.item.name, productId: payload.item.id, qty: Number(payload.qty), unitPrice: parseNumber(payload.item.price || 0), total: amount, currency: payload.item.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan do'konga o'tkazish, Mahsulot: ${payload.item.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.item.price || 0)} ${payload.item.currency || 'UZS'}, Jami: ${amount} ${payload.item.currency || 'UZS'}${moveRateText}` };
           if (payload.item.currency === 'USD' && usdToUzs) log.total_uzs = Math.round(amount * usdToUzs);
           else log.total_uzs = Math.round(amount);
         dispatch({ type: 'MOVE_TO_STORE', payload, log });

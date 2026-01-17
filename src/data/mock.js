@@ -1,7 +1,7 @@
 export const MOCK = {
   warehouse: [
-    { id: 'w1', name: 'Choy', qty: 200, cost: 1000, date: '2025-10-01', note: 'Yangi partiya' },
-    { id: 'w2', name: 'Qahva', qty: 100, cost: 2000, date: '2025-09-20', note: '' },
+    { id: 'w1', name: 'Choy', qty: 200, price: 1000 },
+    { id: 'w2', name: 'Qahva', qty: 100, price: 2000 },
   ],
   store: [
     { id: 's1', name: 'Choy', qty: 50, price: 2500, date: '2025-10-05', note: '' },

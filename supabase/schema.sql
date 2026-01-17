@@ -1,185 +1,117 @@
--- =====================================================
--- BIGPROJECT — FINAL, CLEAN, STABLE SUPABASE SETUP
--- Custom Auth (NO Supabase Auth)
--- Safe to re-run
--- =====================================================
-
 -- =========================
--- 0. CLEANUP
+-- TOZALASH
 -- =========================
-DROP POLICY IF EXISTS allow_all_users ON user_credentials;
-DROP POLICY IF EXISTS allow_all_states ON app_states;
-DROP POLICY IF EXISTS allow_all_products ON public.products;
-DROP POLICY IF EXISTS "Allow operations on own clients" ON clients;
-
-DROP TABLE IF EXISTS public.products CASCADE;
+DROP TABLE IF EXISTS logs CASCADE;
+DROP TABLE IF EXISTS credits CASCADE;
+DROP TABLE IF EXISTS clients CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS app_states CASCADE;
 DROP TABLE IF EXISTS user_credentials CASCADE;
-DROP TABLE IF EXISTS public.logs CASCADE;
-DROP TABLE IF EXISTS public.clients CASCADE;
-DROP TABLE IF EXISTS public.credits CASCADE;
-
-DROP FUNCTION IF EXISTS public.update_updated_at_column CASCADE;
 
 -- =========================
--- 1. EXTENSIONS
+-- EXTENSIONS
 -- =========================
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- =========================
--- 2. TABLES
+-- USERS
 -- =========================
-
 CREATE TABLE user_credentials (
   id SERIAL PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
+  username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   role TEXT DEFAULT 'user',
   permissions JSONB DEFAULT '{}'::jsonb,
-  created_by TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- =========================
+-- APP STATES
+-- =========================
 CREATE TABLE app_states (
   id SERIAL PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
+  username TEXT UNIQUE NOT NULL,
   state_json JSONB NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE public.products (
+-- =========================
+-- PRODUCTS
+-- =========================
+CREATE TABLE products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
+  name TEXT UNIQUE NOT NULL,
   qty INTEGER DEFAULT 0,
-  cost NUMERIC DEFAULT 0,
   price NUMERIC DEFAULT 0,
-  price_uzs NUMERIC,
-  cost_uzs NUMERIC,
-  currency TEXT DEFAULT 'UZS',
+  currency TEXT CHECK (currency IN ('UZS','USD')) NOT NULL,
   location TEXT,
-  note TEXT,
-  date DATE,
-  created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE public.logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  date DATE,
-  time TEXT,
-  ts BIGINT,
-  user_name TEXT NOT NULL,
-  action TEXT NOT NULL,
-  kind TEXT,
-  product_id UUID,
-  product_name TEXT,
-  qty NUMERIC,
-  unit_price NUMERIC,
-  amount NUMERIC,
-  total_uzs NUMERIC,
-  currency TEXT,
-  type TEXT,
-  detail TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE public.clients (
+-- =========================
+-- CLIENTS
+-- =========================
+CREATE TABLE clients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   phone TEXT,
-  owner TEXT DEFAULT 'shared',
-  created_at BIGINT,
-  created_by TEXT,
-  updated_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE public.credits (
+-- =========================
+-- CREDITS
+-- =========================
+CREATE TABLE credits (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT,
-  date DATE,
-  amount NUMERIC DEFAULT 0,
-  amount_uzs NUMERIC,
-  currency TEXT DEFAULT 'UZS',
-  type TEXT,
-  product_id UUID,
-  product_name TEXT,
+  client_id UUID REFERENCES clients(id),
+  credit_type TEXT CHECK (credit_type IN ('product','cash')) NOT NULL,
+  amount NUMERIC,
+  currency TEXT CHECK (currency IN ('UZS','USD')),
+  product_id UUID REFERENCES products(id),
   qty INTEGER,
-  price NUMERIC,
-  price_uzs NUMERIC,
-  client_id UUID,
-  bosh_toluv NUMERIC,
-  bosh_toluv_note TEXT,
-  stored BOOLEAN DEFAULT false,
-  given BOOLEAN DEFAULT false,
-  location TEXT,
-  note TEXT,
+  unit_price NUMERIC,
+  bosh_toluv NUMERIC DEFAULT 0,
   completed BOOLEAN DEFAULT false,
-  completed_at BIGINT,
-  completed_by TEXT,
-  created_at BIGINT,
   created_by TEXT,
-  updated_at TIMESTAMPTZ DEFAULT now()
+  date DATE DEFAULT CURRENT_DATE,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- =========================
--- 3. INDEXES
+-- LOGS
+-- =========================
+CREATE TABLE logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  action TEXT NOT NULL,
+  kind TEXT,
+  amount NUMERIC,
+  currency TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- =========================
+-- INDEXES
 -- =========================
 CREATE INDEX idx_users_username ON user_credentials(username);
-CREATE INDEX idx_states_username ON app_states(username);
+CREATE INDEX idx_products_name ON products(name);
+CREATE INDEX idx_credits_client ON credits(client_id);
+CREATE INDEX idx_credits_type ON credits(credit_type);
 
 -- =========================
--- 4. UPDATED_AT FUNCTION
--- =========================
-CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS trigger AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- =========================
--- 5. TRIGGERS
--- =========================
-CREATE TRIGGER trg_users_updated
-BEFORE UPDATE ON user_credentials
-FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-CREATE TRIGGER trg_states_updated
-BEFORE UPDATE ON app_states
-FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-CREATE TRIGGER trg_products_updated
-BEFORE UPDATE ON public.products
-FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-CREATE TRIGGER trg_logs_updated
-BEFORE UPDATE ON public.logs
-FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-CREATE TRIGGER trg_clients_updated
-BEFORE UPDATE ON public.clients
-FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-CREATE TRIGGER trg_credits_updated
-BEFORE UPDATE ON public.credits
-FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
--- =========================
--- 6. RLS
+-- ROW LEVEL SECURITY
 -- =========================
 ALTER TABLE user_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_states ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clients DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.credits DISABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
 
 -- =========================
--- 7. DEV MODE POLICIES
+-- POLICIES (DEV MODE – FULL ACCESS)
 -- =========================
 CREATE POLICY allow_all_users
 ON user_credentials FOR ALL
@@ -190,29 +122,42 @@ ON app_states FOR ALL
 USING (true) WITH CHECK (true);
 
 CREATE POLICY allow_all_products
-ON public.products FOR ALL
+ON products FOR ALL
+USING (true) WITH CHECK (true);
+
+CREATE POLICY allow_all_clients
+ON clients FOR ALL
+USING (true) WITH CHECK (true);
+
+CREATE POLICY allow_all_credits
+ON credits FOR ALL
+USING (true) WITH CHECK (true);
+
+CREATE POLICY allow_all_logs
+ON logs FOR ALL
 USING (true) WITH CHECK (true);
 
 -- =========================
--- 8. DEFAULT USERS
+-- DEFAULT USERS
 -- =========================
-INSERT INTO user_credentials (username, password_hash, role, permissions, created_by)
+INSERT INTO user_credentials (username, password_hash, role, permissions)
 VALUES
-('developer', 'developer', 'developer',
- '{"full_access": true, "manage_accounts": true}'::jsonb, 'system'),
-('hamdamjon', '1010', 'admin',
- '{"credits_manage": true, "clients_manage": true, "add_products": true, "logs_manage": true}'::jsonb, 'system'),
-('habibjon', '0000', 'admin',
- '{"credits_manage": true, "clients_manage": true, "add_products": true, "logs_manage": true}'::jsonb, 'system')
+(
+  'developer',
+  'developer',
+  'developer',
+  '{"full_access": true, "manage_accounts": true}'::jsonb
+),
+(
+  'hamdamjon',
+  '1010',
+  'admin',
+  '{"credits_manage": true, "clients_manage": true, "add_products": true, "logs_manage": true}'::jsonb
+),
+(
+  'habibjon',
+  '0000',
+  'admin',
+  '{"credits_manage": true, "clients_manage": true, "add_products": true, "logs_manage": true}'::jsonb
+)
 ON CONFLICT (username) DO NOTHING;
-
--- =========================
--- 9. TEST PRODUCT
--- =========================
-INSERT INTO public.products (name, qty, cost, currency, location)
-VALUES ('Test Product', 10, 1000, 'UZS', 'store');
-
--- =========================
--- END
--- =========================
-SELECT * FROM public.products;

@@ -10,7 +10,7 @@ import { toISODate } from '../utils/date'
 export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
   const { rate: usdToUzs } = useExchangeRate()
   const { state, dispatch } = useApp()
-  const [form, setForm] = useState({ name: '', qty: 0, cost: 0, date: '', note: '', currency: 'UZS' })
+  const [form, setForm] = useState({ name: '', qty: 0, price: 0, date: '', note: '', currency: 'UZS' })
   const DRAFT_KEY_BASE = 'draft_warehouse_'
   const getDraftKey = useCallback(() => `${DRAFT_KEY_BASE}${initial?.id || 'new'}`, [initial?.id])
   const [currencyOpen, setCurrencyOpen] = useState(false)
@@ -32,7 +32,7 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
     }
 
     if (initial) setForm({ ...initial, date: toISODate(initial.date), currency: initial.currency || 'UZS' })
-    else setForm({ name: '', qty: 0, cost: 0, date: toISODate(), note: '', currency: 'UZS' })
+    else setForm({ name: '', qty: 0, price: 0, date: toISODate(), note: '', currency: 'UZS' })
   }, [initial, open, getDraftKey, state?.drafts])
 
   
@@ -56,11 +56,6 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
 
   const submit = () => {
     let payload = { id: initial?.id || uuidv4(), ...form, date: toISODate(form.date) }
-    try {
-      if (payload.currency === 'USD' && usdToUzs) payload = { ...payload, cost_uzs: Number(payload.cost) * Number(usdToUzs) }
-    } catch { 
-      // ignore
-    }
     onSubmit(payload)
     try { dispatch({ type: 'CLEAR_DRAFT', payload: { key: getDraftKey() } }) } catch (err) { void err }
     onClose()
@@ -80,9 +75,7 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
         </Box>
         <TextField label="Nomi" fullWidth margin="dense" value={form.name} onChange={handle('name')} />
         <NumberField label="Soni" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: Number(v || 0) }))} />
-        <NumberField label="Narxi (omborda)" fullWidth margin="dense" value={form.cost} onChange={(v) => setForm(prev => ({ ...prev, cost: Number(v || 0) }))} />
-        <TextField label="Kelgan sana" fullWidth margin="dense" value={form.date} onChange={handle('date')} />
-        <TextField label="Izoh" fullWidth margin="dense" value={form.note} onChange={handle('note')} />
+        <NumberField label="Narxi (omborda)" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: Number(v || 0) }))} />
       </DialogContent>
       <DialogActions sx={{ px: 2, pb: 2 }}>
         <Button onClick={handleClose} sx={{ minWidth: 100 }}>Bekor qilish</Button>

@@ -102,51 +102,52 @@ export default function AccountLock({ open, onClose }) {
       return
     }
 
-    const sTarget = await readState(target)
-    if (sTarget.lockoutUntil && Date.now() < sTarget.lockoutUntil) {
-      setLockedUntil(sTarget.lockoutUntil)
-      setRemainingSec(Math.ceil((sTarget.lockoutUntil - Date.now())/1000))
-      setError(`Siz bloklangansiz. Kuting: ${Math.ceil((sTarget.lockoutUntil - Date.now())/1000)} sekund`)
-      return
-    }
-
-    const expected = (credentials && credentials[target]) ? String(credentials[target]) : null
-    if (expected && String(password) === expected) {
-      // success: log in as this user
-      try {
-        const res = login({ username: target, password })
-        if (res && res.ok) {
-          clearState(target)
-          setError('')
-          setPassword('')
-          onClose()
-          return
-        }
-      } catch {
-        // fallthrough to failure handling
+    readState(target).then(sTarget => {
+      if (sTarget.lockoutUntil && Date.now() < sTarget.lockoutUntil) {
+        setLockedUntil(sTarget.lockoutUntil)
+        setRemainingSec(Math.ceil((sTarget.lockoutUntil - Date.now())/1000))
+        setError(`Siz bloklangansiz. Kuting: ${Math.ceil((sTarget.lockoutUntil - Date.now())/1000)} sekund`)
+        return
       }
-    }
-    // wrong password
-    const next = { ...sTarget }
-    next.consecutiveFailed = (next.consecutiveFailed || 0) + 1
-    if (next.consecutiveFailed >= ESCALATION_THRESH) {
-      const idx = Math.min(next.escalationLevel || 0, ESCALATION_DURATIONS.length - 1)
-      const dur = ESCALATION_DURATIONS[idx]
-      next.lockoutUntil = Date.now() + dur
-      next.escalationLevel = Math.min((next.escalationLevel || 0) + 1, ESCALATION_DURATIONS.length - 1)
-      next.consecutiveFailed = 0
-      setError(`Noto'g'ri parol. Hisob bloklandi: ${Math.ceil(dur/60000)} daqiqa`)
-      // reflect in UI
-      setLockedUntil(next.lockoutUntil)
-      setRemainingSec(Math.ceil(dur / 1000))
-    } else {
-      const remaining = Math.max(ESCALATION_THRESH - next.consecutiveFailed, 0)
-      setError(`Parol noto'g'ri. Bosqichga yetish uchun qolgan urinishlar: ${remaining}`)
-    }
-    await writeState(target, next)
-    setStateVersion(v => v + 1)
-    setPassword('')
-  }
+
+      const expected = (credentials && credentials[target]) ? String(credentials[target]) : null
+      if (expected && String(password) === expected) {
+        // success: log in as this user
+        try {
+          const res = login({ username: target, password })
+          if (res && res.ok) {
+            clearState(target)
+            setError('')
+            setPassword('')
+            onClose()
+            return
+          }
+        } catch {
+          // fallthrough to failure handling
+        }
+      }
+      // wrong password
+      const next = { ...sTarget }
+      next.consecutiveFailed = (next.consecutiveFailed || 0) + 1
+      if (next.consecutiveFailed >= ESCALATION_THRESH) {
+        const idx = Math.min(next.escalationLevel || 0, ESCALATION_DURATIONS.length - 1)
+        const dur = ESCALATION_DURATIONS[idx]
+        next.lockoutUntil = Date.now() + dur
+        next.escalationLevel = Math.min((next.escalationLevel || 0) + 1, ESCALATION_DURATIONS.length - 1)
+        next.consecutiveFailed = 0
+        setError(`Noto'g'ri parol. Hisob bloklandi: ${Math.ceil(dur/60000)} daqiqa`)
+        // reflect in UI
+        setLockedUntil(next.lockoutUntil)
+        setRemainingSec(Math.ceil(dur / 1000))
+      } else {
+        const remaining = Math.max(ESCALATION_THRESH - next.consecutiveFailed, 0)
+        setError(`Parol noto'g'ri. Bosqichga yetish uchun qolgan urinishlar: ${remaining}`)
+      }
+      writeState(target, next).then(() => {
+        setStateVersion(v => v + 1)
+        setPassword('')
+      })
+    })
 
   return (
     <Dialog

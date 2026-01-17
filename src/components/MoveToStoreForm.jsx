@@ -11,7 +11,7 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
     if (initial) {
       setQty(1)
       
-      const pref = (initial.cost || 0) * 2
+      const pref = (initial.price || 0) * 1.2
       setPrice(pref ? String(pref) : '')
       setError('')
     }

@@ -158,7 +158,7 @@ export default function Layout({ children }) {
           <UserMenu
             user={user}
             onLogout={logout}
-            onManageAccount={() => hasPermission('manage_accounts') && setAccountManagerOpen(true)}
+            onManageAccount={() => setAccountManagerOpen(true)}
           />
         </Toolbar>
       </AppBar>

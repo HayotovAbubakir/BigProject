@@ -32,16 +32,12 @@ export const insertProduct = async (product) => {
     }
     // Ensure numeric fields are numbers (or convertible)
     const safe = {
+      id: product.id,
       name: product.name.trim(),
       qty: Number(product.qty || 0),
-      cost: Number(product.cost || 0),
       price: product.price !== undefined ? Number(product.price) : null,
-      price_uzs: product.price_uzs !== undefined ? Number(product.price_uzs) : null,
-      cost_uzs: product.cost_uzs !== undefined ? Number(product.cost_uzs) : null,
       currency: product.currency || 'UZS',
       location: product.location || null,
-      date: product.date || null,
-      note: product.note || null,
     }
 
     console.log('supabase.insertProduct ->', safe)

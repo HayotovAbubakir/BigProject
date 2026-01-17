@@ -1,5 +1,5 @@
 // Supabase-backed database helpers
-import { supabase } from '/supabase/supabaseClient'
+import { supabase } from '../../supabase/supabaseClient'
 
 export default null
 
@@ -78,8 +78,6 @@ export async function saveAppState(state, username) {
         username: username || 'shared',
         state_json: payload,
         updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'username'
       })
 
     if (error) {

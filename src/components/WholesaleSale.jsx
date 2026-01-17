@@ -22,7 +22,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
 
   useEffect(() => {
     const pool = selectedSource === 'warehouse' ? (state.warehouse || []) : (state.store || [])
-    setItems(pool.map(p => ({ id: p.id, name: p.name || p.title || '—', available: Number(p.qty || 0), qty: 0, unitPrice: Number(p.price || p.cost || 0), currency: p.currency || 'UZS' })))
+    setItems(pool.map(p => ({ id: p.id, name: p.name || p.title || '—', available: Number(p.qty || 0), qty: 0, unitPrice: Number(p.price || 0), currency: p.currency || 'UZS' })))
   }, [selectedSource, state.store, state.warehouse])
 
   const updateQty = (id, qty) => setItems(it => it.map(i => i.id === id ? { ...i, qty: Number(qty) } : i))

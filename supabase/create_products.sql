@@ -6,16 +6,11 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
+  name text unique not null,
   qty integer default 0,
-  cost numeric default 0,
-  price numeric,
-  price_uzs numeric,
-  cost_uzs numeric,
-  currency text default 'UZS',
+  price numeric default 0,
+  currency text check (currency in ('UZS','USD')) not null,
   location text,
-  date date,
-  note text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

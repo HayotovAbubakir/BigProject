@@ -38,7 +38,6 @@ CREATE TABLE user_credentials (
   password_hash TEXT NOT NULL,
   role TEXT DEFAULT 'user',
   permissions JSONB DEFAULT '{}'::jsonb,
-  created_by TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -47,78 +46,53 @@ CREATE TABLE app_states (
   id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   state_json JSONB NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE public.products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
+  name TEXT UNIQUE NOT NULL,
   qty INTEGER DEFAULT 0,
-  cost NUMERIC DEFAULT 0,
   price NUMERIC DEFAULT 0,
-  price_uzs NUMERIC,
-  cost_uzs NUMERIC,
-  currency TEXT DEFAULT 'UZS',
+  currency TEXT CHECK (currency IN ('UZS','USD')) NOT NULL,
   location TEXT,
-  note TEXT,
-  date DATE,
-  created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Logs table
 CREATE TABLE public.logs (
-  id TEXT PRIMARY KEY,
-  date TEXT NOT NULL,
-  time TEXT NOT NULL,
-  "user" TEXT NOT NULL,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   action TEXT NOT NULL,
   kind TEXT,
-  product_id TEXT,
-  product_name TEXT,
-  qty NUMERIC,
-  unit_price NUMERIC,
-  total NUMERIC,
+  amount NUMERIC,
   currency TEXT,
-  total_uzs NUMERIC,
-  destination TEXT,
-  expiration_date TEXT,
-  detail TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Clients table
 CREATE TABLE public.clients (
-  id TEXT PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   phone TEXT,
-  address TEXT,
-  total_credit_uzs NUMERIC DEFAULT 0,
-  total_debt_uzs NUMERIC DEFAULT 0,
-  owner TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Credits table
 CREATE TABLE public.credits (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL,
-  name TEXT,
-  product_name TEXT,
-  qty NUMERIC,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID REFERENCES clients(id),
+  date DATE DEFAULT CURRENT_DATE,
+  credit_type TEXT CHECK (credit_type IN ('product','cash')) NOT NULL,
   amount NUMERIC,
-  currency TEXT DEFAULT 'UZS',
-  amount_uzs NUMERIC,
-  location TEXT,
-  client_id TEXT,
-  "user" TEXT NOT NULL,
-  completed BOOLEAN DEFAULT FALSE,
-  overdue_notified BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  currency TEXT CHECK (currency IN ('UZS','USD')),
+  product_id UUID REFERENCES products(id),
+  qty INTEGER,
+  unit_price NUMERIC,
+  bosh_toluv NUMERIC DEFAULT 0,
+  completed BOOLEAN DEFAULT false,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- =========================
@@ -126,9 +100,9 @@ CREATE TABLE public.credits (
 -- =========================
 CREATE INDEX idx_users_username ON user_credentials(username);
 CREATE INDEX idx_states_username ON app_states(username);
-CREATE INDEX IF NOT EXISTS idx_clients_owner ON clients(owner);
-CREATE INDEX IF NOT EXISTS idx_credits_user ON credits("user");
-CREATE INDEX IF NOT EXISTS idx_logs_user ON logs("user");
+
+
+
 
 -- =========================
 -- 4. UPDATED_AT FUNCTION

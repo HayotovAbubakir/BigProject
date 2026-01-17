@@ -13,19 +13,19 @@ export default function Accounts() {
   // Calculate warehouse value in UZS
   const warehouseValueUzs = state.warehouse.reduce((sum, item) => {
     const qty = Number(item.qty || 0);
-    let cost = Number(item.cost || 0);
+    let price = Number(item.price || 0);
     if (item.currency === 'USD') {
-      cost = item.cost_uzs || (usdToUzs ? cost * usdToUzs : 0);
+      price = usdToUzs ? price * usdToUzs : 0;
     }
-    return sum + qty * cost;
+    return sum + qty * price;
   }, 0);
 
   // Calculate store value in UZS
   const storeValueUzs = state.store.reduce((sum, item) => {
     const qty = Number(item.qty || 0);
-    let price = Number(item.price || item.cost || 0);
+    let price = Number(item.price || 0);
     if (item.currency === 'USD') {
-      price = item.price_uzs || (usdToUzs ? price * usdToUzs : 0);
+      price = usdToUzs ? price * usdToUzs : 0;
     }
     return sum + qty * price;
   }, 0);
@@ -35,7 +35,7 @@ export default function Accounts() {
 
   // Calculate total debts (olingan nasiyalar)
   const totalDebtsUzs = state.credits
-    .filter(c => c.type === 'olingan' && !c.completed)
+    .filter(c => c.credit_subtype === 'olingan' && !c.completed)
     .reduce((sum, c) => {
       const amount = Number(c.amount || 0);
       if (c.currency === 'USD') {
@@ -46,7 +46,7 @@ export default function Accounts() {
 
   // Calculate total receivables (berilgan nasiyalar)
   const totalReceivablesUzs = state.credits
-    .filter(c => c.type !== 'olingan' && !c.completed)
+    .filter(c => c.credit_subtype === 'berilgan' && !c.completed)
     .reduce((sum, c) => {
       const amount = Number(c.amount || 0);
       if (c.currency === 'USD') {

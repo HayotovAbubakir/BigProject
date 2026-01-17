@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Box, Typography, Button, Grid, Paper, IconButton, Tooltip, TextField,
-  Dialog, DialogActions, DialogContent, DialogTitle, Avatar, List, ListItem, ListItemText, useMediaQuery, useTheme, Select, MenuItem
+  Dialog, DialogActions, DialogContent, DialogTitle, Avatar, List, ListItem, ListItemText, useMediaQuery, useTheme, Select, MenuItem, Checkbox, CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -18,6 +18,7 @@ import { useNotification } from '../context/NotificationContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CreditsDialog from '../components/CreditsDialog';
 import { insertLog } from '../firebase/supabaseLogs';
+import { supabase } from '/supabase/supabaseClient';
 // Note: The credit management dialogs and logic are complex and are kept as is to avoid breaking functionality.
 // Only the main client list UI is redesigned.
 
@@ -36,9 +37,9 @@ function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canM
         <Box sx={{ flexGrow: 1 }} />
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
           <Tooltip title={t('viewCredits')}><IconButton onClick={onViewCredits}><CreditCardIcon /></IconButton></Tooltip>
-          <Tooltip title={t('addCredit')}><IconButton onClick={onAddCredit} color="primary" disabled={!canManageCredits}><AddCardIcon /></IconButton></Tooltip>
-          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={!canManageCredits}><EditIcon /></IconButton></Tooltip>
-          <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error" disabled={!canManageCredits}><DeleteIcon /></IconButton></Tooltip>
+          <Tooltip title={t('addCredit')}><IconButton onClick={onAddCredit} color="primary"><AddCardIcon /></IconButton></Tooltip>
+          <Tooltip title={t('edit')}><IconButton onClick={onEdit}><EditIcon /></IconButton></Tooltip>
+          <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error"><DeleteIcon /></IconButton></Tooltip>
         </Box>
       </Paper>
     </Grid>
@@ -46,12 +47,10 @@ function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canM
 }
 
 export default function Clients() {
-  const { state, dispatch, addClient, updateClient, deleteClient, addCredit } = useApp();
+  const { state, addClient, updateClient, deleteClient, addCredit, addWarehouseProduct, addStoreProduct } = useApp();
   const { t } = useLocale();
   const { username, hasPermission } = useAuth();
   const { notify } = useNotification();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -78,11 +77,13 @@ export default function Clients() {
   };
   
   const handlePhoneChange = (value) => {
-    const digits = value.replace(/\D/g, '').slice(0, 9);
+    const allDigits = value.replace(/\D/g, '');
+    const localDigits = allDigits.startsWith('998') ? allDigits.substring(3) : allDigits;
+    const digits = localDigits.slice(0, 9);
     setRawPhone(digits);
     setPhone(formatPhone(digits));
   };
-  const [confirm, setConfirm] = useState({ open: false, id: null });
+  const [confirm, setConfirm] = useState({ open: false, id: null, password: '', verifying: false });
   const [search, setSearch] = useState('');
   
   // State for credit dialogs (kept as is)
@@ -90,7 +91,7 @@ export default function Clients() {
   const [viewCreditsOpen, setViewCreditsOpen] = useState(false);
   const [creditClient, setCreditClient] = useState(null);
   const [viewClient, setViewClient] = useState(null);
-  const [creditType, setCreditType] = useState('pul'); // 'pul' or 'mahsulot'
+  const [creditType, setCreditType] = useState('cash'); // 'cash' or 'product'
   const [creditSubtype, setCreditSubtype] = useState('berilgan'); // 'olingan' or 'berilgan'
   const [creditAmount, setCreditAmount] = useState('');
   const [creditCurrency, setCreditCurrency] = useState('UZS');
@@ -102,18 +103,15 @@ export default function Clients() {
 
 
   const handleSave = () => {
-    if (!(hasPermission && hasPermission('credits_manage'))) { notify('Error', t('permissionDenied') || 'Permission denied', 'error'); return; }
     if (!name.trim()) return;
     if (rawPhone.length !== 9) { notify('Warning', 'Telefon raqami 9 ta raqam bo\'lishi kerak', 'warning'); return; }
     const formattedPhone = formatPhone(rawPhone);
-    const payload = { id: uuidv4(), name: name.trim(), phone: formattedPhone, owner: username };
+    const payload = { id: uuidv4(), name: name.trim(), phone: formattedPhone };
     addClient(payload, { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CLIENT_ADD', kind: 'CLIENT_ADD', product_name: payload.name, qty: 1, unit_price: 0, amount: 0, currency: 'UZS', detail: `Added client ${payload.name}` });
     setOpen(false);
   };
 
   const handleEditSave = () => {
-      const handleEditSave = () => {
-    if (!(hasPermission && hasPermission('credits_manage'))) { notify('Error', t('permissionDenied') || 'Permission denied', 'error'); return; }
     if (!editClient || !name.trim()) return;
     if (rawPhone.length !== 9) { notify('Warning', 'Telefon raqami 9 ta raqam bo\'lishi kerak', 'warning'); return; }
     const formattedPhone = formatPhone(rawPhone);
@@ -121,126 +119,194 @@ export default function Clients() {
     setEditClient(null);
   };
   
-  const handleDelete = (id) => {
-    const client = state.clients.find(c => c.id === id);
-    deleteClient(id, { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CLIENT_DELETE', kind: 'CLIENT_DELETE', product_name: client?.name || id, qty: 1, unit_price: 0, amount: 0, currency: 'UZS', detail: `Deleted client ${client?.name || id}` });
-    setConfirm({ open: false, id: null });
+  const handleDeleteClick = (id) => {
+    setConfirm({ open: true, id, password: '', verifying: false });
   };
 
-  const addProduct = () => setProducts([...products, { name: '', qty: '', receivePrice: '', receiveCurrency: 'UZS', sellPrice: '', sellCurrency: 'UZS' }]);
+  const handlePasswordConfirm = async () => {
+    if (!confirm.password) {
+      notify('Xato', 'Parol kiritish kerak', 'error');
+      return;
+    }
+
+    setConfirm(s => ({ ...s, verifying: true }));
+
+    try {
+      // Parolni tekshirish
+      const { data, error } = await supabase
+        .from('user_credentials')
+        .select('password_hash')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (error || !data) {
+        notify('Xato', 'Foydalanuvchi topilmadi', 'error');
+        setConfirm(s => ({ ...s, verifying: false }));
+        return;
+      }
+
+      // Parol tekshirish
+      if (data.password_hash !== confirm.password) {
+        notify('Xato', 'Parol noto\'g\'ri! Klient o\'chirilmadi.', 'error');
+        setConfirm(s => ({ ...s, verifying: false, password: '' }));
+        return;
+      }
+
+      // Parol to'g'ri - klientni o'chir
+      const client = state.clients.find(c => c.id === confirm.id);
+      deleteClient(confirm.id, { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CLIENT_DELETE', kind: 'CLIENT_DELETE', product_name: client?.name || confirm.id, qty: 1, unit_price: 0, amount: 0, currency: 'UZS', detail: `Deleted client ${client?.name || confirm.id}` });
+      notify('Muvaffaqiyat', 'Klient o\'chirildi', 'success');
+      setConfirm({ open: false, id: null, password: '', verifying: false });
+    } catch (err) {
+      console.error('Delete error:', err);
+      notify('Xato', 'Klientni o\'chirishda xatolik yuz berdi', 'error');
+      setConfirm(s => ({ ...s, verifying: false }));
+    }
+  };
+
+  const addProduct = () => setProducts([...products, { name: '', qty: '', receivePrice: '', receiveCurrency: 'UZS', sellPrice: '', sellCurrency: 'UZS', isNewProduct: false }]);
   const updateProduct = (index, field, value) => setProducts(products.map((p, i) => i === index ? { ...p, [field]: value } : p));
   const removeProduct = (index) => setProducts(products.filter((_, i) => i !== index));
 
   const handleAddCredit = async () => {
-    let amount, currency;
-    let detail = '';
     const initialPayAmount = Number(initialPayment) || 0;
 
-    if (creditType === 'pul') {
+    if (creditType === 'cash') {
       if (!creditAmount) return;
       const totalAmount = Number(creditAmount);
       if (initialPayAmount > totalAmount) {
         notify('Warning', "Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas", 'warning'); return;
       }
-      amount = totalAmount;
-      currency = creditCurrency;
-      detail = `Added money credit for ${creditClient.name}: ${totalAmount} ${currency}`;
-      if (initialPayAmount > 0) {
-        detail += `, with an initial payment of ${initialPayAmount} ${currency}`;
-      }
-    } else {
-      if (products.length === 0 || products.some(p => !p.name || !p.qty || (creditSubtype === 'olingan' ? !p.receivePrice : !p.sellPrice))) return;
-      amount = products.reduce((sum, p) => sum + Number(p.qty) * Number(creditSubtype === 'olingan' ? p.receivePrice : p.sellPrice), 0);
-      currency = products[0][creditSubtype === 'olingan' ? 'receiveCurrency' : 'sellCurrency'];
-      if (initialPayAmount > amount) {
-        notify('Warning', "Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas", 'warning'); return;
-      }
-      const productDetails = products.map(p => `${p.qty} x ${p.name}`).join(', ');
-      detail = `Added product credit for ${creditClient.name}: ${productDetails}`;
-      if (initialPayAmount > 0) {
-        detail += `, with an initial payment of ${initialPayAmount} ${currency}`;
-      }
-    }
-
-    const logPayload = {
+      const payload = {
         id: uuidv4(),
-        user_name: username,
-        action: 'CREDIT_ADD',
-        kind: creditType === 'pul' ? 'CREDIT_ADD_MONEY' : 'CREDIT_ADD_PRODUCT',
-        product_name: creditClient.name,
-        detail: detail,
-        date: new Date().toISOString().slice(0, 10),
-        time: new Date().toLocaleTimeString(),
-        amount: amount,
-        currency: currency,
-    };
-    // insertLog(logPayload); // Removed: addCredit action already handles logging
+        client_id: creditClient.id,
+        name: creditClient.name,
+        credit_type: 'cash',
+        amount: totalAmount,
+        currency: creditCurrency,
+        bosh_toluv: initialPayAmount,
+        completed: (totalAmount - initialPayAmount) <= 0,
+        created_by: username,
+        date: creditDate,
+        note: creditNote,
+      };
+        const logData = {
+          id: uuidv4(),
+          date: payload.date || new Date().toISOString().slice(0, 10),
+          time: new Date().toLocaleTimeString(),
+          user_name: username,
+          action: 'CREDIT_ADD',
+          kind: 'CREDIT_ADD',
+          product_name: null,
+          qty: 1,
+          unit_price: payload.amount,
+          amount: payload.amount,
+          currency: payload.currency || 'UZS',
+          client_name: payload.name,
+          down_payment: payload.bosh_toluv,
+          remaining: (payload.amount || 0) - (payload.bosh_toluv || 0),
+          credit_type: payload.credit_type || payload.type || 'cash',
+          detail: `Added cash credit for ${creditClient.name}: amount ${payload.amount} ${payload.currency || 'UZS'}`
+        };
+        await addCredit(payload, logData);
 
-    // Use AppContext action which enforces permissions
-    try {
-      await addCredit(payload, { id: uuidv4(), user: username, action: 'CREDIT_ADD', detail: `Added credit for ${creditClient.name}` });
-    } catch (e) {
-      console.error('addCredit failed', e);
-      // window.alert(t('permissionDenied') || 'Permission denied'); // Removed as AppContext's addCredit handles this
-      return;
+    } else { // product
+      if (products.length === 0 || products.some(p => !p.name || !p.qty || !p.sellPrice)) return;
+
+      for (const p of products) {
+        let productId;
+        let productName = p.name;
+        let productQty = Number(p.qty);
+        let productUnitPrice = Number(p.sellPrice);
+        let productCurrency = p.sellCurrency;
+
+        if (p.isNewProduct) {
+          if (creditSubtype === 'olingan') {
+            // New product being received as credit
+            const newProductId = uuidv4();
+            const productPayload = {
+              id: newProductId,
+              name: productName,
+              qty: productQty,
+              price: Number(p.receivePrice),
+              currency: p.receiveCurrency
+            };
+            const logData = { id: uuidv4(), user_name: username, action: 'PRODUCT_ADD', detail: `Added new product ${productName} via credit from client ${creditClient.name}` };
+            if (location === 'warehouse') {
+              await addWarehouseProduct(productPayload, logData);
+            } else {
+              await addStoreProduct(productPayload, logData);
+            }
+            productId = newProductId;
+          } else {
+            notify('Error', 'Yangi mahsulotni faqat qabul qilingan nasiya sifatida kiritish mumkin.', 'error');
+            return;
+          }
+        } else {
+          // Existing product
+          const inventory = location === 'warehouse' ? state.warehouse : state.store;
+          const existingProduct = inventory.find(item => item.name === p.name);
+          if (!existingProduct) {
+            notify('Error', `Mahsulot "${p.name}" ${location === 'warehouse' ? 'omborda' : 'do\'konda'} topilmadi.`, 'error');
+            return;
+          }
+          productId = existingProduct.id;
+        }
+
+        const payload = {
+          id: uuidv4(),
+          client_id: creditClient.id,
+          name: creditClient.name,
+          credit_type: 'product',
+          product_id: productId,
+          qty: productQty,
+          unit_price: productUnitPrice,
+          currency: productCurrency,
+          bosh_toluv: 0,
+          completed: false,
+          created_by: username,
+          date: creditDate,
+          note: creditNote,
+        };
+        const logData = {
+          id: uuidv4(),
+          date: payload.date || new Date().toISOString().slice(0, 10),
+          time: new Date().toLocaleTimeString(),
+          user_name: username,
+          action: 'CREDIT_ADD',
+          kind: 'CREDIT_ADD',
+          product_name: productName,
+          qty: productQty,
+          unit_price: productUnitPrice,
+          amount: (productQty || 0) * (productUnitPrice || 0),
+          currency: productCurrency || 'UZS',
+          product_id: productId,
+          client_name: creditClient.name,
+          down_payment: 0,
+          remaining: (productQty || 0) * (productUnitPrice || 0),
+          credit_type: 'product',
+          detail: `Added product credit for ${creditClient.name}: ${productQty} x ${productName} @ ${productUnitPrice} ${productCurrency || 'UZS'}`
+        };
+        await addCredit(payload, logData);
+      }
     }
-    
-    if (initialPayAmount > 0) {
+
+    if (initialPayAmount > 0 && creditType === 'product') {
       const paymentLog = {
           id: uuidv4(),
           user_name: username,
           action: 'CREDIT_PAYMENT',
           kind: 'PAYMENT',
           product_name: `Payment for credit to ${creditClient.name}`,
-          detail: `Initial payment of ${initialPayAmount} ${currency} for credit to ${creditClient.name}`,
+          detail: `Initial payment of ${initialPayAmount} ${creditCurrency} for credit to ${creditClient.name}`,
           date: new Date().toISOString().slice(0, 10),
           time: new Date().toLocaleTimeString(),
           amount: initialPayAmount,
-          currency: currency,
+          currency: creditCurrency,
       };
-      await insertLog(paymentLog); // Await this as it's an async operation
+      await insertLog(paymentLog);
     }
 
-    if (creditType === 'mahsulot') {
-      for (const p of products) { // Use for...of for async operations in loop
-        if (creditSubtype === 'olingan') {
-          // Add to inventory using useApp action creator
-          const productPayload = {
-            id: uuidv4(),
-            name: p.name,
-            qty: Number(p.qty),
-            price: Number(p.receivePrice),
-            cost: Number(p.sellPrice),
-            currency: p.receiveCurrency
-          };
-          const logData = { id: uuidv4(), user_name: username, action: 'WAREHOUSE_ADD', detail: `Added ${p.qty} ${p.name} from client ${creditClient.name}` };
-          if (location === 'warehouse') {
-            await addWarehouseProduct(productPayload, logData);
-          } else {
-            await addStoreProduct(productPayload, logData);
-          }
-        } else {
-          // Subtract from inventory using useApp action creator
-          const inventory = location === 'warehouse' ? state.warehouse : state.store;
-          const existing = inventory.find(item => item.name === p.name);
-          if (existing) {
-            const newQty = Number(existing.qty) - Number(p.qty);
-            if (newQty < 0) {
-              notify('Warning', `Not enough ${p.name} in ${location}. Available: ${existing.qty}, trying to sell: ${p.qty}`, 'warning');
-              continue; // Skip this product or handle error more robustly
-            }
-            const logData = { id: uuidv4(), user_name: username, action: 'INVENTORY_SELL', detail: `Sold ${p.qty} ${p.name} to client ${creditClient.name}` };
-            if (location === 'warehouse') {
-              await updateWarehouseProduct(existing.id, { qty: newQty }, logData);
-            } else {
-              await updateStoreProduct(existing.id, { qty: newQty }, logData);
-            }
-          } else {
-            notify('Error', `Product ${p.name} not found in ${location}.`, 'error');
-          }
-        }
-      }
-    }
     setCreditOpen(false);
     setCreditClient(null);
   };
@@ -251,7 +317,7 @@ export default function Clients() {
     <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">{t('clients')}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setOpen(true); setName(''); setRawPhone(''); setPhone('+998 '); }} disabled={!(hasPermission && hasPermission('credits_manage'))}>{t('addClient')}</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setOpen(true); setName(''); setRawPhone(''); setPhone('+998 '); }}>{t('addClient')}</Button>
       </Box>
       <Paper sx={{ p: 2 }}>
         <TextField
@@ -268,10 +334,10 @@ export default function Clients() {
               client={c}
               canManageCredits={hasPermission && hasPermission('credits_manage')}
               onEdit={() => { setEditClient(c); setName(c.name); const digits = parsePhone(c.phone); setRawPhone(digits); setPhone(formatPhone(digits)); }}
-              onDelete={() => setConfirm({ open: true, id: c.id })}
+              onDelete={() => handleDeleteClick(c.id)}
               onAddCredit={() => { 
                 setCreditClient(c); 
-                setCreditType('pul');
+                setCreditType('cash');
                 setCreditSubtype('berilgan');
                 setCreditAmount('');
                 setInitialPayment('');
@@ -309,9 +375,40 @@ export default function Clients() {
         </DialogActions>
       </Dialog>
       
-      <ConfirmDialog open={confirm.open} onClose={() => setConfirm({ open: false, id: null })} title={t('confirm_delete_client')} onConfirm={() => handleDelete(confirm.id)}>
+      <ConfirmDialog open={confirm.open} onClose={() => setConfirm({ open: false, id: null, password: '', verifying: false })} title={t('confirm_delete_client')} onConfirm={() => handlePasswordConfirm()}>
         {t('confirm_delete_body')}
       </ConfirmDialog>
+      
+      {/* Password Confirmation Dialog for Client Deletion */}
+      <Dialog open={confirm.open} onClose={() => setConfirm({ open: false, id: null, password: '', verifying: false })} fullWidth maxWidth="sm">
+        <DialogTitle>Klientni o'chirish uchun parol tasdiqlang</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>Klientni o'chirish uchun joriy akkauntning parolini kiriting:</Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            type="password"
+            label="Parol"
+            value={confirm.password}
+            onChange={(e) => setConfirm(s => ({ ...s, password: e.target.value }))}
+            disabled={confirm.verifying}
+            margin="normal"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirm({ open: false, id: null, password: '', verifying: false })} disabled={confirm.verifying}>
+            Bekor
+          </Button>
+          <Button 
+            onClick={handlePasswordConfirm} 
+            color="error" 
+            variant="contained" 
+            disabled={confirm.verifying || !confirm.password}
+          >
+            {confirm.verifying ? <CircularProgress size={24} /> : "O'chirish"}
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Placeholder for complex credit dialogs */}
       <CreditsDialog open={viewCreditsOpen} onClose={() => setViewCreditsOpen(false)} clientId={viewClient?.id} clientName={viewClient?.name} />
@@ -328,8 +425,8 @@ export default function Clients() {
             value={creditType}
             onChange={(e) => setCreditType(e.target.value)}
           >
-            <MenuItem value="pul">Pul</MenuItem>
-            <MenuItem value="mahsulot">Mahsulot</MenuItem>
+            <MenuItem value="cash">Pul</MenuItem>
+            <MenuItem value="product">Mahsulot</MenuItem>
           </TextField>
           <TextField
             select
@@ -342,7 +439,7 @@ export default function Clients() {
             <MenuItem value="olingan">Olingan</MenuItem>
             <MenuItem value="berilgan">Berilgan</MenuItem>
           </TextField>
-          {creditType === 'pul' ? (
+          {creditType === 'cash' ? (
             <>
               <TextField
                 label="Miqdor"
@@ -389,28 +486,37 @@ export default function Clients() {
               {products.map((p, index) => (
                 <Grid container spacing={1} key={index} sx={{ mb: 2, alignItems: 'center' }}>
                   <Grid item xs={12} sm={4}>
-                    {creditSubtype === 'berilgan' ? (
-                      <TextField
-                        select
-                        label="Mahsulot"
-                        fullWidth
-                        margin="dense"
-                        value={p.name}
-                        onChange={(e) => updateProduct(index, 'name', e.target.value)}
-                      >
-                        {(location === 'warehouse' ? state.warehouse : state.store).map(item => (
-                          <MenuItem key={item.id} value={item.name}>{item.name} (Mavjud: {item.qty})</MenuItem>
-                        ))}
-                      </TextField>
-                    ) : (
-                      <TextField
-                        label="Mahsulot nomi"
-                        fullWidth
-                        margin="dense"
-                        value={p.name}
-                        onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {p.isNewProduct ? (
+                        <TextField
+                          label="Mahsulot nomi"
+                          fullWidth
+                          margin="dense"
+                          value={p.name}
+                          onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                        />
+                      ) : (
+                        <TextField
+                          select
+                          label="Mahsulotni tanlang"
+                          fullWidth
+                          margin="dense"
+                          value={p.name}
+                          onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                        >
+                          <MenuItem value="">-- Mahsulotni tanlang --</MenuItem>
+                          {(location === 'warehouse' ? state.warehouse : state.store).map(item => (
+                            <MenuItem key={item.id} value={item.name}>{item.name} (Mavjud: {item.qty})</MenuItem>
+                          ))}
+                        </TextField>
+                      )}
+                      <Checkbox
+                        checked={p.isNewProduct || false}
+                        onChange={(e) => updateProduct(index, 'isNewProduct', e.target.checked)}
+                        inputProps={{ 'aria-label': 'Yangi mahsulot' }}
                       />
-                    )}
+
+                    </Box>
                   </Grid>
                   <Grid item xs={6} sm={2}>
                     <TextField
@@ -511,7 +617,7 @@ export default function Clients() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreditOpen(false)}>Bekor</Button>
-          <Button onClick={handleAddCredit} variant="contained" disabled={creditType === 'pul' ? !creditAmount : products.length === 0 || products.some(p => !p.name || !p.qty || (creditSubtype === 'olingan' ? !p.receivePrice : !p.sellPrice))}>Qoshish</Button>
+          <Button onClick={handleAddCredit} variant="contained" disabled={creditType === 'cash' ? !creditAmount : products.length === 0 || products.some(p => !p.name || !p.qty || (p.isNewProduct && creditSubtype === 'olingan' ? !p.receivePrice : !p.sellPrice))}>Qoshish</Button>
         </DialogActions>
       </Dialog>
 
