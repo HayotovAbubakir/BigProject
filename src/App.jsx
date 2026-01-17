@@ -6,7 +6,6 @@ import { ThemeModeContext } from './context/ThemeModeContext'
 import { NotificationProvider } from './context/NotificationContext'
 import enableDevToolsLock from './utils/devToolsLock'
 import { lightTheme, darkTheme } from './theme'
-import { loadAppState, saveAppState } from './firebase/db'
 
 import Layout from './components/Layout'
 const ReceiptApp = React.lazy(() => import('./components/ReceiptApp'))

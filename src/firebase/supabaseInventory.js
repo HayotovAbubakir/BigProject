@@ -45,7 +45,7 @@ export const insertProduct = async (product) => {
     const { data, error } = await supabase
       .from('products')
       .insert(safe)
-      .select()
+      .select('*')
       .single()
 
     if (error) {
@@ -79,7 +79,7 @@ export const updateProduct = async (id, updates) => {
       .from('products')
       .update(safeUpdates)
       .eq('id', id)
-      .select()
+      .select('*')
       .single();
 
     if (error) {
@@ -100,12 +100,14 @@ export const updateProduct = async (id, updates) => {
 export const deleteProduct = async (id) => {
   if (!isSupabaseConfigured()) return false
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('products')
       .delete()
       .eq('id', id)
+      .select('*')
+      .single()
     if (error) throw error
-    return true
+    return data
   } catch (err) {
     console.error('deleteProduct error:', err)
     throw err

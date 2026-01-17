@@ -9,8 +9,22 @@ export const isAdmin = (user) => {
 export const hasPermission = (user, perm) => {
   if (!perm) return false
   if (!user) return false
+  // Developer and admin accounts should NEVER have new_account_restriction
+  if (perm === 'new_account_restriction') {
+    if (isDeveloper(user) || isAdmin(user)) {
+      return false  // Admins/developers are never restricted
+    }
+    // Regular users check their individual permissions
+    if (user.role === 'user') {
+      const p = user.permissions || {}
+      return !!p[perm]
+    }
+    return false
+  }
+  // For other permissions: Developer and admin have full access
   if (isDeveloper(user)) return true
-  if (isAdmin(user)) return true // admins have no restrictions by default
+  if (isAdmin(user)) return true
+  // Regular users check their individual permissions from the permissions object
   if (user.role === 'user') {
     const p = user.permissions || {}
     return !!p[perm]

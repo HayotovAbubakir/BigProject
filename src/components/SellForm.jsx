@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment } from '@mui/material'
 import NumberField from './NumberField'
+import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
 
 export default function SellForm({ open, onClose, onSubmit, initial }) {
@@ -48,7 +49,7 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
           </Select>
         </FormControl>
 
-        <NumberField label="Birlik narxi" value={price} onChange={(v) => setPrice(Number(v || 0))} fullWidth sx={{ mt: 2 }} error={parsedPrice <= 0} helperText={parsedPrice <= 0 ? 'Musbat narx kiriting' : ''} />
+        <CurrencyField label="Birlik narxi" value={price} onChange={(v) => setPrice(v)} fullWidth sx={{ mt: 2 }} error={parsedPrice <= 0} helperText={parsedPrice <= 0 ? 'Musbat narx kiriting' : ''} currency={currency} />
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>

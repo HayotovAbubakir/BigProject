@@ -28,7 +28,11 @@ export const AuthProvider = ({ children }) => {
             const { data: fresh, error: freshErr } = await supabase.from('user_credentials').select('username, role, permissions').eq('username', userData.username).maybeSingle()
             if (!freshErr && fresh) {
               const role = fresh.role || userData.role || 'user'
-              const permissions = role === 'user' ? (fresh.permissions || {}) : {}
+              let permissions = role === 'user' ? (fresh.permissions || {}) : {}
+              // Ensure admin and developer accounts are never restricted
+              if (role === 'admin' || role === 'developer') {
+                permissions = { new_account_restriction: false }
+              }
               const merged = { username: (fresh.username || userData.username), role, permissions }
               setUser(merged)
               localStorage.setItem('currentUser', JSON.stringify(merged))
@@ -58,25 +62,54 @@ export const AuthProvider = ({ children }) => {
     const { username, password } = payload || {}
     setLoading(true)
     try {
+      // Normalize username to lowercase
+      const normalizedUsername = (username || '').toLowerCase().trim()
+      const normalizedPassword = (password || '').trim()
+      
+      console.log('Attempting login for user:', normalizedUsername)
+      console.log('Password length:', normalizedPassword.length)
+      
+      // Query by exact username (normalized)
       const { data, error } = await supabase
         .from('user_credentials')
         .select('*')
-        .eq('username', username)
+        .eq('username', normalizedUsername)
         .single()
 
       if (error) {
-        console.error('Login error:', error)
+        // Check if it's a "not found" error (PGRST116)
+        if (error.code === 'PGRST116') {
+          console.warn('User not found in database:', normalizedUsername)
+          setLoading(false)
+          return { ok: false, error: 'Invalid username or password' }
+        }
+        console.error('Login query error:', error.message || error.code || JSON.stringify(error))
         setLoading(false)
-        return { ok: false, error: error.message }
+        return { ok: false, error: 'Database error: ' + (error.message || error.code) }
       }
 
-      if (data && data.password_hash === password) {
+      if (!data) {
+        console.warn('No user data returned for:', normalizedUsername)
+        setLoading(false)
+        return { ok: false, error: 'Invalid username or password' }
+      }
+
+      console.log('User found:', normalizedUsername, 'Role:', data.role)
+      console.log('Stored password_hash length:', (data.password_hash || '').length)
+
+      // Check password (direct string comparison)
+      if (data.password_hash === normalizedPassword) {
+        console.log('Password match! Logging in user:', normalizedUsername)
         const role = data.role || 'user'
+        let permissions = role === 'user' ? (data.permissions || {}) : {}
+        // Ensure admin and developer accounts are never restricted
+        if (role === 'admin' || role === 'developer') {
+          permissions = { new_account_restriction: false }
+        }
         const userData = {
           username: data.username,
           role,
-          // Only apply permissions JSON for regular users
-          permissions: role === 'user' ? (data.permissions || {}) : {}
+          permissions
         }
         localStorage.setItem('currentUser', JSON.stringify(userData))
         setUser(userData)
@@ -84,11 +117,15 @@ export const AuthProvider = ({ children }) => {
         setLoading(false)
         return { ok: true }
       } else {
+        console.warn('Password mismatch for user:', normalizedUsername)
+        console.log('Expected password_hash:', data.password_hash)
+        console.log('Provided password:', normalizedPassword)
+        
         // Fallback: try Supabase Auth sign-in (in case account was created via Supabase Auth console)
         try {
           const email = username && username.includes('@') ? username : (username + '@example.com')
           if (supabase?.auth && typeof supabase.auth.signInWithPassword === 'function') {
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, normalizedPassword })
             if (!authError && authData?.user) {
               // Sync into user_credentials table for future local logins
               const syncUsername = username && username.includes('@') ? username.split('@')[0] : username
@@ -96,7 +133,7 @@ export const AuthProvider = ({ children }) => {
               try {
                 const { data: existing } = await supabase.from('user_credentials').select('username, role, permissions').eq('username', syncUsername).maybeSingle()
                 if (existing) {
-                  await supabase.from('user_credentials').update({ password_hash: password }).eq('username', syncUsername)
+                  await supabase.from('user_credentials').update({ password_hash: normalizedPassword }).eq('username', syncUsername).select('*').single()
                   const role = existing.role || 'user'
                   const userData = { username: syncUsername, role, permissions: role === 'user' ? (existing.permissions || {}) : {} }
                   localStorage.setItem('currentUser', JSON.stringify(userData))
@@ -105,7 +142,7 @@ export const AuthProvider = ({ children }) => {
                   setLoading(false)
                   return { ok: true }
                 } else {
-                  await supabase.from('user_credentials').insert({ username: syncUsername, password_hash: password, role: 'user', permissions: {}, created_by: 'auto-sync' })
+                  await supabase.from('user_credentials').insert({ username: syncUsername, password_hash: normalizedPassword, role: 'user', permissions: {}, created_by: 'auto-sync' })
                   const userData = { username: syncUsername, role: 'user', permissions: {} }
                   localStorage.setItem('currentUser', JSON.stringify(userData))
                   setUser(userData)
@@ -174,10 +211,15 @@ export const AuthProvider = ({ children }) => {
   const registerUser = async (username, password, role = 'user', permissions = {}) => {
     // Called by admin UI: insert into user_credentials so login and restrictions work
     try {
+      console.log('registerUser called for:', username, 'with role:', role)
       const res = await addUser(username, password, role, permissions)
+      console.log('addUser result:', res)
       if (!res || !res.success) {
-        return { ok: false, error: res && res.error }
+        const errorMsg = (res && res.error) || 'Unknown error'
+        console.error('registerUser failed:', errorMsg)
+        return { ok: false, error: errorMsg }
       }
+      console.log('User registered successfully:', username)
       // Optionally create Supabase Auth user so fallback auth works (non-blocking)
       try {
         const email = username.includes('@') ? username : (username + '@example.com')
@@ -195,7 +237,10 @@ export const AuthProvider = ({ children }) => {
   }
 
   const verifyLocalPassword = (username, password) => {
-    // Not needed
+    // Verify password for hamdamjon (1010) and habibjon (0000)
+    const lowerUsername = (username || '').toString().toLowerCase()
+    if (lowerUsername === 'hamdamjon' && password === '1010') return true
+    if (lowerUsername === 'habibjon' && password === '0000') return true
     return false
   }
 
@@ -205,33 +250,61 @@ export const AuthProvider = ({ children }) => {
 
   const addUser = async (username, password, role = 'user', permissions = {}) => {
     try {
+      // Normalize username to lowercase for consistency
+      const normalizedUsername = (username || '').toLowerCase().trim()
+      const normalizedPassword = (password || '').trim()
+      
+      if (!normalizedUsername) {
+        console.warn('Empty username provided')
+        return { success: false, error: 'Username cannot be empty' }
+      }
+
+      if (!normalizedPassword) {
+        console.warn('Empty password provided')
+        return { success: false, error: 'Password cannot be empty' }
+      }
+
+      console.log('addUser: Creating user', normalizedUsername, 'with role:', role, 'password length:', normalizedPassword.length)
+
       // Authorization: who can create what
       const caller = user
       if (!caller) {
         // allow self-signup only for regular users
-        if (role !== 'user') return { success: false, error: 'Not authorized to create admin/developer' }
+        if (role !== 'user') {
+          console.warn('Non-admin user trying to create admin/developer')
+          return { success: false, error: 'Not authorized to create admin/developer' }
+        }
       } else if (isDeveloper(caller)) {
+        console.log('addUser: Developer creating user')
         // developer may create any account
       } else if (isAdmin(caller)) {
+        console.log('addUser: Admin creating user')
         // admins may only create ordinary users
-        if (role !== 'user') return { success: false, error: 'Admins may only create ordinary users' }
+        if (role !== 'user') {
+          console.warn('Admin trying to create non-user account')
+          return { success: false, error: 'Admins may only create ordinary users' }
+        }
       } else {
+        console.warn('Unauthorized user trying to create account')
         return { success: false, error: 'Not authorized to create accounts' }
       }
 
       // Ensure permissions JSON is only stored for regular users
       const sanitizedPermissions = role === 'user' ? (permissions || {}) : {}
 
+      console.log('Inserting into user_credentials:', { username: normalizedUsername, role, permissions: sanitizedPermissions })
+
       const { data, error } = await supabase
         .from('user_credentials')
-        .insert({ username, password_hash: password, role, permissions: sanitizedPermissions, created_by: user?.username || 'system' })
+        .insert({ username: normalizedUsername, password_hash: normalizedPassword, role, permissions: sanitizedPermissions, created_by: user?.username || 'system' })
         .select()
 
       if (error) {
-        console.error('Add user error:', error)
-        return { success: false, error: error.message }
+        console.error('Add user error:', error.message || JSON.stringify(error))
+        return { success: false, error: error.message || 'Failed to create user' }
       }
 
+      console.log('User created successfully:', data)
       return { success: true, data }
     } catch (err) {
       console.error('Add user failed:', err)
@@ -249,10 +322,12 @@ export const AuthProvider = ({ children }) => {
 
       // Authorization checks
       if (isDeveloper(caller)) {
-        // allowed
+        // Developer can modify anyone
       } else if (isAdmin(caller)) {
         // Admins cannot modify other admins or developer
-        if (targetRole !== 'user') return { success: false, error: 'Admins cannot modify other admins or developer' }
+        if (targetRole === 'admin' || targetRole === 'developer') {
+          return { success: false, error: 'Admins cannot modify other admins or developer' }
+        }
         // Admins may set permissions only for users; sanitize below
       } else {
         // regular users: only allow updating own password
@@ -284,7 +359,8 @@ export const AuthProvider = ({ children }) => {
         .from('user_credentials')
         .update(sanitizedUpdates)
         .eq('username', username)
-        .select()
+        .select('*')
+        .single()
 
       if (error) {
         console.error('Update user error:', error)
@@ -317,7 +393,8 @@ export const AuthProvider = ({ children }) => {
         .from('user_credentials')
         .delete()
         .eq('username', username)
-        .select()
+        .select('*')
+        .single()
 
       if (error) {
         console.error('Delete user error:', error)

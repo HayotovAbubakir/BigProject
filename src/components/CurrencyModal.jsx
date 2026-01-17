@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, RadioGroup, FormControlLabel, Radio, TextField, Box } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, RadioGroup, FormControlLabel, Radio } from '@mui/material'
+import { useLocale } from '../context/LocaleContext'
 
 export default function CurrencyModal({ open, onClose, current = 'UZS', onConfirm }) {
   const [currency, setCurrency] = useState(current)
+  const { t } = useLocale()
 
   useEffect(() => {
     if (!open) return
@@ -16,7 +18,7 @@ export default function CurrencyModal({ open, onClose, current = 'UZS', onConfir
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
-      <DialogTitle>Valyuta tanlash</DialogTitle>
+      <DialogTitle>{t('selectCurrency') || 'Valyuta tanlash'}</DialogTitle>
       <DialogContent>
         <RadioGroup value={currency} onChange={(e) => setCurrency(e.target.value)}>
           <FormControlLabel value="UZS" control={<Radio />} label="UZS" />
@@ -25,8 +27,8 @@ export default function CurrencyModal({ open, onClose, current = 'UZS', onConfir
         {}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Bekor qilish</Button>
-        <Button variant="contained" onClick={handleConfirm}>OK</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
+        <Button variant="contained" onClick={handleConfirm}>{t('save')}</Button>
       </DialogActions>
     </Dialog>
   )

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment, TextField } from '@mui/material'
 import NumberField from './NumberField'
+import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { formatMoney } from '../utils/format'
 
@@ -60,7 +61,7 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
           </Select>
         </FormControl>
 
-        <NumberField label="Sotish narxi (bir dona)" fullWidth margin="dense" value={price} onChange={(v) => setPrice(Number(v || 0))} />
+        <CurrencyField label="Sotish narxi (bir dona)" fullWidth margin="dense" value={price} onChange={(v) => setPrice(v)} currency={currency} />
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>

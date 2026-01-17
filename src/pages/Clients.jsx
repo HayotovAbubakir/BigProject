@@ -17,6 +17,7 @@ import { useLocale } from '../context/LocaleContext';
 import { useNotification } from '../context/NotificationContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CreditsDialog from '../components/CreditsDialog';
+import CurrencyField from '../components/CurrencyField';
 import { insertLog } from '../firebase/supabaseLogs';
 import { supabase } from '/supabase/supabaseClient';
 // Note: The credit management dialogs and logic are complex and are kept as is to avoid breaking functionality.
@@ -47,7 +48,7 @@ function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canM
 }
 
 export default function Clients() {
-  const { state, addClient, updateClient, deleteClient, addCredit, addWarehouseProduct, addStoreProduct } = useApp();
+  const { state, addClient, updateClient, deleteClient, addCredit, addWarehouseProduct, addStoreProduct, updateWarehouseProduct, updateStoreProduct, updateCredit } = useApp();
   const { t } = useLocale();
   const { username, hasPermission } = useAuth();
   const { notify } = useNotification();
@@ -196,7 +197,7 @@ export default function Clients() {
           time: new Date().toLocaleTimeString(),
           user_name: username,
           action: 'CREDIT_ADD',
-          kind: 'CREDIT_ADD',
+          kind: 'credit',
           product_name: null,
           qty: 1,
           unit_price: payload.amount,
@@ -251,6 +252,32 @@ export default function Clients() {
             return;
           }
           productId = existingProduct.id;
+          // If giving product to client (berilgan), decrement stock
+          if (creditSubtype === 'berilgan') {
+            const available = Number(existingProduct.qty || 0);
+            if (available < productQty) {
+              notify('Error', `Tanlangan mahsulotdan yetarli zaxira yo'q. Mavjud: ${available}`, 'error');
+              return;
+            }
+            const newQty = Math.max(0, available - productQty);
+            const invLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'product_credited', kind: 'CREDIT', product_name: existingProduct.name, qty: productQty, detail: `Product credited to client ${creditClient.name}: -${productQty}` };
+            if (location === 'warehouse') {
+              await updateWarehouseProduct(existingProduct.id, { qty: newQty }, invLog);
+            } else {
+              await updateStoreProduct(existingProduct.id, { qty: newQty }, invLog);
+            }
+          }
+          // If receiving product from client (olingan), increment stock
+          if (creditSubtype === 'olingan') {
+            const available = Number(existingProduct.qty || 0);
+            const newQty = available + productQty;
+            const invLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'product_received_credit', kind: 'CREDIT', product_name: existingProduct.name, qty: productQty, detail: `Product received on credit from client ${creditClient.name}: +${productQty}` };
+            if (location === 'warehouse') {
+              await updateWarehouseProduct(existingProduct.id, { qty: newQty }, invLog);
+            } else {
+              await updateStoreProduct(existingProduct.id, { qty: newQty }, invLog);
+            }
+          }
         }
 
         const payload = {
@@ -259,22 +286,27 @@ export default function Clients() {
           name: creditClient.name,
           credit_type: 'product',
           product_id: productId,
+          product_name: productName,
           qty: productQty,
           unit_price: productUnitPrice,
+          amount: (productQty || 0) * (productUnitPrice || 0),
+          bosh_toluv: initialPayAmount,
           currency: productCurrency,
-          bosh_toluv: 0,
+          // bosh_toluv set above from initial payment
           completed: false,
           created_by: username,
           date: creditDate,
           note: creditNote,
         };
-        const logData = {
+        
+        // Create BOTH credit log AND sales log for daily_sales reporting
+        const creditLogData = {
           id: uuidv4(),
           date: payload.date || new Date().toISOString().slice(0, 10),
           time: new Date().toLocaleTimeString(),
           user_name: username,
           action: 'CREDIT_ADD',
-          kind: 'CREDIT_ADD',
+          kind: 'credit',
           product_name: productName,
           qty: productQty,
           unit_price: productUnitPrice,
@@ -282,12 +314,52 @@ export default function Clients() {
           currency: productCurrency || 'UZS',
           product_id: productId,
           client_name: creditClient.name,
-          down_payment: 0,
+          down_payment: initialPayAmount || 0,
           remaining: (productQty || 0) * (productUnitPrice || 0),
           credit_type: 'product',
           detail: `Added product credit for ${creditClient.name}: ${productQty} x ${productName} @ ${productUnitPrice} ${productCurrency || 'UZS'}`
         };
-        await addCredit(payload, logData);
+        
+        // ALSO create a SELL log for daily_sales so it appears in dashboard daily sales
+        const salesLogData = {
+          id: uuidv4(),
+          date: payload.date || new Date().toISOString().slice(0, 10),
+          time: new Date().toLocaleTimeString(),
+          user_name: username,
+          action: 'CREDIT_SALE',
+          kind: 'SELL',
+          product_name: productName,
+          qty: productQty,
+          unit_price: productUnitPrice,
+          amount: (productQty || 0) * (productUnitPrice || 0),
+          currency: productCurrency || 'UZS',
+          product_id: productId,
+          client_name: creditClient.name,
+          total_uzs: productCurrency === 'USD' ? Math.round((productQty || 0) * (productUnitPrice || 0) * (state.exchangeRate || 1)) : (productQty || 0) * (productUnitPrice || 0),
+          detail: `Nasiya sotuvı (berildi) ${creditClient.name} ga: ${productQty} x ${productName} @ ${productUnitPrice} ${productCurrency || 'UZS'}`
+        };
+        
+        const created = await addCredit(payload, creditLogData);
+        
+        // Add sales log to daily_sales
+        try {
+          await insertLog(salesLogData);
+        } catch (e) {
+          console.warn('Failed to insert sales log for credit sale', e);
+        }
+        
+        // If initial payment provided, we already included bosh_toluv in payload. If additional processing needed, update credit record.
+        if (initialPayAmount > 0 && created && created.id) {
+          try {
+            const amountVal = Number(payload.amount || 0)
+            const completedFlag = (amountVal - Number(initialPayAmount || 0)) <= 0
+            const updates = { bosh_toluv: Number(initialPayAmount || 0), completed: completedFlag }
+            const creditLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CREDIT_PAYMENT', kind: 'PAYMENT', product_name: `Payment for credit to ${creditClient.name}`, detail: `Initial payment of ${initialPayAmount} ${productCurrency} for credit to ${creditClient.name}`, amount: Number(initialPayAmount || 0), currency: productCurrency }
+            await updateCredit(created.id, updates, creditLog)
+          } catch (e) {
+            console.warn('Failed to apply initial payment to created product credit', e)
+          }
+        }
       }
     }
 
@@ -313,11 +385,18 @@ export default function Clients() {
 
   const filteredClients = state.clients.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()));
 
+  const handleAddClientClick = () => {
+    setOpen(true);
+    setName('');
+    setRawPhone('');
+    setPhone('+998 ');
+  };
+
   return (
     <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">{t('clients')}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setOpen(true); setName(''); setRawPhone(''); setPhone('+998 '); }}>{t('addClient')}</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddClientClick}>{t('addClient')}</Button>
       </Box>
       <Paper sx={{ p: 2 }}>
         <TextField
@@ -381,14 +460,14 @@ export default function Clients() {
       
       {/* Password Confirmation Dialog for Client Deletion */}
       <Dialog open={confirm.open} onClose={() => setConfirm({ open: false, id: null, password: '', verifying: false })} fullWidth maxWidth="sm">
-        <DialogTitle>Klientni o'chirish uchun parol tasdiqlang</DialogTitle>
+        <DialogTitle>{t('enterAdminPassword')}</DialogTitle>
         <DialogContent>
-          <Typography sx={{ mb: 2 }}>Klientni o'chirish uchun joriy akkauntning parolini kiriting:</Typography>
+          <Typography sx={{ mb: 2 }}>{t('confirm_delete_client')}</Typography>
           <TextField
             autoFocus
             fullWidth
             type="password"
-            label="Parol"
+            label={t('password') || 'Parol'}
             value={confirm.password}
             onChange={(e) => setConfirm(s => ({ ...s, password: e.target.value }))}
             disabled={confirm.verifying}
@@ -397,7 +476,7 @@ export default function Clients() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirm({ open: false, id: null, password: '', verifying: false })} disabled={confirm.verifying}>
-            Bekor
+            {t('cancel')}
           </Button>
           <Button 
             onClick={handlePasswordConfirm} 
@@ -405,7 +484,7 @@ export default function Clients() {
             variant="contained" 
             disabled={confirm.verifying || !confirm.password}
           >
-            {confirm.verifying ? <CircularProgress size={24} /> : "O'chirish"}
+            {confirm.verifying ? <CircularProgress size={24} /> : t('delete')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -419,47 +498,47 @@ export default function Clients() {
         <DialogContent sx={{ maxHeight: '70vh', overflowY: 'auto' }}>
           <TextField
             select
-            label="Turi"
+            label={t('type')}
             fullWidth
             margin="dense"
             value={creditType}
             onChange={(e) => setCreditType(e.target.value)}
           >
-            <MenuItem value="cash">Pul</MenuItem>
-            <MenuItem value="product">Mahsulot</MenuItem>
+            <MenuItem value="cash">{t('creditTypeMoney')}</MenuItem>
+            <MenuItem value="product">{t('creditTypeProduct')}</MenuItem>
           </TextField>
           <TextField
             select
-            label="Olish/Berish"
+            label={t('type')}
             fullWidth
             margin="dense"
             value={creditSubtype}
             onChange={(e) => setCreditSubtype(e.target.value)}
           >
-            <MenuItem value="olingan">Olingan</MenuItem>
-            <MenuItem value="berilgan">Berilgan</MenuItem>
+            <MenuItem value="olingan">{t('creditDirectionOlingan')}</MenuItem>
+            <MenuItem value="berilgan">{t('creditDirectionBerish')}</MenuItem>
           </TextField>
           {creditType === 'cash' ? (
             <>
-              <TextField
-                label="Miqdor"
-                type="number"
+              <CurrencyField
+                label={t('amount')}
                 fullWidth
                 margin="dense"
                 value={creditAmount}
-                onChange={(e) => setCreditAmount(e.target.value)}
+                onChange={(val) => setCreditAmount(val)}
+                currency={creditCurrency}
               />
-              <TextField
-                label="Boshlang'ich to'lov"
-                type="number"
+              <CurrencyField
+                label={t('boshToluv')}
                 fullWidth
                 margin="dense"
                 value={initialPayment}
-                onChange={(e) => setInitialPayment(e.target.value)}
+                onChange={(val) => setInitialPayment(val)}
+                currency={creditCurrency}
               />
               <TextField
                 select
-                label="Valyuta"
+                label={t('currency')}
                 fullWidth
                 margin="dense"
                 value={creditCurrency}
@@ -473,14 +552,14 @@ export default function Clients() {
             <>
               <TextField
                 select
-                label="Joylashuv"
+                label={t('location')}
                 fullWidth
                 margin="dense"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
               >
-                <MenuItem value="warehouse">Ombor</MenuItem>
-                <MenuItem value="store">Do'kon</MenuItem>
+                <MenuItem value="warehouse">{t('warehouse')}</MenuItem>
+                <MenuItem value="store">{t('store')}</MenuItem>
               </TextField>
               <Typography variant="subtitle1" sx={{ mt: 2 }}>Mahsulotlar</Typography>
               {products.map((p, index) => (
@@ -489,7 +568,7 @@ export default function Clients() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {p.isNewProduct ? (
                         <TextField
-                          label="Mahsulot nomi"
+                          label={t('productName')}
                           fullWidth
                           margin="dense"
                           value={p.name}
@@ -498,13 +577,13 @@ export default function Clients() {
                       ) : (
                         <TextField
                           select
-                          label="Mahsulotni tanlang"
+                          label={t('selectProduct')}
                           fullWidth
                           margin="dense"
                           value={p.name}
                           onChange={(e) => updateProduct(index, 'name', e.target.value)}
                         >
-                          <MenuItem value="">-- Mahsulotni tanlang --</MenuItem>
+                          <MenuItem value="">-- {t('selectProduct')} --</MenuItem>
                           {(location === 'warehouse' ? state.warehouse : state.store).map(item => (
                             <MenuItem key={item.id} value={item.name}>{item.name} (Mavjud: {item.qty})</MenuItem>
                           ))}
@@ -520,7 +599,7 @@ export default function Clients() {
                   </Grid>
                   <Grid item xs={6} sm={2}>
                     <TextField
-                      label="Soni"
+                      label={t('miqdor')}
                       type="number"
                       fullWidth
                       margin="dense"
@@ -532,7 +611,7 @@ export default function Clients() {
                     <>
                       <Grid item xs={6} sm={2}>
                         <TextField
-                          label="Olish narxi"
+                          label="Olingan narx"
                           type="number"
                           fullWidth
                           margin="dense"
@@ -543,7 +622,7 @@ export default function Clients() {
                       <Grid item xs={6} sm={1}>
                         <TextField
                           select
-                          label="Val"
+                          label={t('currency')}
                           fullWidth
                           margin="dense"
                           value={p.receiveCurrency}
@@ -557,7 +636,7 @@ export default function Clients() {
                   )}
                   <Grid item xs={6} sm={2}>
                     <TextField
-                      label="Sotish narxi"
+                      label={creditSubtype === 'olingan' ? "Aytilgan narx" : t('price')}
                       type="number"
                       fullWidth
                       margin="dense"
@@ -568,7 +647,7 @@ export default function Clients() {
                   <Grid item xs={6} sm={1}>
                     <TextField
                       select
-                      label="Val"
+                      label={t('currency')}
                       fullWidth
                       margin="dense"
                       value={p.sellCurrency}
@@ -587,7 +666,7 @@ export default function Clients() {
               ))}
               <Button onClick={addProduct} variant="outlined" sx={{ mt: 1 }}>Mahsulot qo'shish</Button>
               <TextField
-                label="Boshlang'ich to'lov"
+                label={t('boshToluv')}
                 type="number"
                 fullWidth
                 margin="dense"
@@ -597,7 +676,7 @@ export default function Clients() {
             </>
           )}
           <TextField
-            label="Sana"
+            label={t('date')}
             type="date"
             fullWidth
             margin="dense"
@@ -606,7 +685,7 @@ export default function Clients() {
             InputLabelProps={{ shrink: true }}
           />
           <TextField
-            label="Izoh"
+            label={t('note')}
             fullWidth
             margin="dense"
             value={creditNote}
@@ -616,8 +695,8 @@ export default function Clients() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreditOpen(false)}>Bekor</Button>
-          <Button onClick={handleAddCredit} variant="contained" disabled={creditType === 'cash' ? !creditAmount : products.length === 0 || products.some(p => !p.name || !p.qty || (p.isNewProduct && creditSubtype === 'olingan' ? !p.receivePrice : !p.sellPrice))}>Qoshish</Button>
+          <Button onClick={() => setCreditOpen(false)}>{t('cancel')}</Button>
+          <Button onClick={handleAddCredit} variant="contained" disabled={creditType === 'cash' ? !creditAmount : products.length === 0 || products.some(p => !p.name || !p.qty || (p.isNewProduct && creditSubtype === 'olingan' ? !p.receivePrice : !p.sellPrice))}>{t('add')}</Button>
         </DialogActions>
       </Dialog>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../context/useApp'
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, TextField } from '@mui/material'
 import NumberField from './NumberField'
+import CurrencyField from './CurrencyField'
 import CurrencyModal from './CurrencyModal'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { v4 as uuidv4 } from 'uuid'
@@ -75,7 +76,7 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
         </Box>
         <TextField label="Nomi" fullWidth margin="dense" value={form.name} onChange={handle('name')} />
         <NumberField label="Soni" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: Number(v || 0) }))} />
-        <NumberField label="Narxi (omborda)" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: Number(v || 0) }))} />
+        <CurrencyField label="Narxi (omborda)" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v }))} currency={form.currency} />
       </DialogContent>
       <DialogActions sx={{ px: 2, pb: 2 }}>
         <Button onClick={handleClose} sx={{ minWidth: 100 }}>Bekor qilish</Button>

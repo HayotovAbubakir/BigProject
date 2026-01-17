@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useLocale } from '../context/LocaleContext'
 import { formatMoney } from '../utils/format'
 import NumberField from './NumberField'
+import CurrencyField from './CurrencyField'
 
 export default function CreditForm({ open, onClose, onSubmit, initial }) {
   const [form, setForm] = useState({ name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '' })
@@ -88,7 +89,7 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
         {isPayment ? (
           <>
             <Typography variant="body2" sx={{ mb: 1 }}>{t('how_much_to_pay')}</Typography>
-            <NumberField label={t('payment')} fullWidth margin="dense" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} inputProps={{ max: remainingDisplay }} />
+            <CurrencyField label={t('payment')} fullWidth margin="dense" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} currency={initial?.currency || 'UZS'} />
             <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
             <TextField label={t('note')} fullWidth margin="dense" value={form.note} onChange={handle('note')} />
           </>
@@ -97,11 +98,11 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
             <TextField label={t('who')} fullWidth margin="dense" value={form.name} onChange={handle('name')} />
             <TextField label={t('productName')} fullWidth margin="dense" value={form.product_name} onChange={handle('product_name')} disabled={!!initial} />
             <NumberField label={t('qty')} fullWidth margin="dense" value={form.qty} onChange={(v) => setForm({ ...form, qty: v })} disabled={!!initial} />
-            <NumberField label={t('price')} fullWidth margin="dense" value={form.price} onChange={(v) => setForm({ ...form, price: v })} disabled={!!initial} />
+            <CurrencyField label={t('price')} fullWidth margin="dense" value={form.price} onChange={(v) => setForm({ ...form, price: v })} disabled={!!initial} currency={form.currency} />
             <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
             <Typography variant="body2" sx={{ mt: 1 }}>{t('total_amount')}: {formatMoney((Number(form.qty) || 1) * (Number(form.price) || 0))} {form.currency}</Typography>
             <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mt: 2 }}>
-              <NumberField label={t('boshToluv')} fullWidth margin="dense" value={form.bosh_toluv} onChange={(v) => setForm({ ...form, bosh_toluv: v })} />
+              <CurrencyField label={t('boshToluv')} fullWidth margin="dense" value={form.bosh_toluv} onChange={(v) => setForm({ ...form, bosh_toluv: v })} currency={form.currency} />
               <TextField label={t('down_payment_note')} fullWidth margin="dense" value={form.down_payment_note} onChange={handle('down_payment_note')} />
             </Box>
             <TextField select label={t('currency')} fullWidth margin="dense" value={form.currency} onChange={handle('currency')} disabled={!!initial}>

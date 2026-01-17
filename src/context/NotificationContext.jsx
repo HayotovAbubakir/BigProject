@@ -4,6 +4,13 @@ import { v4 as uuidv4 } from 'uuid';
 
 const NotificationContext = createContext(undefined);
 
+// Notification types for different message severities
+const NOTIFICATION_TYPES = {
+  SUCCESS: 'success',     // ✅ Success/confirmation messages
+  WARNING: 'warning',     // ⚠️ Warning/attention needed messages
+  ERROR: 'error'          // ❌ Error/failed operation messages
+};
+
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
 

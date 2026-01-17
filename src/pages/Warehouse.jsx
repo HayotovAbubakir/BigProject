@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Typography, Button, Table, TableHead, TableRow, TableCell, TableBody,
@@ -24,6 +24,7 @@ import useDisplayCurrency from '../hooks/useDisplayCurrency';
 import WarehouseForm from '../components/WarehouseForm';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WholesaleSale from '../components/WholesaleSale';
+import { calculateInventoryTotal } from '../utils/currencyUtils';
 
 function ProductCard({ product, onEdit, onDelete, onSell, onMove, canAddProducts, canSell, canMove }) {
   const { t } = useLocale();
@@ -70,6 +71,10 @@ export default function Warehouse() {
   const canSell = hasPermission ? !!hasPermission('wholesale_allowed') : canWholesale;
   const canMove = hasPermission ? !!hasPermission('wholesale_allowed') : canWholesale;
 
+  const inventoryValue = useMemo(() => {
+    return calculateInventoryTotal(state.warehouse, [], displayCurrency, usdToUzs);
+  }, [state.warehouse, displayCurrency, usdToUzs]);
+
   const handleAdd = async (payload) => {
     const amount = Number(payload.qty) * parseNumber(payload.price || 0);
     const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_added'), kind: 'ADD', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.price || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}, Jami: ${amount} ${payload.currency || 'UZS'}` };
@@ -92,7 +97,27 @@ export default function Warehouse() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>{t('warehouse')}</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">{t('warehouse')}</Typography>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            {displayCurrency === 'USD' 
+              ? `Total: $${formatMoney(inventoryValue.totalInDisplay)}`
+              : `Total: ${formatMoney(inventoryValue.totalInDisplay)} UZS`
+            }
+          </Typography>
+          {displayCurrency === 'UZS' && inventoryValue.totalUsd > 0 && (
+            <Typography variant="caption" color="textSecondary">
+              (≈ ${formatMoney(inventoryValue.totalUsd)})
+            </Typography>
+          )}
+          {displayCurrency === 'USD' && inventoryValue.totalUzs > 0 && (
+            <Typography variant="caption" color="textSecondary">
+              (≈ {formatMoney(inventoryValue.totalUzs)} UZS)
+            </Typography>
+          )}
+        </Box>
+      </Box>
       <Paper sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditItem(null); setOpenForm(true); }} disabled={!canAddProducts}>{t('add_product')}</Button>
@@ -166,10 +191,11 @@ export default function Warehouse() {
       <WarehouseSellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={(payload) => {
         const unitPrice = parseNumber(payload.price || 0);
         const amount = Number(payload.qty) * unitPrice;
-        const sellRateText = (sellItem?.currency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
-        const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Mahsulot sotildi (ombor)', kind: 'SELL', productName: sellItem?.name || '', productId: payload.id, qty: Number(payload.qty), unitPrice, total: amount, currency: sellItem?.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${Number(payload.qty)}, Narx: ${unitPrice} ${sellItem?.currency || 'UZS'}, Jami: ${amount} ${sellItem?.currency || 'UZS'}${sellRateText}` };
+        const saleCurrency = payload.currency || sellItem?.currency || 'UZS';
+        const sellRateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
+        const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Mahsulot sotildi (ombor)', kind: 'SELL', productName: sellItem?.name || '', productId: payload.id, qty: Number(payload.qty), unitPrice, total: amount, currency: saleCurrency, detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${Number(payload.qty)}, Narx: ${unitPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${sellRateText}` };
         log.source = 'warehouse';
-        if (sellItem?.currency === 'USD' && usdToUzs) log.total_uzs = Math.round(amount * usdToUzs);
+        if (saleCurrency === 'USD' && usdToUzs) log.total_uzs = Math.round(amount * usdToUzs);
         else log.total_uzs = Math.round(amount);
         dispatch({ type: 'SELL_WAREHOUSE', payload: { id: payload.id, qty: payload.qty }, log });
       }} />

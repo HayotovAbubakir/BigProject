@@ -54,7 +54,23 @@ function reducer(state, action) {
     case 'INIT': {
       const payload = { ...action.payload }
       if (payload.accounts) {
-        payload.accounts = payload.accounts.filter(a => a.username !== 'shogirt')
+        // Remove any restrictions from admin accounts and filter out shogirt
+        payload.accounts = payload.accounts
+          .filter(a => a.username !== 'shogirt')
+          .map(a => {
+            const isAdmin = (a.username || '').toLowerCase() === 'hamdamjon' || (a.username || '').toLowerCase() === 'habibjon'
+            if (isAdmin) {
+              // Ensure admin accounts have no restrictions
+              return {
+                ...a,
+                permissions: {
+                  ...a.permissions,
+                  new_account_restriction: false
+                }
+              }
+            }
+            return a
+          })
       }
       return { ...state, ...payload }
     }
@@ -458,8 +474,46 @@ export const AppProvider = ({ children }) => {
       payload.created_by = payload.created_by || username || 'shared'
       payload.created_at = payload.created_at || new Date().toISOString()
       const credit = await dbInsertCredit(payload)
-      insertCreditLog(logData).catch(e => console.warn('insertCreditLog failed (add credit), continuing with local state update', e))
-      dispatch({ type: 'ADD_CREDIT', payload: credit, log: logData })
+
+      // Normalize log payload for insertion and try both RPC and direct insert.
+      const normalizedLog = {
+        id: (logData && logData.id) || uuidv4(),
+        date: (logData && logData.date) || (payload.date || new Date().toISOString().slice(0, 10)),
+        time: (logData && logData.time) || new Date().toLocaleTimeString(),
+        user_name: (logData && (logData.user_name || logData.user)) || username || 'unknown',
+        action: (logData && (logData.action || 'CREDIT_ADD')),
+        kind: 'credit',
+        product_name: logData?.product_name || logData?.productName || payload.product_name || payload.name || null,
+        qty: logData?.qty ?? payload.qty ?? 1,
+        unit_price: logData?.unit_price ?? logData?.price ?? payload.unit_price ?? payload.price ?? payload.amount ?? null,
+        amount: logData?.amount ?? payload.amount ?? null,
+        currency: logData?.currency ?? payload.currency ?? 'UZS',
+        client_name: logData?.client_name ?? payload.name ?? null,
+        bosh_toluv: logData?.bosh_toluv ?? logData?.down_payment ?? payload.bosh_toluv ?? 0,
+        credit_type: logData?.credit_type ?? payload.credit_type ?? payload.type ?? null,
+        detail: logData?.detail || null
+      }
+
+      let returnedLog = null
+      try {
+        // try credit-specific RPC/fallback
+        returnedLog = await insertCreditLog(normalizedLog)
+      } catch (e) {
+        console.warn('insertCreditLog failed (add credit), will try insertLog fallback', e)
+      }
+
+      if (!returnedLog) {
+        try {
+          returnedLog = await insertLog(normalizedLog)
+        } catch (e) {
+          console.warn('insertLog failed (add credit), continuing with local state update', e)
+        }
+      }
+
+      // Use the returned log if available, otherwise fall back to the normalized local log
+      const finalLog = returnedLog || normalizedLog
+      dispatch({ type: 'ADD_CREDIT', payload: credit, log: finalLog })
+      return credit
     } catch (_err) {
       const message = `Failed to add credit: ${_err.message}`;
       notify('Error', message, 'error')
@@ -561,12 +615,26 @@ export const AppProvider = ({ children }) => {
         return
       }
 
-      // Low stock notifications (only new ones)
+      // Low stock notifications (only new ones) - 3 different notification types
       ;[...(state.store || []), ...(state.warehouse || [])].forEach(p => {
         if (!p) return
         if (Number(p.qty || 0) <= 2 && !notifiedItems.current.has(p.id)) {
           const randomJoke = lowStockJokes[Math.floor(Math.random() * lowStockJokes.length)];
-          notify('Low Stock!', randomJoke.replace('{name}', p.name), 'warning');
+          
+          // Rotate through 3 different notification types
+          const notifTypeIndex = Array.from(notifiedItems.current).length % 3;
+          let severity = 'warning';
+          let title = 'Low Stock!';
+          
+          if (notifTypeIndex === 1) {
+            severity = 'success';
+            title = '📉 Mahsulot kam qoldi';
+          } else if (notifTypeIndex === 2) {
+            severity = 'error';
+            title = '⚠️ Kritik seviye';
+          }
+          
+          notify(title, randomJoke.replace('{name}', p.name), severity);
           notifiedItems.current.add(p.id);
         }
       })

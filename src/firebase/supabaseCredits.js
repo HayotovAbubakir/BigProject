@@ -54,8 +54,7 @@ export const insertCredit = async (credit) => {
       boshToluv: 'bosh_toluv',
       completed: 'completed',
       created_at: 'created_at',
-      created_by: 'created_by',
-      remaining: 'remaining'
+      created_by: 'created_by'
     }
 
     const payload = { created_at: credit.created_at, created_by }
@@ -100,6 +99,12 @@ export const insertCredit = async (credit) => {
       const hasProductDetails = credit.qty || credit.price || credit.product_name
       payload.credit_type = hasProductDetails ? 'product' : 'cash'
     }
+    // Ensure amount is provided: compute from qty * unit_price for product credits
+    if (payload.amount === undefined || payload.amount === null) {
+      const qty = Number(payload.qty || 0)
+      const unit = Number(payload.unit_price || payload.price || 0)
+      payload.amount = qty && unit ? qty * unit : (payload.amount_uzs || 0)
+    }
     
     if (typeof payload.created_at !== 'string') {
         payload.created_at = new Date(payload.created_at).toISOString();
@@ -110,7 +115,7 @@ export const insertCredit = async (credit) => {
     const { data, error } = await supabase
       .from('credits')
       .insert(payload)
-      .select()
+      .select('*')
       .single()
     if (error) throw error
     console.log('supabase.insertCredit success ->', data)
@@ -148,7 +153,9 @@ export const updateCredit = async (id, updates) => {
       completed_at: 'completed_at',
       completed_by: 'completed_by',
       note: 'note',
-      remaining: 'remaining',
+      // Do NOT allow direct updates to `remaining` here — remaining is computed
+      // in the DB schema (generated) and cannot be set directly. Updates that
+      // affect remaining should update source columns (amount, bosh_toluv, etc.).
       created_by: 'created_by'
     }
     Object.keys(safeUpdatesRaw || {}).forEach(k => {
@@ -178,7 +185,7 @@ export const updateCredit = async (id, updates) => {
       .from('credits')
       .update(safeUpdates)
       .eq('id', id)
-      .select()
+      .select('*')
       .single()
     if (error) throw error
     console.log('supabase.updateCredit success ->', data)
@@ -194,13 +201,15 @@ export const deleteCredit = async (id) => {
   if (!isSupabaseConfigured()) return false
   try {
     console.log('supabase.deleteCredit ->', id)
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('credits')
       .delete()
       .eq('id', id)
+      .select('*')
+      .single()
     if (error) throw error
-    console.log('supabase.deleteCredit success ->', id)
-    return true
+    console.log('supabase.deleteCredit success ->', data)
+    return data
   } catch (err) {
     console.error('deleteCredit error:', err)
     const msg = err?.message || err?.error || JSON.stringify(err)

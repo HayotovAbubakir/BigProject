@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { insertLog } from '../firebase/supabaseLogs';
 import {
@@ -25,6 +25,7 @@ import SellForm from '../components/SellForm';
 import SalesHistory from '../components/SalesHistory';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WholesaleSale from '../components/WholesaleSale';
+import { calculateInventoryTotal } from '../utils/currencyUtils';
 
 function ProductCard({ product, onEdit, onDelete, onSell, onHistory, canAddProducts, canSell }) {
   const { t } = useLocale();
@@ -70,6 +71,10 @@ export default function Store() {
   const canAddProducts = state.accounts?.find(a => a.username === username)?.permissions?.add_products ?? false;
   const canSell = hasPermission ? !!hasPermission('wholesale_allowed') : canWholesale;
 
+  const inventoryValue = useMemo(() => {
+    return calculateInventoryTotal([], state.store, displayCurrency, usdToUzs);
+  }, [state.store, displayCurrency, usdToUzs]);
+
   const handleAdd = async (payload) => {
     const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: 'product_added', kind: 'ADD', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.price || 0), amount: Number(payload.qty) * parseNumber(payload.price || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Do'konga mahsulot qo'shildi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}, Jami: ${Number(payload.qty) * parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}` };
     await addStoreProduct(payload, logData);
@@ -86,12 +91,13 @@ export default function Store() {
     await deleteStoreProduct(id, logData);
   };
 
-  const handleSell = async ({ id, qty }) => {
+  const handleSell = async ({ id, qty, price, currency }) => {
     const item = state.store.find(s => s.id === id);
-    const price = parseNumber(item?.price || 0);
-    const amount = Number(qty) * price;
-    const rateText = (item?.currency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
-    const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'product_sold', kind: 'SELL', productName: item?.name || id, productId: id, qty, unit_price: price, amount: amount, currency: item?.currency || 'UZS', total_uzs: Math.round(amount * (item?.currency === 'USD' && usdToUzs ? usdToUzs : 1)), detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${item?.name || id}, Soni: ${qty}, Narx: ${price} ${item?.currency || 'UZS'}, Jami: ${amount} ${item?.currency || 'UZS'}${rateText}`, source: 'store' };
+    const parsedPrice = price ? parseNumber(price) : parseNumber(item?.price || 0);
+    const amount = Number(qty) * parsedPrice;
+    const saleCurrency = currency || item?.currency || 'UZS';
+    const rateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
+    const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'product_sold', kind: 'SELL', productName: item?.name || id, productId: id, qty, unit_price: parsedPrice, amount: amount, currency: saleCurrency, total_uzs: Math.round(amount * (saleCurrency === 'USD' && usdToUzs ? usdToUzs : 1)), detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${item?.name || id}, Soni: ${qty}, Narx: ${parsedPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${rateText}`, source: 'store' };
     dispatch({ type: 'SELL_STORE', payload: { id, qty }, log });
     try { await insertLog(log) } catch (e) { console.warn('insertLog failed (sell store)', e) }
   };
@@ -100,7 +106,27 @@ export default function Store() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>{t('store')}</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">{t('store')}</Typography>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            {displayCurrency === 'USD' 
+              ? `Total: $${formatMoney(inventoryValue.totalInDisplay)}`
+              : `Total: ${formatMoney(inventoryValue.totalInDisplay)} UZS`
+            }
+          </Typography>
+          {displayCurrency === 'UZS' && inventoryValue.totalUsd > 0 && (
+            <Typography variant="caption" color="textSecondary">
+              (≈ ${formatMoney(inventoryValue.totalUsd)})
+            </Typography>
+          )}
+          {displayCurrency === 'USD' && inventoryValue.totalUzs > 0 && (
+            <Typography variant="caption" color="textSecondary">
+              (≈ {formatMoney(inventoryValue.totalUzs)} UZS)
+            </Typography>
+          )}
+        </Box>
+      </Box>
       <Paper sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditItem(null); setOpenForm(true); }} disabled={!canAddProducts}>{t('add_product')}</Button>

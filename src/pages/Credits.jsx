@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Typography, Button, Table, TableHead, TableRow, TableCell, TableBody,
@@ -11,14 +11,15 @@ import {
   Check as CheckIcon,
 } from '@mui/icons-material';
 
-import { formatMoney, parseNumber } from '../utils/format';
+import { parseNumber, formatMoney } from '../utils/format';
 import { useApp } from '../context/useApp';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../context/LocaleContext';
-import useExchangeRate from '../hooks/useExchangeRate';
 import useDisplayCurrency from '../hooks/useDisplayCurrency';
+import useExchangeRate from '../hooks/useExchangeRate';
 import CreditForm from '../components/CreditForm';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { calculateCreditTotals } from '../utils/currencyUtils';
 
 function CreditCard({ credit, onEdit, onDelete, onComplete }) {
   const { t } = useLocale();
@@ -33,6 +34,24 @@ function CreditCard({ credit, onEdit, onDelete, onComplete }) {
           <Typography variant="h6">{credit.name}</Typography>
           <Typography variant="body2" color="text.secondary">{credit.date}</Typography>
         </Box>
+        
+        {credit.credit_type === 'product' && (credit.product_name || credit.productName) && (
+          <Box sx={{ mb: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>{credit.product_name || credit.productName}</Typography>
+            <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+              {(credit.qty || credit.quantity) && (
+                <Typography variant="caption"><strong>Soni:</strong> {credit.qty || credit.quantity}</Typography>
+              )}
+              {(credit.unit_price || credit.price) && (
+                <Typography variant="caption"><strong>Narxi:</strong> {(credit.unit_price || credit.price).toLocaleString()} {credit.currency || 'UZS'}</Typography>
+              )}
+              {credit.amount && (
+                <Typography variant="caption"><strong>Jami:</strong> {credit.amount.toLocaleString()} {credit.currency || 'UZS'}</Typography>
+              )}
+            </Box>
+          </Box>
+        )}
+        
         <Typography variant="h5" sx={{ my: 1 }}>{formatForDisplay(remaining, credit.currency)} {displayCurrency}</Typography>
         <Typography variant="body2" color="text.secondary">{credit.note}</Typography>
         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
@@ -46,7 +65,7 @@ function CreditCard({ credit, onEdit, onDelete, onComplete }) {
 }
 
 export default function Credits() {
-  const { state, dispatch, addCredit, updateCredit, deleteCredit } = useApp();
+  const { state, addCredit, updateCredit, deleteCredit } = useApp();
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filter, setFilter] = useState('active');
@@ -54,20 +73,30 @@ export default function Credits() {
 
   const { username } = useAuth();
   const { t } = useLocale();
-  const { rate: usdToUzs } = useExchangeRate();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
+  const { rate: usdToUzs } = useExchangeRate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
+  const creditTotals = useMemo(() => {
+    const active = calculateCreditTotals(state.credits, displayCurrency, usdToUzs, 'active');
+    const completed = calculateCreditTotals(state.credits, displayCurrency, usdToUzs, 'completed');
+    const all = calculateCreditTotals(state.credits, displayCurrency, usdToUzs, 'all');
+    return { active, completed, all };
+  }, [state.credits, displayCurrency, usdToUzs]);
+
   const handleAdd = (payload) => {
-    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_added', kind: 'CREDIT_ADD', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining: payload.amount - payload.bosh_toluv, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya qo'shildi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${payload.bosh_toluv}, Qolgan: ${payload.amount - payload.bosh_toluv} ${payload.currency}` };
+    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_added', kind: 'credit', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining: payload.amount - payload.bosh_toluv, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya qo'shildi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${payload.bosh_toluv}, Qolgan: ${payload.amount - payload.bosh_toluv} ${payload.currency}` };
     addCredit(payload, logData);
   };
 
   const handleEdit = (payload) => {
     const remaining = payload.amount - (payload.bosh_toluv || 0);
     const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_updated', kind: 'CREDIT_EDIT', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya tahrirlandi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${payload.bosh_toluv}, Qolgan: ${remaining} ${payload.currency}` };
-    updateCredit(payload.id, { ...payload, remaining }, logData);
+    // Do not send `remaining` to the server (it's a generated column). Send source fields instead.
+    const updates = { ...payload };
+    delete updates.remaining;
+    updateCredit(payload.id, updates, logData);
   };
 
   const handleDelete = (id) => {
@@ -101,8 +130,9 @@ export default function Credits() {
       console.error(`Credit with id ${id} not found for completion.`);
       return;
     }
-    const updates = { completed: true, completed_at: new Date().toISOString(), completed_by: username };
-    const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_closed', kind: 'CREDIT_COMPLETE', product_name: credit?.name, qty: 1, unit_price: parseNumber(credit?.amount || 0), amount: parseNumber(credit?.amount || 0), currency: credit?.currency || 'UZS', detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya yakunlandi (${credit?.type === 'berilgan' ? 'berilgan' : 'olingan'}), Klient: ${credit?.name}, Miqdor: ${parseNumber(credit?.amount || 0)} ${credit?.currency || 'UZS'}` };
+    const amountVal = parseNumber(credit?.amount || ((credit?.qty || 1) * (credit?.unit_price || credit?.price || 0)));
+    const updates = { completed: true, completed_at: new Date().toISOString(), completed_by: username, bosh_toluv: amountVal };
+    const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_closed', kind: 'credit', product_name: credit?.name, qty: 1, unit_price: parseNumber(credit?.amount || 0), amount: parseNumber(credit?.amount || 0), currency: credit?.currency || 'UZS', detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya yakunlandi (${credit?.type === 'berilgan' ? 'berilgan' : 'olingan'}), Klient: ${credit?.name}, Miqdor: ${parseNumber(credit?.amount || 0)} ${credit?.currency || 'UZS'}` };
     updateCredit(credit.id, updates, logData);
   };
   
@@ -110,7 +140,29 @@ export default function Credits() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>{t('credits')}</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">{t('credits')}</Typography>
+        <Box sx={{ display: 'flex', gap: 3 }}>
+          <Box>
+            <Typography variant="caption" color="textSecondary">Active Total</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              {displayCurrency === 'USD' 
+                ? `$${formatMoney(creditTotals.active.total)}`
+                : `${formatMoney(creditTotals.active.total)} UZS`
+              }
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="textSecondary">All Total</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              {displayCurrency === 'USD' 
+                ? `$${formatMoney(creditTotals.all.total)}`
+                : `${formatMoney(creditTotals.all.total)} UZS`
+              }
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
       <Paper sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenForm(true)}>{t('add_new_credit')}</Button>
@@ -189,3 +241,6 @@ export default function Credits() {
           >
             {confirm.action === 'complete' ? t('confirm_complete_credit_body') : t('confirm_delete_body')}
           </ConfirmDialog>
+    </Box>
+  );
+};

@@ -74,11 +74,14 @@ export async function saveAppState(state, username) {
     const payload = JSON.stringify(state)
     const { error } = await supabase
       .from('app_states')
-      .upsert({
-        username: username || 'shared',
-        state_json: payload,
-        updated_at: new Date().toISOString()
-      })
+      .upsert(
+        {
+          username: username || 'shared',
+          state_json: payload,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'username' }
+      )
 
     if (error) {
       console.error('saveAppState: Supabase error:', error.message)

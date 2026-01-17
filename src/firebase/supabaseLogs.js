@@ -62,7 +62,7 @@ export const insertCreditLog = async (log) => {
     const { data, error } = await supabase
       .from('logs')
       .insert(logData)
-      .select()
+      .select('*')
       .single()
     if (error) throw error
     console.log('supabase.insertCreditLog success ->', data)
@@ -110,7 +110,7 @@ export const insertLog = async (log) => {
     const { data, error } = await supabase
       .from('logs')
       .insert(log)
-      .select()
+      .select('*')
       .single()
     if (error) throw error
     console.log('supabase.insertLog success ->', data)

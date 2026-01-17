@@ -73,7 +73,11 @@ CREATE TABLE credits (
   qty INTEGER,
   unit_price NUMERIC,
   bosh_toluv NUMERIC DEFAULT 0,
+  -- server-side computed remaining (amount - bosh_toluv)
+  remaining NUMERIC GENERATED ALWAYS AS (COALESCE(amount,0) - COALESCE(bosh_toluv,0)) STORED,
   completed BOOLEAN DEFAULT false,
+  completed_at TIMESTAMPTZ,
+  completed_by TEXT,
   created_by TEXT,
   date DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMPTZ DEFAULT now()

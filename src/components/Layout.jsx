@@ -66,7 +66,6 @@ function UserMenu({ user, onLogout, onManageAccount }) {
 }
 
 function DrawerContent({ navItems, t }) {
-  const location = useLocation();
   return (
     <List sx={{ p: 1 }}>
       {navItems.map((item) => (
@@ -116,6 +115,10 @@ export default function Layout({ children }) {
 
   const drawer = <DrawerContent navItems={translatedNavItems} t={t} />;
 
+  const handleManageAccount = () => {
+    setAccountManagerOpen(true);
+  };
+
   return (
     <Box sx={{ display: 'flex' }}>
       <AppBar
@@ -158,7 +161,7 @@ export default function Layout({ children }) {
           <UserMenu
             user={user}
             onLogout={logout}
-            onManageAccount={() => setAccountManagerOpen(true)}
+            onManageAccount={handleManageAccount}
           />
         </Toolbar>
       </AppBar>

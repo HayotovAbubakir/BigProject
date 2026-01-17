@@ -4,11 +4,13 @@ import { formatWithSpaces } from '../utils/format';
 import { useApp } from '../context/useApp';
 import useExchangeRate from '../hooks/useExchangeRate';
 import { useLocale } from '../context/LocaleContext';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Accounts() {
   const { state } = useApp();
   const { rate: usdToUzs } = useExchangeRate();
   const { t } = useLocale();
+  const { user } = useAuth();
 
   // Calculate warehouse value in UZS
   const warehouseValueUzs = state.warehouse.reduce((sum, item) => {

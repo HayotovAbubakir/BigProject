@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Box, List, ListItem, ListItemText, IconButton, Switch, FormControlLabel, Divider, Typography } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Box, List, ListItem, ListItemText, IconButton, Switch, FormControlLabel, Divider, Typography, Checkbox } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import { useLocale } from '../context/LocaleContext'
@@ -13,31 +13,73 @@ export default function AccountManager({ open, onClose }) {
   const [adding, setAdding] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [newAccountRestricted, setNewAccountRestricted] = useState(false)
   const [selected, setSelected] = useState(null) 
 
-  const canManageAccounts = hasPermission && hasPermission('manage_accounts')
+  // Admins and developers can manage accounts, or users with manage_accounts permission
+  const canManageAccounts = hasPermission && (hasPermission('manage_accounts'))
 
   const accounts = state.accounts || []
 
   const { registerUser, deleteUser } = useAuth()
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newUsername) return
     const username = newUsername.toLowerCase()
-    if (accounts.find(a => a.username === username)) return
-    const payload = { username, permissions: { credits_manage: false, wholesale_allowed: false, add_products: false, manage_accounts: false }, balance_uzs: 0 }
+    if (accounts.find(a => a.username === username)) {
+      window.alert(t('account_exists') || 'Bunday akkaunt allaqachon mavjud')
+      return
+    }
+    const payload = { 
+      username, 
+      permissions: { 
+        credits_manage: true, 
+        wholesale_allowed: true, 
+        add_products: true, 
+        manage_accounts: false,
+        new_account_restriction: newAccountRestricted
+      }, 
+      balance_uzs: 0 
+    }
     
     dispatch({ type: 'ADD_ACCOUNT', payload, log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_ADD', detail: `Added account ${username}` } })
     
-    try { registerUser(username, newPassword || username) } catch {  }
+    try {
+      const res = await registerUser(username, newPassword || username)
+      if (!res || !res.ok) {
+        window.alert((res && res.error) || t('add_account_failed') || 'Akkaunt qo\'shish xatosi')
+        return
+      }
+      window.alert(t('account_added') || 'Akkaunt muvaffaqiyatli qo\'shildi')
+    } catch (err) {
+      console.error('handleAdd error:', err)
+      window.alert(err && err.message || t('add_account_failed') || 'Akkaunt qo\'shish xatosi')
+    }
     setNewUsername('')
     setNewPassword('')
+    setNewAccountRestricted(false)
     setAdding(false)
   }
 
   const togglePermission = (username, key) => {
     const acc = accounts.find(a => a.username === username)
     if (!acc) return
+    
+    // Check if this is an admin account - admins cannot be restricted
+    const isTargetAdmin = ['hamdamjon', 'habibjon'].includes((username || '').toLowerCase())
+    if (isTargetAdmin) {
+      window.alert("Admin akkayuntini cheklovga qo'yib bo'lmaydi")
+      return
+    }
+    
+    // Prevent restricted accounts from disabling their own restrictions
+    const currentUserName = (user?.username || '').toLowerCase()
+    const targetUserName = (username || '').toLowerCase()
+    if (currentUserName === targetUserName && key === 'new_account_restriction' && acc.permissions?.new_account_restriction) {
+      window.alert("O'zingizga qo'yilgan cheklovni o'chira olmaysiz")
+      return
+    }
+    
     const updates = { permissions: { ...acc.permissions, [key]: !acc.permissions[key] } }
     
     dispatch({ type: 'EDIT_ACCOUNT', payload: { username: (username || '').toString().toLowerCase(), updates }, log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_EDIT', detail: `${username} ${key} -> ${!acc.permissions[key]}` } })
@@ -74,9 +116,14 @@ export default function AccountManager({ open, onClose }) {
         <Box sx={{ mb: 2 }}>
           <Button variant="contained" onClick={() => setAdding(s => !s)}>{adding ? t('cancel') : t('add_new_account') || 'Yangi account qo\'shish'}</Button>
           {adding && (
-            <Box sx={{ mt: 1, display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+            <Box sx={{ mt: 1, display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' }, alignItems: 'flex-start' }}>
               <TextField label={t('username') || 'Username'} value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
               <TextField label={t('password') || 'Password'} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+              <FormControlLabel 
+                control={<Checkbox checked={newAccountRestricted} onChange={(e) => setNewAccountRestricted(e.target.checked)} />} 
+                label={t('restrict_access') || 'Cheklovlarni yoniq qil'} 
+                sx={{ mt: 1 }}
+              />
               <Button variant="outlined" onClick={handleAdd}>{t('add') || 'Qo\'sh'}</Button>
             </Box>
           )}
@@ -103,10 +150,20 @@ export default function AccountManager({ open, onClose }) {
         {selected && (
           <Box sx={{ mt: 2 }}>
             <Typography sx={{ fontWeight: 700 }}>{selected}</Typography>
-            <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.credits_manage)} onChange={() => togglePermission(selected, 'credits_manage')} />} label={t('credit_manage_permission') || 'Nasiya qo\'shish/tahrirlash'} />
-            <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.wholesale_allowed)} onChange={() => togglePermission(selected, 'wholesale_allowed')} />} label={t('wholesale_permission') || 'Optom sotuv ruxsati'} />
-            <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.add_products)} onChange={() => togglePermission(selected, 'add_products')} />} label={t('add_product_permission') || 'Mahsulot qo\'shish ruxsati'} />
-            <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.manage_accounts)} onChange={() => togglePermission(selected, 'manage_accounts')} />} label={t('manage_accounts_permission') || 'Boshqaruv paneliga kirish'} />
+            {!['hamdamjon', 'habibjon'].includes((selected || '').toLowerCase()) ? (
+              <>
+                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.credits_manage)} onChange={() => togglePermission(selected, 'credits_manage')} />} label={t('credit_manage_permission') || 'Nasiya qo\'shish/tahrirlash'} />
+                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.wholesale_allowed)} onChange={() => togglePermission(selected, 'wholesale_allowed')} />} label={t('wholesale_permission') || 'Optom sotuv ruxsati'} />
+                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.add_products)} onChange={() => togglePermission(selected, 'add_products')} />} label={t('add_product_permission') || 'Mahsulot qo\'shish ruxsati'} />
+                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.manage_accounts)} onChange={() => togglePermission(selected, 'manage_accounts')} />} label={t('manage_accounts_permission') || 'Boshqaruv paneliga kirish'} />
+                {/* Only show restriction toggle if account doesn't have restriction OR if current user is an admin */}
+                {!accounts.find(x => x.username === selected)?.permissions?.new_account_restriction && (
+                  <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.new_account_restriction)} onChange={() => togglePermission(selected, 'new_account_restriction')} />} label={t('restrict_access') || 'Cheklovlarni yoniq qil'} />
+                )}
+              </>
+            ) : (
+              <Typography sx={{ color: 'text.secondary', fontStyle: 'italic' }}>Admin akkayuntini o'zgartirish mumkin emas</Typography>
+            )}
             <Box sx={{ mt: 1 }}>
               <Button variant="outlined" onClick={() => setSelected(null)}>Yopish</Button>
             </Box>

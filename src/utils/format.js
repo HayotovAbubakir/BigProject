@@ -68,7 +68,7 @@ export function parseNumber(value) {
     if (s.length - lastCommaIndex > 3) {
       normalized = s.replace(/,/g, '')
     } else {
-      // Otherwise it's decimal separator
+      // Otherwise it's decimal separator (allow comma as decimal)
       normalized = s.replace(',', '.')
     }
   }
@@ -78,8 +78,7 @@ export function parseNumber(value) {
     if (s.length - lastDotIndex > 3) {
       normalized = s.replace(/\./g, '')
     } else {
-      // Otherwise it's decimal separator
-      // Do nothing, dot is already correct
+      // Otherwise it's decimal separator - keep as is
     }
   }
   

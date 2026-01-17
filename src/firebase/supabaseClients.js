@@ -27,7 +27,7 @@ export const insertClient = async (client) => {
     const { data, error } = await supabase
       .from('clients')
       .insert({ ...client })
-      .select()
+      .select('*')
       .single()
     if (error) throw error
     console.log('supabase.insertClient success ->', data)
@@ -58,7 +58,7 @@ export const updateClient = async (id, updates) => {
       .from('clients')
       .update(safeUpdates)
       .eq('id', id)
-      .select()
+      .select('*')
       .single()
     if (error) throw error
     console.log('supabase.updateClient success ->', data)

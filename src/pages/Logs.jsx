@@ -47,16 +47,36 @@ const logColors = {
 }
 
 function getLogMeta(log) {
-  const kind = (log.kind || 'DEFAULT').toUpperCase();
-  const icon = logIcons[kind] || logIcons.DEFAULT;
-  const color = logColors[kind] || logColors.DEFAULT;
+  // Prefer a specific mapping by kind (if provided), else fall back to action keywords
+  const kind = (log.kind || '').toString().toUpperCase();
+  const action = (log.action || '').toString().toUpperCase();
+
+  // Determine icon by kind then action
+  let icon = logIcons[kind] || null
+  if (!icon) icon = logIcons[action] || null
+  if (!icon) icon = logIcons.DEFAULT
+
+  // Determine color: prefer kind mapping, then action keywords, then defaults
+  let color = logColors[kind] || logColors.DEFAULT
+  if (!color) color = logColors[action] || logColors.DEFAULT
+
+  // If action contains delete, force error color
+  if (action.includes('DELETE') || action.includes('DELETED') || (log.type && log.type.toString().toUpperCase().includes('DELETE'))) {
+    color = logColors.DELETE || 'error.main'
+    icon = logIcons.DELETE
+  }
+  // If action contains add/create, prefer success color
+  if (action.includes('ADD') || action.includes('CREATE')) {
+    color = logColors.ADD || 'success.main'
+  }
+
   return { icon, color };
 }
 
 function LogItem({ log }) {
   const meta = getLogMeta(log);
   const theme = useTheme();
-  const isCreditLog = log.kind?.includes('CREDIT');
+  const isCreditLog = (log.kind || '').toString().toUpperCase().includes('CREDIT') || (log.action || '').toString().toUpperCase().includes('CREDIT');
   const { t } = useLocale();
 
   // Parse detail for credit logs
@@ -94,7 +114,7 @@ function LogItem({ log }) {
           </Grid>
           <Grid item xs={11}>
             <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{t(log.action) || log.action}</Typography>
-            <Chip label={log.kind} size="small" sx={{ mr: 1, backgroundColor: meta.color, color: 'white' }} />
+            <Chip label={t(log.action) || log.kind || log.action || 'LOG'} size="small" sx={{ mr: 1, backgroundColor: meta.color, color: 'white' }} />
             <Typography variant="caption" color="text.secondary">
               {log.date} {log.time} &bull; {log.user_name}
             </Typography>

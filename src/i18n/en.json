@@ -18,6 +18,8 @@
   "warehouse": "Warehouse",
   "store": "Store",
   "accounts": "Accounts",
+  "access_denied": "Access denied",
+  "new_account_restriction_message": "Newly added accounts cannot perform this action",
   "logs": "Logs",
   "credits": "Credits"
   ,
@@ -154,7 +156,8 @@
   "credit_manage_permission": "Credits manage",
   "wholesale_permission": "Wholesale allowed",
   "add_product_permission": "Add products",
-  "manage_accounts_permission": "Manage accounts"
+  "manage_accounts_permission": "Manage accounts",
+  "restrict_access": "Enable restrictions"
   ,
   "login_required": "Username and password are required",
   "login_failed": "Login failed",
@@ -192,6 +195,9 @@
   ,
   "toggleLanguage": "Toggle language",
   "displayCurrencyToggle": "Display in {currency}",
+  "selectCurrency": "Select currency",
+  "no_logs_for_date": "No logs for selected date",
+  "delete_logs_for_date": "Delete logs for selected date",
   "darkMode": "Dark mode",
   "lightMode": "Light mode",
   "account": "Account",

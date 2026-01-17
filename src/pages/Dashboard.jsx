@@ -10,10 +10,16 @@ import ReactApexChart from 'react-apexcharts';
 
 import { useApp } from '../context/useApp';
 import useExchangeRate from '../hooks/useExchangeRate';
+import useDisplayCurrency from '../hooks/useDisplayCurrency';
 import { formatMoney } from '../utils/format';
 import { monthShortFromISO } from '../utils/date';
 import { useLocale } from '../context/LocaleContext';
 import DailySalesByDate from '../components/DailySalesByDate';
+import {
+  normalizeToBaseUzs,
+  convertFromBaseUzs,
+  calculateCreditTotals,
+} from '../utils/currencyUtils';
 
 const ChartCard = ({ title, icon, children }) => (
   <Card sx={{ height: '100%' }}>
@@ -34,6 +40,7 @@ function Dashboard() {
   const { t } = useLocale();
   const theme = useTheme();
   const { rate: usdToUzs } = useExchangeRate();
+  const { displayCurrency } = useDisplayCurrency();
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(today);
   const [period, setPeriod] = useState('overall');
@@ -43,16 +50,30 @@ function Dashboard() {
       const monthlyAnalysisData = useMemo(() => {
         const monthlyMap = {};
         logs.forEach(log => {
-          if (!log) return; // Add null check for log
-          const amount = log.total_uzs || 0;
-          if (!amount) return;
+          if (!log || log.kind !== 'SELL') return;
+          
+          // Normalize to base currency (UZS) for consistent calculation
+          const amountInUzs = normalizeToBaseUzs(
+            log.amount,
+            log.currency,
+            usdToUzs
+          );
+          
           const month = monthShortFromISO(log.date);
           if (!monthlyMap[month]) monthlyMap[month] = { month, sold: 0 };
-          if (log.kind === 'SELL') monthlyMap[month].sold += amount;
+          monthlyMap[month].sold += amountInUzs;
         });
-        const sortedMonths = Object.values(monthlyMap).sort((a, b) => new Date(a.month + '-01-2000') - new Date(b.month + '-01-2000'));
-        return sortedMonths;
-      }, [logs]);
+        
+        const sortedMonths = Object.values(monthlyMap).sort((a, b) => 
+          new Date(a.month + '-01-2000') - new Date(b.month + '-01-2000')
+        );
+        
+        // Convert to display currency for chart display
+        return sortedMonths.map(m => ({
+          month: m.month,
+          sold: convertFromBaseUzs(m.sold, displayCurrency, usdToUzs)
+        }));
+      }, [logs, displayCurrency, usdToUzs]);
     
       const topSoldProducts = useMemo(() => {
         let filteredLogs = logs.filter(l => l && l.kind === 'SELL');
@@ -95,47 +116,151 @@ function Dashboard() {
       }, [logs, period, selectedDate, state.warehouse, state.store]);
 
       const dailySalesByAccount = useMemo(() => {
-        const accountSales = {};
-        const total = { amount: 0 };
+        const accountSales = {}; // { user: { usd: 0, uzs: 0, totalUzs: 0, displayValue: 0 } }
+        let grandTotalUzs = 0;
+        let grandTotalUsd = 0;
+        
         logs.filter(l => l && l.kind === 'SELL' && l.date === selectedDate).forEach(l => {
           const username = l.user || l.user_name || 'Unknown';
           const account = state.accounts.find(a => a.username === username);
           const user = account ? account.label : username;
-          const amount = l.total_uzs || 0;
-          accountSales[user] = (accountSales[user] || 0) + amount;
-          total.amount += amount;
+          
+          // Initialize if needed
+          if (!accountSales[user]) {
+            accountSales[user] = { usd: 0, uzs: 0, totalUzs: 0, displayValue: 0 };
+          }
+          
+          const currency = (l.currency || 'UZS').toUpperCase();
+          const amount = Number(l.amount) || 0;
+          
+          // Track original currency amounts ALWAYS
+          if (currency === 'USD') {
+            accountSales[user].usd += amount;
+            grandTotalUsd += amount;
+            // Only add to totalUzs if we have an exchange rate to convert properly
+            if (usdToUzs && usdToUzs > 0) {
+              const amountInUzs = Math.round(amount * usdToUzs);
+              accountSales[user].totalUzs += amountInUzs;
+              grandTotalUzs += amountInUzs;
+            }
+          } else {
+            accountSales[user].uzs += amount;
+            grandTotalUzs += amount;
+            accountSales[user].totalUzs += amount;
+          }
         });
-        const withPercent = Object.entries(accountSales).map(([user, amount]) => ({
-          user,
-          amount,
-          percent: total.amount > 0 ? ((amount / total.amount) * 100).toFixed(1) : 0
-        }));
-        return { accounts: withPercent, total: total.amount };
-      }, [logs, selectedDate, state.accounts]);
+        
+        // For display: convert grand total based on displayCurrency
+        let displayTotal = 0;
+        if (displayCurrency === 'USD') {
+          // If displaying in USD: show grandTotalUsd directly + converted UZS
+          displayTotal = grandTotalUsd;
+          if (grandTotalUzs > 0 && usdToUzs && usdToUzs > 0) {
+            displayTotal += convertFromBaseUzs(grandTotalUzs, 'USD', usdToUzs);
+          }
+        } else {
+          // If displaying in UZS: show grandTotalUzs directly + converted USD
+          displayTotal = grandTotalUzs;
+          if (grandTotalUsd > 0 && usdToUzs && usdToUzs > 0) {
+            displayTotal += Math.round(grandTotalUsd * usdToUzs);
+          }
+        }
+        
+        const withPercent = Object.entries(accountSales).map(([user, amounts]) => {
+          // Calculate display value for this account based on displayCurrency
+          let accountDisplayValue = 0;
+          if (displayCurrency === 'USD') {
+            accountDisplayValue = amounts.usd;
+            if (amounts.uzs > 0 && usdToUzs && usdToUzs > 0) {
+              accountDisplayValue += convertFromBaseUzs(amounts.uzs, 'USD', usdToUzs);
+            }
+          } else {
+            // UZS display
+            accountDisplayValue = amounts.uzs;
+            if (amounts.usd > 0 && usdToUzs && usdToUzs > 0) {
+              accountDisplayValue += Math.round(amounts.usd * usdToUzs);
+            }
+          }
+          
+          // Percentage based only on converted totals (can properly compare)
+          let percentBase = 0;
+          if (displayCurrency === 'USD') {
+            percentBase = grandTotalUsd + (grandTotalUzs > 0 && usdToUzs && usdToUzs > 0 ? convertFromBaseUzs(grandTotalUzs, 'USD', usdToUzs) : 0);
+          } else {
+            percentBase = grandTotalUzs + (grandTotalUsd > 0 && usdToUzs && usdToUzs > 0 ? Math.round(grandTotalUsd * usdToUzs) : 0);
+          }
+          
+          return {
+            user,
+            usd: amounts.usd,
+            uzs: amounts.uzs,
+            totalUzs: amounts.totalUzs,
+            displayValue: accountDisplayValue,
+            percent: percentBase > 0 ? ((accountDisplayValue / percentBase) * 100).toFixed(1) : 0
+          };
+        });
+        
+        return { 
+          accounts: withPercent, 
+          totalUsd: grandTotalUsd, 
+          totalUzs: grandTotalUzs,
+          displayTotal,
+          displayCurrency 
+        };
+      }, [logs, selectedDate, state.accounts, usdToUzs, displayCurrency]);
 
       const topExpensiveProducts = useMemo(() => {
         const month = selectedDate.slice(0, 7);
-        const filteredLogs = logs.filter(l => l && l.kind === 'SELL' && l.date.startsWith(month));
+        const filteredLogs = logs.filter(l => l && l.kind === 'SELL' && String(l.date || '').startsWith(month));
         const products = {};
+        
         filteredLogs.forEach(l => {
-          const name = l.productName || 'Unknown';
-          const unitPrice = l.unitPrice || 0;
-          if (!products[name] || products[name].price < unitPrice) {
-            products[name] = { name, price: unitPrice };
+          const name = l.productName || l.product_name || 'Unknown';
+          const unitPrice = Number(l.unitPrice ?? l.unit_price ?? l.price ?? 0) || 0;
+          const currency = l.currency || l.curr || 'UZS';
+          
+          // Normalize to base currency for comparison
+          const priceInUzs = normalizeToBaseUzs(unitPrice, currency, usdToUzs);
+          
+          if (!products[name]) {
+            products[name] = { name, priceInUzs, originalPrice: unitPrice, originalCurrency: currency };
+          } else if (products[name].priceInUzs < priceInUzs) {
+            products[name] = { name, priceInUzs, originalPrice: unitPrice, originalCurrency: currency };
           }
         });
-        return Object.values(products).sort((a, b) => b.price - a.price).slice(0, 5);
-      }, [logs, selectedDate]);
+        
+        return Object.values(products)
+          .sort((a, b) => b.priceInUzs - a.priceInUzs)
+          .slice(0, 5)
+          .map(p => ({
+            name: p.name,
+            price: convertFromBaseUzs(p.priceInUzs, displayCurrency, usdToUzs),
+            currency: displayCurrency,
+            originalPrice: p.originalPrice,
+            originalCurrency: p.originalCurrency
+          }));
+      }, [logs, selectedDate, displayCurrency, usdToUzs]);
 
       const creditsSummary = useMemo(() => {
-        const summary = { given: 0, received: 0, completed: 0 };
-        (state.credits || []).forEach(c => {
-          if (c.type === 'berilgan') summary.given += c.amount_uzs || c.amount || 0;
-          else if (c.type === 'olingan') summary.received += c.amount_uzs || c.amount || 0;
-          if (c.completed) summary.completed += c.amount_uzs || c.amount || 0;
-        });
-        return summary;
-      }, [state.credits]);
+        // Separate credits by type
+        const givenCredits = (state.credits || []).filter(c => c.type === 'berilgan');
+        const receivedCredits = (state.credits || []).filter(c => c.type === 'olingan');
+        const completedCredits = (state.credits || []).filter(c => c.completed);
+        
+        // Calculate totals in display currency
+        const givenTotal = calculateCreditTotals(givenCredits, displayCurrency, usdToUzs, 'all');
+        const receivedTotal = calculateCreditTotals(receivedCredits, displayCurrency, usdToUzs, 'all');
+        const completedTotal = calculateCreditTotals(completedCredits, displayCurrency, usdToUzs, 'all');
+        
+        return {
+          given: givenTotal.total,
+          received: receivedTotal.total,
+          completed: completedTotal.total,
+          givenUzs: givenTotal.totalUzs,
+          receivedUzs: receivedTotal.totalUzs,
+          completedUzs: completedTotal.totalUzs
+        };
+      }, [state.credits, displayCurrency, usdToUzs]);
   const chartOptions = {
     chart: {
       animations: {
@@ -199,13 +324,21 @@ function Dashboard() {
                 ...chartOptions,
                 colors: [theme.palette.primary.main, theme.palette.secondary.main],
                 xaxis: { ...chartOptions.xaxis, categories: monthlyAnalysisData.map(m => m.month) },
+                tooltip: {
+                  ...chartOptions.tooltip,
+                  y: {
+                    formatter: (v) => `${formatMoney(v)} ${displayCurrency === 'USD' ? '$' : 'UZS'}`
+                  }
+                }
               }}
               series={[
                 { name: t('sold'), data: monthlyAnalysisData.map(m => m.sold) },
               ]}
-            />            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-              {t('monthly_sales_trend') || 'Tracks monthly sales trends over time. Only outgoing sales are included.'}
-            </Typography>          </ChartCard>
+            />
+            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+              {t('monthly_sales_trend') || 'Tracks monthly sales trends over time. Only outgoing sales are included. Values shown in selected currency.'}
+            </Typography>
+          </ChartCard>
         </Grid>
 
         <Grid item xs={12} lg={4}>
@@ -280,9 +413,24 @@ function Dashboard() {
 
         <Grid item xs={12} lg={6}>
           <ChartCard title={`${t('daily_sales_by_account')} (${selectedDate})`} icon={<BarChartIcon color="primary" />}>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              {t('total_sales')}: {formatMoney(dailySalesByAccount.total)} UZS
-            </Typography>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                {displayCurrency === 'USD' 
+                  ? `Total: $${formatMoney(dailySalesByAccount.displayTotal)}`
+                  : `Total: ${formatMoney(dailySalesByAccount.displayTotal)} UZS`
+                }
+              </Typography>
+              {displayCurrency === 'UZS' && dailySalesByAccount.totalUsd > 0 && (
+                <Typography variant="caption" color="textSecondary">
+                  (≈ ${formatMoney(dailySalesByAccount.totalUsd)} USD)
+                </Typography>
+              )}
+              {displayCurrency === 'USD' && dailySalesByAccount.totalUzs > 0 && (
+                <Typography variant="caption" color="textSecondary">
+                  (≈ {formatMoney(dailySalesByAccount.totalUzs)} UZS)
+                </Typography>
+              )}
+            </Box>
             <ReactApexChart
               type="bar"
               height={300}
@@ -295,17 +443,17 @@ function Dashboard() {
                 dataLabels: {
                   enabled: true,
                   formatter: (val, opts) => {
-                    const amount = dailySalesByAccount.accounts[opts.dataPointIndex].amount;
-                    return `${formatMoney(amount)} (${val}%)`;
+                    const acc = dailySalesByAccount.accounts[opts.dataPointIndex];
+                    return `${acc.displayValue > 0 ? (displayCurrency === 'USD' ? `$${formatMoney(acc.displayValue)}` : `${formatMoney(acc.displayValue)}`) : '0'} (${val}%)`;
                   },
-                  style: { colors: [theme.palette.text.primary], fontSize: '12px' }
+                  style: { colors: [theme.palette.text.primary], fontSize: '11px' }
                 },
                 tooltip: {
                   ...chartOptions.tooltip,
                   y: {
                     formatter: (val, opts) => {
-                      const amount = dailySalesByAccount.accounts[opts.dataPointIndex].amount;
-                      return `${formatMoney(amount)} UZS (${val}%)`;
+                      const acc = dailySalesByAccount.accounts[opts.dataPointIndex];
+                      return `${displayCurrency === 'USD' ? `$${formatMoney(acc.displayValue)}` : `${formatMoney(acc.displayValue)} UZS`} (${val}%)`;
                     }
                   }
                 }
@@ -315,7 +463,7 @@ function Dashboard() {
               ]}
             />
             <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-              {t('sales_percentage_description') || 'Shows the percentage contribution of each account to total daily sales. Hover for amounts.'}
+              {t('sales_percentage_description') || 'Shows sales by account. Values displayed in selected currency.'}
             </Typography>
           </ChartCard>
         </Grid>
@@ -326,12 +474,22 @@ function Dashboard() {
               {topExpensiveProducts.map((p, idx) => (
                 <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
                   <Typography>{p.name}</Typography>
-                  <Typography sx={{ fontWeight: 'bold' }}>{formatMoney(p.price)} UZS</Typography>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography sx={{ fontWeight: 'bold' }}>
+                      {displayCurrency === 'USD' 
+                        ? `$${formatMoney(p.price)}`
+                        : `${formatMoney(p.price)} UZS`
+                      }
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      ({p.originalCurrency})
+                    </Typography>
+                  </Box>
                 </Box>
               ))}
             </Box>
             <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-              {t('top_expensive_description') || 'Highest unit price products sold in the selected month.'}
+              {t('top_expensive_description') || 'Highest unit price products sold in the selected month. Prices shown in selected currency.'}
             </Typography>
           </ChartCard>
         </Grid>
@@ -341,15 +499,21 @@ function Dashboard() {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography>{t('given')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: 'error.main' }}>{formatMoney(creditsSummary.given)} UZS</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'error.main' }}>
+                  {formatMoney(creditsSummary.given)} {displayCurrency === 'USD' ? '$' : 'UZS'}
+                </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography>{t('received')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: 'success.main' }}>{formatMoney(creditsSummary.received)} UZS</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                  {formatMoney(creditsSummary.received)} {displayCurrency === 'USD' ? '$' : 'UZS'}
+                </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography>{t('completed')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: 'primary.main' }}>{formatMoney(creditsSummary.completed)} UZS</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                  {formatMoney(creditsSummary.completed)} {displayCurrency === 'USD' ? '$' : 'UZS'}
+                </Typography>
               </Box>
             </Box>
             <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>

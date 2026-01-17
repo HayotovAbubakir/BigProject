@@ -9,6 +9,7 @@ import { useApp } from '../context/useApp'
 import { useAuth } from '../hooks/useAuth'
 import { useLocale } from '../context/LocaleContext'
 import { useNotification } from '../context/NotificationContext'
+import CurrencyField from './CurrencyField'
 import { supabase } from '/supabase/supabaseClient'
 
 export default function CreditsDialog({ open, onClose, clientId, clientName }) {
@@ -117,24 +118,31 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
     }
     
     const newRemaining = currentRemaining - amt
-    const updates = { remaining: newRemaining }
+    // Update source column `bosh_toluv` (down payment) instead of writing generated `remaining`.
+    const newBosh = Number(credit.bosh_toluv || 0) + Number(amt || 0)
+    const updates = { bosh_toluv: newBosh }
     
-    // Agar to'liq to'landi bo'lsa, avtomatik yakunla
+    // If fully paid, mark completed and record who/when
     if (newRemaining <= 0) {
       updates.completed = true
+      updates.completed_at = new Date().toISOString()
+      updates.completed_by = username
     }
 
     const logPayload = {
       id: uuidv4(),
       user_name: username,
       action: 'CREDIT_DEDUCT',
-      kind: 'CREDIT_DEDUCT',
-      product_name: credit.clientName || credit.name,
-      detail: `Deducted ${amt} from credit for ${credit.clientName || credit.name}`,
-      date: new Date().toISOString().slice(0, 10),
-      time: new Date().toLocaleTimeString(),
+      kind: 'credit',
+      client_name: credit.clientName || credit.name || credit.client_name || credit.name,
+      product_name: credit.product_name || credit.productName || null,
+      qty: credit.qty || 1,
+      unit_price: credit.unit_price || credit.unitPrice || credit.price || null,
       amount: amt,
       currency: credit.currency,
+      detail: `Deducted ${amt} ${credit.currency || 'UZS'} from credit for ${credit.clientName || credit.name}`,
+      date: new Date().toISOString().slice(0, 10),
+      time: new Date().toLocaleTimeString(),
     };
     
     try {
@@ -155,19 +163,22 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
   const handleComplete = async (id) => {
     const credit = (state.credits || []).find(c => c.id === id)
     if (!credit) return
-    const updates = { completed: true, remaining: 0 }
+    const updates = { completed: true, completed_at: new Date().toISOString(), completed_by: username }
 
     const logPayload = {
       id: uuidv4(),
-      user_name: username,
-      action: 'CREDIT_COMPLETE',
-      kind: 'CREDIT_COMPLETE',
-      product_name: credit.clientName || credit.name,
-      detail: `Completed credit for ${credit.clientName || credit.name}`,
       date: new Date().toISOString().slice(0, 10),
       time: new Date().toLocaleTimeString(),
-      amount: credit.remaining,
-      currency: credit.currency,
+      user_name: username,
+      action: 'CREDIT_COMPLETE',
+      kind: 'credit',
+      client_name: credit.clientName || credit.name || credit.client_name || '',
+      product_name: credit.product_name || credit.productName || null,
+      qty: credit.qty || 1,
+      unit_price: credit.unit_price || credit.unitPrice || credit.price || null,
+      amount: credit.amount || ((credit.qty || 1) * (credit.unit_price || credit.price || 0)),
+      currency: credit.currency || 'UZS',
+      detail: `Completed credit for ${credit.clientName || credit.name}: ${credit.qty || 1} x ${credit.product_name || credit.productName || ''} @ ${credit.unit_price || credit.price || credit.amount || ''} ${credit.currency || 'UZS'}`
     };
 
     try {
@@ -197,6 +208,9 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
               <TableRow>
                 <TableCell>{t('client') || 'Client'}</TableCell>
                 <TableCell>{t('type') || 'Type'}</TableCell>
+                <TableCell>{t('product') || 'Product'}</TableCell>
+                <TableCell align="right">{t('quantity') || 'Qty'}</TableCell>
+                <TableCell align="right">{t('unit_price') || 'Unit Price'}</TableCell>
                 <TableCell>{t('amount') || 'Amount'}</TableCell>
                 <TableCell>{t('initial_payment') || 'Initial Payment'}</TableCell>
                 <TableCell>{t('remaining') || 'Remaining'}</TableCell>
@@ -211,6 +225,9 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
                   <TableRow key={c.id}>
                     <TableCell>{c.clientName || c.name}</TableCell>
                     <TableCell>{c.credit_type === 'product' ? 'Mahsulot' : 'Pul'}</TableCell>
+                    <TableCell>{c.credit_type === 'product' ? (c.product_name || c.productName || '-') : '-'}</TableCell>
+                    <TableCell align="right">{c.credit_type === 'product' && (c.qty || c.quantity) ? (c.qty || c.quantity) : '-'}</TableCell>
+                    <TableCell align="right">{c.credit_type === 'product' && (c.unit_price || c.price) ? ((c.unit_price || c.price).toLocaleString() + ' ' + (c.currency || 'UZS')) : '-'}</TableCell>
                     <TableCell>{(c.amount || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
                     <TableCell>{(c.bosh_toluv || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
                     <TableCell>{remaining + ' ' + (c.currency || 'UZS')}</TableCell>
@@ -238,7 +255,13 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
         )}
         {deductState.id && (
           <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'center' }}>
-            <TextField label={t('amount') || 'Amount'} value={deductState.value} onChange={(e) => setDeductState(s => ({ ...s, value: e.target.value }))} />
+            <CurrencyField 
+              label={t('amount') || 'Amount'} 
+              value={deductState.value} 
+              onChange={(val) => setDeductState(s => ({ ...s, value: val }))}
+              currency={credits.find(c => c.id === deductState.id)?.currency || 'UZS'}
+              sx={{ minWidth: '200px' }}
+            />
             <Button variant="contained" onClick={() => handleDeduct(deductState.id)}>{t('deduct') || 'Deduct'}</Button>
             <Button onClick={() => setDeductState({ id: null, value: '' })}>{t('cancel') || 'Cancel'}</Button>
           </Box>

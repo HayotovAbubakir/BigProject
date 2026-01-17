@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Grid, Typography, FormControl, InputLabel, Select, MenuItem, InputAdornment, TextField } from '@mui/material'
 import NumberField from './NumberField'
+import CurrencyField from './CurrencyField'
 import { useApp } from '../context/useApp'
 import { useAuth } from '../hooks/useAuth'
 import { v4 as uuidv4 } from 'uuid'
@@ -131,7 +132,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
                 <Typography sx={{ fontWeight: 600 }}>{it.name}</Typography>
                 <Typography variant="caption">Mavjud: {it.available}</Typography>
                 <NumberField label="Soni" value={it.qty} onChange={(v) => updateQty(it.id, Number(v || 0))} fullWidth sx={{ mt: 1 }} />
-                <NumberField label="Narxi" value={it.unitPrice} onChange={(v) => updatePrice(it.id, Number(v || 0))} fullWidth sx={{ mt: 1 }} InputProps={{ endAdornment: <InputAdornment position="end">{it.currency}</InputAdornment> }} />
+                <CurrencyField label="Narxi" value={it.unitPrice} onChange={(v) => updatePrice(it.id, v)} fullWidth sx={{ mt: 1 }} currency={it.currency} />
                 <Typography variant="body2" sx={{ mt: 1 }}>{it.currency === 'USD' ? `Jami: ${it.qty * it.unitPrice} $` : `Jami: ${formatMoney(it.qty * it.unitPrice)} UZS`}</Typography>
               </Box>
             </Grid>
