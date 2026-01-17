@@ -44,11 +44,24 @@ CREATE TABLE IF NOT EXISTS public.credits (
 
 -- Simple audit logs
 CREATE TABLE IF NOT EXISTS public.logs (
-  id bigserial PRIMARY KEY,
-  username text,
-  action text NOT NULL,
-  details jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE,
+  time TEXT,
+  action TEXT NOT NULL,
+  kind TEXT,
+  user_name TEXT,
+  user TEXT,
+  product_name TEXT,
+  product_id UUID,
+  qty NUMERIC,
+  unit_price NUMERIC,
+  amount NUMERIC,
+  currency TEXT,
+  total_uzs NUMERIC,
+  detail TEXT,
+  source TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- =====================================================
@@ -58,7 +71,8 @@ CREATE TABLE IF NOT EXISTS public.logs (
 CREATE INDEX IF NOT EXISTS idx_clients_name ON public.clients(name);
 CREATE INDEX IF NOT EXISTS idx_clients_email ON public.clients(email);
 CREATE INDEX IF NOT EXISTS idx_credits_client_id ON public.credits(client_id);
-CREATE INDEX IF NOT EXISTS idx_logs_username ON public.logs(username);
+CREATE INDEX IF NOT EXISTS idx_logs_date ON public.logs(date);
+CREATE INDEX IF NOT EXISTS idx_logs_user_name ON public.logs(user_name);
 
 -- =====================================================
 -- 3. TRIGGER HELPERS

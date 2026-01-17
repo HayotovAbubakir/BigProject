@@ -88,10 +88,21 @@ CREATE TABLE credits (
 -- =========================
 CREATE TABLE logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE,
+  time TEXT,
   action TEXT NOT NULL,
   kind TEXT,
+  user_name TEXT,
+  user TEXT,
+  product_name TEXT,
+  product_id UUID,
+  qty NUMERIC,
+  unit_price NUMERIC,
   amount NUMERIC,
   currency TEXT,
+  total_uzs NUMERIC,
+  detail TEXT,
+  source TEXT,
   created_by TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
