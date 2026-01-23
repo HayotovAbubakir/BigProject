@@ -1,6 +1,5 @@
 import React from 'react'
 import { supabase } from '/supabase/supabaseClient'
-import { loadAppState, saveAppState } from '../firebase/db'
 import { isDeveloper, isAdmin, hasPermission, canModifyAccount } from '../utils/permissions'
 
 const AuthContext = React.createContext(null)

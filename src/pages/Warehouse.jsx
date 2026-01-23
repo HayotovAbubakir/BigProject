@@ -25,6 +25,9 @@ import WarehouseForm from '../components/WarehouseForm';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WholesaleSale from '../components/WholesaleSale';
 import { calculateInventoryTotal } from '../utils/currencyUtils';
+import { insertLog } from '../firebase/supabaseLogs';
+import { updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts';
+import { supabase } from '/supabase/supabaseClient';
 
 function ProductCard({ product, onEdit, onDelete, onSell, onMove, canAddProducts, canSell, canMove }) {
   const { t } = useLocale();
@@ -188,16 +191,76 @@ export default function Warehouse() {
           else log.total_uzs = Math.round(amount);
         dispatch({ type: 'MOVE_TO_STORE', payload, log });
       }} />
-      <WarehouseSellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={(payload) => {
-        const unitPrice = parseNumber(payload.price || 0);
-        const amount = Number(payload.qty) * unitPrice;
-        const saleCurrency = payload.currency || sellItem?.currency || 'UZS';
-        const sellRateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
-        const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'Mahsulot sotildi (ombor)', kind: 'SELL', productName: sellItem?.name || '', productId: payload.id, qty: Number(payload.qty), unitPrice, total: amount, currency: saleCurrency, detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${Number(payload.qty)}, Narx: ${unitPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${sellRateText}` };
-        log.source = 'warehouse';
-        if (saleCurrency === 'USD' && usdToUzs) log.total_uzs = Math.round(amount * usdToUzs);
-        else log.total_uzs = Math.round(amount);
-        dispatch({ type: 'SELL_WAREHOUSE', payload: { id: payload.id, qty: payload.qty }, log });
+      <WarehouseSellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={async (payload) => {
+        try {
+          const unitPrice = parseNumber(payload.price || 0);
+          const amount = Number(payload.qty) * unitPrice;
+          const saleCurrency = payload.currency || sellItem?.currency || 'UZS';
+          const sellRateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
+          
+          // Calculate UZS amounts for accounting
+          let totalUzs = 0, totalUsd = 0;
+          if (saleCurrency === 'USD' && usdToUzs) {
+            totalUzs = Math.round(amount * usdToUzs);
+            totalUsd = amount;
+          } else {
+            totalUzs = Math.round(amount);
+          }
+
+          const log = { 
+            id: uuidv4(), 
+            date: new Date().toISOString().slice(0, 10), 
+            time: new Date().toLocaleTimeString(), 
+            user_name: username || 'Admin', 
+            action: 'Mahsulot sotildi (ombor)', 
+            kind: 'SELL', 
+            product_name: sellItem?.name || '', 
+            product_id: payload.id, 
+            qty: Number(payload.qty), 
+            unit_price: unitPrice, 
+            amount: amount, 
+            currency: saleCurrency, 
+            total_uzs: totalUzs,
+            detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${Number(payload.qty)}, Narx: ${unitPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${sellRateText}`,
+            source: 'warehouse',
+          };
+
+          console.log('[Warehouse Sell] Processing sale:', log);
+
+          // 1. Insert log to Supabase
+          await insertLog(log);
+          console.log('[Warehouse Sell] Log inserted');
+
+          // 2. Update product quantity in Supabase
+          const newQty = Math.max(0, Number(sellItem.qty) - Number(payload.qty));
+          const { error: qtyErr } = await supabase
+            .from('products')
+            .update({ qty: newQty })
+            .eq('id', payload.id);
+          if (qtyErr) throw new Error(`Qty update failed: ${qtyErr.message}`);
+          console.log('[Warehouse Sell] Product qty updated:', newQty);
+
+          // 3. Update account balance in Supabase
+          await updateAccountBalance(username, totalUzs, totalUsd);
+          console.log('[Warehouse Sell] Account balance updated');
+
+          // 4. Update daily sales in Supabase
+          await updateDailySales(username, totalUzs, totalUsd);
+          console.log('[Warehouse Sell] Daily sales updated');
+
+          // 5. Update frontend state
+          dispatch({ type: 'SELL_WAREHOUSE', payload: { id: payload.id, qty: payload.qty }, log });
+          setSellItem(null);
+
+          // Success notification
+          const { notify } = useNotification?.() || {};
+          if (notify) notify('Success', `Sotildi: ${formatMoney(totalUzs)} UZS`, 'success');
+
+        } catch (err) {
+          console.error('[Warehouse Sell] Error:', err);
+          const { notify } = useNotification?.() || {};
+          if (notify) notify('Error', `Xato: ${err.message}`, 'error');
+        }
       }} />
       <ConfirmDialog open={confirm.open} onClose={() => setConfirm({ open: false, id: null })} title={t('confirm_delete_title')} onConfirm={() => { handleRemove(confirm.id); setConfirm({ open: false, id: null }); }}>
         {t('confirm_delete_body')}

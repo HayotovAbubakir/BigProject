@@ -7,38 +7,14 @@ const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000] // 1 minute, then 5 
 // Control flag to enable/disable the lock
 let isDevToolsLockEnabled = false // Temporarily disabled - DevTools open without PIN
 
-// Persist lock state in Supabase (shared snapshot) — no browser storage
-import { loadAppState, saveAppState } from '../firebase/db'
-
 let consecutiveFailed = 0 // consecutive wrong attempts counter
 let escalationLevel = 0 // which escalation duration to use next
 let lockoutUntil = null
 
-;(async () => {
-  try {
-    const remote = await loadAppState(null)
-    if (remote && remote.devtools_lock_state) {
-      const parsed = remote.devtools_lock_state
-      consecutiveFailed = Number(parsed.consecutiveFailed) || 0
-      escalationLevel = Number(parsed.escalationLevel) || 0
-      lockoutUntil = parsed.lockoutUntil ? Number(parsed.lockoutUntil) : null
-    }
-  } catch (e) {
-    console.debug('devToolsLock: failed to restore state', e)
-  }
-})()
-
 function persistState() {
-  ;(async () => {
-    try {
-      const remote = (await loadAppState(null)) || {}
-      remote.devtools_lock_state = { consecutiveFailed, escalationLevel, lockoutUntil }
-      await saveAppState(remote, null)
-    } catch (e) {
-      console.debug('devToolsLock: persist failed', e)
-    }
-  })()
+  // Persistence is disabled
 }
+
 
 export function enableDevToolsLock() {
   // Check if DevTools lock is enabled

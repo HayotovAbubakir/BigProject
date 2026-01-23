@@ -7,12 +7,12 @@ import { formatMoney } from '../utils/format'
 
 export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) {
   const [qty, setQty] = useState(1)
-  const [price, setPrice] = useState(initial?.price ? Number(initial.price) * 1.2 : 0)
+  const [price, setPrice] = useState(initial?.price ? Number(initial.price) : 0)
   const [currency, setCurrency] = useState(initial?.currency || 'UZS')
   
 
   useEffect(() => {
-    if (initial) setPrice(initial.price ? Number(initial.price) * 1.2 : 0)
+    if (initial) setPrice(initial.price ? Number(initial.price) : 0)
     setQty(1)
   }, [initial, open])
 

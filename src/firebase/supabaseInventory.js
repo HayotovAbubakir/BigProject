@@ -38,6 +38,8 @@ export const insertProduct = async (product) => {
       price: product.price !== undefined ? Number(product.price) : null,
       currency: product.currency || 'UZS',
       location: product.location || null,
+      date: product.date || null,
+      note: product.note || null,
     }
 
     console.log('supabase.insertProduct ->', safe)

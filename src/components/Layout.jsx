@@ -18,6 +18,7 @@ import {
   People as PeopleIcon,
   Language as LanguageIcon,
   AttachMoney as AttachMoneyIcon,
+  Calculate as CalculateIcon,
 } from '@mui/icons-material';
 
 import { useAuth } from '../hooks/useAuth';
@@ -35,6 +36,7 @@ const navItems = [
   { to: '/clients', key: 'clients', icon: <PeopleIcon /> },
   { to: '/accounts', key: 'accounts', icon: <AccountBalanceWalletIcon /> },
   { to: '/logs', key: 'logs', icon: <ReceiptLongIcon /> },
+  { to: '/calculator', key: 'calculator', icon: <CalculateIcon /> },
 ];
 
 function UserMenu({ user, onLogout, onManageAccount }) {

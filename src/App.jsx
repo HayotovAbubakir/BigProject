@@ -16,6 +16,7 @@ const Accounts = React.lazy(() => import('./pages/Accounts'))
 const Logs = React.lazy(() => import('./pages/Logs'))
 const Clients = React.lazy(() => import('./pages/Clients'))
 const Credits = React.lazy(() => import('./pages/Credits'))
+const Calculator = React.lazy(() => import('./pages/Calculator'))
 
 const App = () => {
   const { t } = useLocale()
@@ -52,6 +53,7 @@ const App = () => {
                   <Route path="/logs" element={<Logs />} />
                   <Route path="/clients" element={<Clients />} />
                   <Route path="/credits" element={<Credits />} />
+                  <Route path="/calculator" element={<Calculator />} />
                 </Routes>
               </Layout>
             </Suspense>

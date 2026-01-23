@@ -1,6 +1,5 @@
 import { useCallback } from 'react'
 import { useApp } from '../context/useApp'
-import { loadAppState, saveAppState } from '../firebase/db'
 import { formatMoney } from '../utils/format'
 
 export default function useDisplayCurrency() {
@@ -11,11 +10,9 @@ export default function useDisplayCurrency() {
   const setDisplayCurrency = useCallback(async (c) => {
     dispatch({ type: 'SET_UI', payload: { displayCurrency: c } })
     try {
-      const remote = (await loadAppState(null)) || {}
-      remote.ui = { ...(remote.ui || {}), displayCurrency: c }
-      await saveAppState(remote, null)
+      localStorage.setItem('displayCurrency', c);
     } catch (e) {
-      console.debug('Failed to save display currency to Supabase', e)
+      console.debug('Failed to save display currency to localStorage', e)
     }
   }, [dispatch])
 

@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { insertLog } from '../firebase/supabaseLogs';
+import { updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts';
+import { supabase } from '/supabase/supabaseClient';
 import {
   Typography, Button, Table, TableHead, TableRow, TableCell, TableBody,
   TableContainer, Box, Grid, TextField, Paper, IconButton, Tooltip, useTheme, useMediaQuery
@@ -51,7 +53,7 @@ function ProductCard({ product, onEdit, onDelete, onSell, onHistory, canAddProdu
 }
 
 export default function Store() {
-  const { state, dispatch, addStoreProduct, updateStoreProduct, deleteStoreProduct } = useApp();
+  const { state, dispatch, addStoreProduct, updateStoreProduct, deleteStoreProduct, sellStoreProduct } = useApp();
   const [search, setSearch] = useState('');
   const [openForm, setOpenForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -91,15 +93,79 @@ export default function Store() {
     await deleteStoreProduct(id, logData);
   };
 
-  const handleSell = async ({ id, qty, price, currency }) => {
-    const item = state.store.find(s => s.id === id);
-    const parsedPrice = price ? parseNumber(price) : parseNumber(item?.price || 0);
-    const amount = Number(qty) * parsedPrice;
-    const saleCurrency = currency || item?.currency || 'UZS';
-    const rateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
-    const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: 'product_sold', kind: 'SELL', productName: item?.name || id, productId: id, qty, unit_price: parsedPrice, amount: amount, currency: saleCurrency, total_uzs: Math.round(amount * (saleCurrency === 'USD' && usdToUzs ? usdToUzs : 1)), detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${item?.name || id}, Soni: ${qty}, Narx: ${parsedPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${rateText}`, source: 'store' };
-    dispatch({ type: 'SELL_STORE', payload: { id, qty }, log });
-    try { await insertLog(log) } catch (e) { console.warn('insertLog failed (sell store)', e) }
+  const handleSell = async (payload) => {
+    try {
+      const { id, qty, price, currency } = payload;
+      const item = state.store.find(s => s.id === id);
+      if (!item) {
+        console.error("Item not found in store", id);
+        return;
+      }
+
+      const parsedPrice = price ? parseNumber(price) : parseNumber(item?.price || 0);
+      const amount = Number(qty) * parsedPrice;
+      const saleCurrency = currency || item?.currency || 'UZS';
+      const rateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
+      
+      // Calculate UZS amounts for accounting
+      let totalUzs = 0, totalUsd = 0;
+      if (saleCurrency === 'USD' && usdToUzs) {
+        totalUzs = Math.round(amount * usdToUzs);
+        totalUsd = amount;
+      } else {
+        totalUzs = Math.round(amount);
+      }
+
+      const log = { 
+        id: uuidv4(), 
+        date: new Date().toISOString().slice(0, 10), 
+        time: new Date().toLocaleTimeString(), 
+        user_name: username || 'Admin', 
+        action: 'Mahsulot sotildi', 
+        kind: 'SELL', 
+        product_name: item?.name || id, 
+        product_id: id, 
+        qty, 
+        unit_price: parsedPrice, 
+        amount: amount, 
+        currency: saleCurrency, 
+        total_uzs: totalUzs,
+        detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${item?.name || id}, Soni: ${qty}, Narx: ${parsedPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${rateText}`,
+        source: 'store',
+      };
+
+      console.log('[Store Sell] Processing sale:', log);
+
+      // 1. Insert log to Supabase
+      await insertLog(log);
+      console.log('[Store Sell] Log inserted');
+
+      // 2. Update product quantity in Supabase
+      const newQty = Math.max(0, Number(item.qty) - Number(qty));
+      const { error: qtyErr } = await supabase
+        .from('products')
+        .update({ qty: newQty })
+        .eq('id', id);
+      if (qtyErr) throw new Error(`Qty update failed: ${qtyErr.message}`);
+      console.log('[Store Sell] Product qty updated:', newQty);
+
+      // 3. Update account balance in Supabase
+      await updateAccountBalance(username, totalUzs, totalUsd);
+      console.log('[Store Sell] Account balance updated');
+
+      // 4. Update daily sales in Supabase
+      await updateDailySales(username, totalUzs, totalUsd);
+      console.log('[Store Sell] Daily sales updated');
+
+      // 5. Update frontend state
+      dispatch({ type: 'SELL_STORE', payload: { id, qty }, log });
+      setSellItem(null);
+
+      console.log('[Store Sell] Frontend state updated');
+    } catch (err) {
+      console.error('[Store Sell] Error:', err);
+      notify('Error', `Xato: ${err.message}`, 'error');
+    }
   };
 
   const filteredStore = state.store.filter(it => !search || it.name.toLowerCase().includes(search.toLowerCase()));

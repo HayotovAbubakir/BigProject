@@ -1,41 +1,21 @@
 import React from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Typography } from '@mui/material'
 import { useAuth } from '../hooks/useAuth'
-import { loadAppState, saveAppState } from '../firebase/db'
 
 const ESCALATION_THRESH = 4
 const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000]
 
 async function readState(username) {
-  try {
-    const remote = await loadAppState(username)
-    if (!remote || !remote.account_lock_state) return { consecutiveFailed: 0, escalationLevel: 0, lockoutUntil: null }
-    const p = remote.account_lock_state
-    return { consecutiveFailed: Number(p.consecutiveFailed) || 0, escalationLevel: Number(p.escalationLevel) || 0, lockoutUntil: p.lockoutUntil ? Number(p.lockoutUntil) : null }
-  } catch (e) {
-    console.error('AccountLock readState error:', e)
-    return { consecutiveFailed: 0, escalationLevel: 0, lockoutUntil: null }
-  }
+  // Persistence is disabled
+  return { consecutiveFailed: 0, escalationLevel: 0, lockoutUntil: null }
 }
 
 async function writeState(username, state) {
-  try {
-    const remote = (await loadAppState(username)) || {}
-    remote.account_lock_state = state
-    await saveAppState(remote, username)
-  } catch (e) {
-    console.error('AccountLock writeState error:', e)
-  }
+  // Persistence is disabled
 }
 
 async function clearState(username) {
-  try {
-    const remote = (await loadAppState(username)) || {}
-    if (remote && remote.account_lock_state) delete remote.account_lock_state
-    await saveAppState(remote, username)
-  } catch (e) {
-    console.error('AccountLock clearState error:', e)
-  }
+  // Persistence is disabled
 }
 
 export default function AccountLock({ open, onClose }) {

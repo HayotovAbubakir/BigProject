@@ -21,7 +21,8 @@
   "access_denied": "Kirish ruxsat berilmadi",
   "new_account_restriction_message": "Yangi qo'shilgan akkauntlar bu amal'ni bajarolmaslari mumkin",
   "logs": "Loglar",
-  "credits": "Nasiyalar"
+  "credits": "Nasiyalar",
+  "calculator": "Kalkulyator"
   ,
   "loading": "Yuklanmoqda...",
   "product_added": "Mahsulot qo'shildi",
@@ -202,6 +203,14 @@
   "darkMode": "Qorong'u rejim",
   "lightMode": "Yorug' rejim",
   "account": "Hisob",
-  "logout": "Chiqish"
+  "logout": "Chiqish",
+  "simpleCalculator": "Oddiy kalkulyator",
+  "productCalculator": "Mahsulot kalkulyatori",
+  "exchangeRate": "Oblik kurs (1 USD)",
+  "productName": "Mahsulot nomi",
+  "quantity": "Miqdor",
+  "price": "Narxi",
+  "add": "Qo'shish",
+  "total": "Jami",
+  "error": "Xato"
 }
- 

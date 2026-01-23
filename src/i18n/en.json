@@ -21,7 +21,8 @@
   "access_denied": "Access denied",
   "new_account_restriction_message": "Newly added accounts cannot perform this action",
   "logs": "Logs",
-  "credits": "Credits"
+  "credits": "Credits",
+  "calculator": "Calculator"
   ,
   "loading": "Loading...",
   "product_added": "Product added",
@@ -201,5 +202,13 @@
   "darkMode": "Dark mode",
   "lightMode": "Light mode",
   "account": "Account",
-  "logout": "Logout"
-}
+  "logout": "Logout",
+  "simpleCalculator": "Simple Calculator",
+  "productCalculator": "Product Calculator",
+  "exchangeRate": "Exchange Rate (1 USD)",
+  "productName": "Product Name",
+  "quantity": "Quantity",
+  "price": "Price",
+  "add": "Add",
+  "total": "Total",
+  "error": "Error"}

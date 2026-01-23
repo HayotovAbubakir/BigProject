@@ -81,52 +81,54 @@ export const insertCreditLog = async (log) => {
 
 export const insertLog = async (log) => {
   if (!isSupabaseConfigured()) return null
+  
   try {
-    // Use RPC when possible for credit-related logs
-    if (log && log.kind === 'credit') {
-      try {
-        const rpcPayload = {
-          p_user_name: log.user_name || log.user || 'unknown',
-          p_action: log.action || 'ACTION',
-          p_client_name: log.client_name || null,
-          p_product_name: log.product_name || null,
-          p_qty: log.qty || null,
-          p_price: log.unit_price || null,
-          p_amount: log.amount || null,
-          p_bosh_toluv: log.bosh_toluv || null,
-          p_currency: log.currency || 'UZS',
-          p_detail: log.detail || null
-        }
-        console.log('Calling RPC log_credit_action from insertLog ->', rpcPayload)
-        const { data: rpcData, error: rpcError } = await supabase.rpc('log_credit_action', rpcPayload)
-        if (rpcError) throw rpcError
-        return rpcData || null
-      } catch (rpcErr) {
-        console.warn('RPC log_credit_action failed in insertLog, falling back:', rpcErr)
-      }
+    // Normalize log data for insertion
+    const logData = {
+      id: log.id || crypto.randomUUID(),
+      date: log.date || new Date().toISOString().slice(0, 10),
+      time: log.time || new Date().toLocaleTimeString(),
+      action: log.action || 'ACTION',
+      kind: log.kind || null,
+      user_name: log.user_name || log.user || 'unknown',
+      product_name: log.product_name || null,
+      product_id: log.product_id || log.productId || null,
+      qty: log.qty || null,
+      unit_price: log.unit_price || log.unitPrice || null,
+      amount: log.amount || null,
+      currency: log.currency || 'UZS',
+      total_uzs: log.total_uzs || null,
+      detail: log.detail || null,
+      source: log.source || null,
+      created_by: log.user_name || log.user || 'unknown'
     }
 
-    console.log('supabase.insertLog ->', log)
+    console.log('[insertLog] Writing to Supabase:', logData)
+
     const { data, error } = await supabase
       .from('logs')
-      .insert(log)
-      .select('*')
+      .insert([logData])
+      .select()
       .single()
-    if (error) throw error
-    console.log('supabase.insertLog success ->', data)
+
+    if (error) {
+      console.error('[insertLog] Database error:', error)
+      throw error
+    }
+
+    console.log('[insertLog] Success - inserted:', data)
     return data
   } catch (err) {
-    // If the logs table doesn't exist in the connected Supabase project,
-    // return null and log a clear warning rather than throwing — this
-    // prevents the whole UI action (e.g. adding a product) from failing.
-    console.error('insertLog error:', err)
+    console.error('[insertLog] Failed:', err?.message || err)
     const msg = err?.message || err?.error || JSON.stringify(err)
+    
+    // Only suppress if table truly doesn't exist
     if (typeof msg === 'string' && msg.includes("Could not find the table 'public.logs'")) {
-      console.warn('Supabase logs table not found. Continuing without remote log storage.')
+      console.warn('[insertLog] Table not found - logs table missing in Supabase')
       return null
     }
-    // For other errors, return null but log details so developers can inspect.
-    console.warn('insertLog failed, continuing without remote log. Details:', msg)
-    return null
+    
+    // For all other errors, throw so parent handler can retry or log
+    throw err
   }
 }

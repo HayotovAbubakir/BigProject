@@ -1,11 +1,12 @@
 
 import React, { createContext, useReducer, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { loadAppState, saveAppState } from '../firebase/db'
 import { getClients, insertClient as dbInsertClient, updateClient as dbUpdateClient, deleteClient as dbDeleteClient } from '../firebase/supabaseClients'
 import { getProducts, insertProduct as dbInsertProduct, updateProduct as dbUpdateProduct, deleteProduct as dbDeleteProduct } from '../firebase/supabaseInventory'
 import { getCredits, insertCredit as dbInsertCredit, updateCredit as dbUpdateCredit, deleteCredit as dbDeleteCredit } from '../firebase/supabaseCredits'
 import { getLogs, insertLog, insertCreditLog } from '../firebase/supabaseLogs'
+import { getAllUserBalances } from '../firebase/supabaseAccounts'
+import { supabase } from '/supabase/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import { useNotification } from './NotificationContext';
 
@@ -35,7 +36,7 @@ const initialState = {
   ui: {
     dark: false,
     receiptRate: 13000,
-    displayCurrency: 'UZS',
+    displayCurrency: localStorage.getItem('displayCurrency') || 'UZS',
   },
   drafts: {},
   clients: [],
@@ -103,7 +104,7 @@ function reducer(state, action) {
       // update account balances (credit the selling account) when a sale happens
       try {
         const log = action.log || {}
-        const uname = (log.user || '').toString().toLowerCase()
+        const uname = (log.user_name || '').toString().toLowerCase()
         let deltaUzs = null
         if (typeof log.total_uzs !== 'undefined' && log.total_uzs !== null) deltaUzs = Number(log.total_uzs)
         else if ((log.currency || '').toString().toUpperCase() === 'UZS') deltaUzs = Math.round(Number(log.amount || 0))
@@ -132,7 +133,7 @@ function reducer(state, action) {
       // also credit the selling account (if present) for warehouse sales
       try {
         const log = action.log || {}
-        const uname = (log.user || '').toString().toLowerCase()
+        const uname = (log.user_name || '').toString().toLowerCase()
         let deltaUzs = null
         if (typeof log.total_uzs !== 'undefined' && log.total_uzs !== null) deltaUzs = Number(log.total_uzs)
         else if ((log.currency || '').toString().toUpperCase() === 'UZS') deltaUzs = Math.round(Number(log.amount || 0))
@@ -269,6 +270,8 @@ function reducer(state, action) {
       if ((uname === 'hamdamjon' || uname === 'habibjon') && (action.payload.user || '').toString().toLowerCase() !== 'developer') return state
       return { ...state, accounts: state.accounts.filter(a => (a.username || '').toString().toLowerCase() !== uname), logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${action.payload.username} deleted` }] }
     }
+    case 'SET_ACCOUNTS':
+      return { ...state, accounts: action.payload }
     default:
       return state
   }
@@ -284,66 +287,40 @@ export const AppProvider = ({ children }) => {
   React.useEffect(() => {
     mountedRef.current = true;
     const loadData = async () => {
-      let remote = null;
       try {
-        // Prefer user-specific saved state; fall back to shared
-        remote = await loadAppState(username || null);
-        if (!remote) remote = await loadAppState(null);
-      } catch (err) {
-        console.error('AppContext: loadAppState failed', err);
-      }
+        const [credits, warehouse, store, logs, clients, userBalances] = await Promise.all([
+          getCredits(),
+          getProducts('warehouse'),
+          getProducts('store'),
+          getLogs(),
+          getClients(),
+          getAllUserBalances(),
+        ]);
 
-      if (!mountedRef.current) return;
+        if (!mountedRef.current) return;
 
-      if (remote) {
-        const fixItem = (it) => {
-          if (!it || (it.currency || 'UZS') !== 'USD') return it;
-          const copy = { ...it };
-          if (copy.price_uzs !== undefined && Number(copy.price_uzs) === Number(copy.price)) {
-            delete copy.price_uzs;
-          }
-          return copy;
-        };
+        dispatch({ type: 'SET_CREDITS', payload: credits });
+        dispatch({ type: 'SET_WAREHOUSE', payload: warehouse });
+        dispatch({ type: 'SET_STORE', payload: store });
+        dispatch({ type: 'SET_LOGS', payload: logs });
+        dispatch({ type: 'SET_CLIENTS', payload: clients });
 
-        try {
-          if (remote.store && Array.isArray(remote.store)) remote.store = remote.store.map(fixItem);
-          if (remote.warehouse && Array.isArray(remote.warehouse)) remote.warehouse = remote.warehouse.map(fixItem);
-        } catch (e) {
-          console.debug('AppContext: migration error', e);
+        // Merge user balances with existing accounts
+        if (userBalances && userBalances.length > 0) {
+          const updatedAccounts = (initialState.accounts || []).map(acc => {
+            const bal = userBalances.find(b => b.username === acc.username);
+            return bal ? { 
+              ...acc, 
+              balance_uzs: bal.balance_uzs || 0, 
+              balance_usd: bal.balance_usd || 0 
+            } : acc;
+          });
+          console.log('[AppContext] Loaded account balances:', updatedAccounts);
+          dispatch({ type: 'SET_ACCOUNTS', payload: updatedAccounts });
         }
 
-        try {
-          dispatch({ type: 'INIT', payload: remote });
-          console.log('AppContext: initialized from remote state');
-        } catch (e) {
-          console.error('AppContext: failed to init from remote', e);
-        }
-      } else {
-        try {
-          const [credits, warehouse, store, logs, clients] = await Promise.all([
-            getCredits(),
-            getProducts('warehouse'),
-            getProducts('store'),
-            getLogs(),
-            getClients(),
-          ]);
-
-          if (!mountedRef.current) return;
-
-          dispatch({ type: 'SET_CREDITS', payload: credits });
-          console.log('AppContext: loaded shared credits');
-          dispatch({ type: 'SET_WAREHOUSE', payload: warehouse });
-          console.log('AppContext: loaded shared warehouse');
-          dispatch({ type: 'SET_STORE', payload: store });
-          console.log('AppContext: loaded shared store');
-          dispatch({ type: 'SET_LOGS', payload: logs });
-          console.log('AppContext: loaded shared logs');
-          dispatch({ type: 'SET_CLIENTS', payload: clients });
-          console.log('AppContext: loaded clients');
-
-        } catch (_err) {
-          console.error('AppContext: failed to load shared data', _err);
-        }
+      } catch (_err) {
+        console.error('AppContext: failed to load shared data', _err);
       }
 
       if (mountedRef.current) setHydrated(true);
@@ -358,34 +335,6 @@ export const AppProvider = ({ children }) => {
 
   const [syncState, setSyncState] = React.useState('idle')
   
-  
-  React.useEffect(() => {
-    if (!hydrated) return
-
-    setSyncState('pending')
-
-    const t = setTimeout(() => {
-      ;(async () => {
-        try {
-          // Save the entire app state snapshot shared
-          const fullState = { ...state }
-          const success = await saveAppState(fullState, username || null)
-
-          setSyncState(success ? 'synced' : 'error')
-          console.log('App state saved:', success ? 'Muvaffaqiyatli' : 'Xatolik')
-        } catch (err) {
-          console.error('AppContext: saveAppState xatosi:', err)
-          setSyncState('error')
-        }
-      })()
-    }, 800)
-
-    return () => {
-      clearTimeout(t)
-      setSyncState('pending')
-    }
-  }, [hydrated, username, state])  
-
   
   // Action creators with DB persistence
   const addWarehouseProduct = React.useCallback(async (payload, logData) => {
@@ -467,6 +416,20 @@ export const AppProvider = ({ children }) => {
       throw _err
     }
   }, [dispatch, notify])
+
+  const sellStoreProduct = React.useCallback(async (item, { id, qty, price, currency }, logData) => {
+    try {
+      const newQty = Number(item.qty) - Number(qty);
+      await dbUpdateProduct(id, { qty: newQty });
+      let log = null
+      try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (sell store), continuing', e) }
+      dispatch({ type: 'SELL_STORE', payload: { id, qty }, log });
+    } catch (err) {
+      const message = `Failed to sell store product: ${err.message}`;
+      notify('Error', message, 'error')
+      throw err;
+    }
+  }, [dispatch, notify]);
 
   const addCredit = React.useCallback(async (payload, logData) => {
     try {
@@ -674,13 +637,14 @@ export const AppProvider = ({ children }) => {
     updateStoreProduct,
     deleteWarehouseProduct,
     deleteStoreProduct,
+    sellStoreProduct,
     addCredit,
     updateCredit,
     deleteCredit,
     addClient,
     updateClient,
     deleteClient
-  }), [state, dispatch, syncState, addWarehouseProduct, addStoreProduct, updateWarehouseProduct, updateStoreProduct, deleteWarehouseProduct, deleteStoreProduct, addCredit, updateCredit, deleteCredit, addClient, updateClient, deleteClient])
+  }), [state, dispatch, syncState, addWarehouseProduct, addStoreProduct, updateWarehouseProduct, updateStoreProduct, deleteWarehouseProduct, deleteStoreProduct, sellStoreProduct, addCredit, updateCredit, deleteCredit, addClient, updateClient, deleteClient])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
