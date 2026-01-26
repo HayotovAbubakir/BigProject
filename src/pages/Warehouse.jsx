@@ -16,6 +16,7 @@ import {
 import { formatMoney, parseNumber } from '../utils/format';
 import MoveToStoreForm from '../components/MoveToStoreForm';
 import WarehouseSellForm from '../components/WarehouseSellForm';
+import AddQuantityForm from '../components/AddQuantityForm';
 import useExchangeRate from '../hooks/useExchangeRate';
 import { useApp } from '../context/useApp';
 import { useAuth } from '../hooks/useAuth';
@@ -29,23 +30,24 @@ import { insertLog } from '../firebase/supabaseLogs';
 import { updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts';
 import { supabase } from '/supabase/supabaseClient';
 
-function ProductCard({ product, onEdit, onDelete, onSell, onMove, canAddProducts, canSell, canMove }) {
+function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canAddProducts, canSell, canMove }) {
   const { t } = useLocale();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
 
   return (
     <Grid item xs={12} sm={6}>
-      <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="h6">{product.name}</Typography>
-          <Typography variant="h6">{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
+      <Paper elevation={2} sx={{ p: { xs: 1, sm: 2 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' }, flex: 1, wordBreak: 'break-word' }}>{product.name}</Typography>
+          <Typography variant="h6" sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}>{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary">{t('qty')}: {product.qty}</Typography>
-        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={!canAddProducts}><EditIcon /></IconButton></Tooltip>
-          <Tooltip title={t('delete')}><IconButton onClick={onDelete} disabled={!canAddProducts} color="error"><DeleteIcon /></IconButton></Tooltip>
-          <Tooltip title={t('sell')}><IconButton onClick={onSell} color="primary" disabled={!canSell}><SellIcon /></IconButton></Tooltip>
-          <Tooltip title={t('move_to_store')}><IconButton onClick={onMove} color="info" disabled={!canMove}><MoveToStoreIcon /></IconButton></Tooltip>
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: 1 }}>{t('qty')}: {product.qty}</Typography>
+        <Box sx={{ mt: 'auto', display: 'flex', justifyContent: 'flex-end', gap: 0.5, flexWrap: 'wrap-reverse' }}>
+          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={!canAddProducts} size="small"><EditIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={t('delete')}><IconButton onClick={onDelete} disabled={!canAddProducts} color="error" size="small"><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Qo'shish"><IconButton onClick={onAddQty} disabled={!canAddProducts} color="success" size="small"><AddIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={t('sell')}><IconButton onClick={onSell} color="primary" disabled={!canSell} size="small"><SellIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={t('move_to_store')}><IconButton onClick={onMove} color="info" disabled={!canMove} size="small"><MoveToStoreIcon fontSize="small" /></IconButton></Tooltip>
         </Box>
       </Paper>
     </Grid>
@@ -59,6 +61,7 @@ export default function Warehouse() {
   const [editItem, setEditItem] = useState(null);
   const [moveItem, setMoveItem] = useState(null);
   const [sellItem, setSellItem] = useState(null);
+  const [addQtyItem, setAddQtyItem] = useState(null);
   const [openWholesale, setOpenWholesale] = useState(false);
   const [confirm, setConfirm] = useState({ open: false, id: null });
 
@@ -94,6 +97,32 @@ export default function Warehouse() {
     const productName = product ? product.name : id;
     const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_deleted'), kind: 'DELETE', product_name: productName, qty: Number(product.qty), unit_price: parseNumber(product.price || 0), currency: product.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti o'chirildi, Mahsulot: ${productName}, Soni: ${Number(product.qty)}, Narx: ${parseNumber(product.price || 0)} ${product.currency || 'UZS'}, Jami: ${Number(product.qty) * parseNumber(product.price || 0)} ${product.currency || 'UZS'}` };
     await deleteWarehouseProduct(id, logData);
+  };
+
+  const handleAddQuantity = async (payload) => {
+    const product = state.warehouse.find(p => p.id === payload.id);
+    if (!product) return;
+    
+    const addedQty = Number(payload.qty);
+    const newTotalQty = Number(product.qty) + addedQty;
+    const unitPrice = parseNumber(product.price || 0);
+    const amount = addedQty * unitPrice;
+    
+    const logData = { 
+      id: uuidv4(), 
+      date: new Date().toISOString().slice(0, 10), 
+      time: new Date().toLocaleTimeString(), 
+      user_name: username || 'Admin', 
+      action: 'Mahsulot qo\'shildi', 
+      kind: 'ADD_QTY', 
+      product_name: product.name, 
+      qty: addedQty, 
+      unit_price: unitPrice, 
+      currency: product.currency || 'UZS', 
+      detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${product.name}, Soni: ${addedQty}, Narx: ${unitPrice} ${product.currency || 'UZS'}, Jami: ${amount} ${product.currency || 'UZS'}` 
+    };
+    
+    await updateWarehouseProduct(payload.id, { ...product, qty: newTotalQty }, logData);
   };
 
   const filteredWarehouse = state.warehouse.filter(it => !search || it.name.toLowerCase().includes(search.toLowerCase()));
@@ -136,6 +165,7 @@ export default function Warehouse() {
                 product={it}
                 onEdit={() => { setEditItem(it); setOpenForm(true); }}
                 onDelete={() => setConfirm({ open: true, id: it.id })}
+                onAddQty={() => setAddQtyItem(it)}
                 onSell={() => { if (!canSell) { window.alert(t('permissionDenied')||'Permission denied'); return } setSellItem(it) }}
                 onMove={() => { if (!canMove) { window.alert(t('permissionDenied')||'Permission denied'); return } setMoveItem(it) }}
                 canAddProducts={canAddProducts}
@@ -170,6 +200,7 @@ export default function Warehouse() {
                     <TableCell align="right">
                       <Tooltip title={t('edit')}><IconButton onClick={() => { setEditItem(it); setOpenForm(true); }} disabled={!canAddProducts}><EditIcon /></IconButton></Tooltip>
                       <Tooltip title={t('delete')}><IconButton onClick={() => setConfirm({ open: true, id: it.id })} disabled={!canAddProducts} color="error"><DeleteIcon /></IconButton></Tooltip>
+                      <Tooltip title="Qo'shish"><IconButton onClick={() => setAddQtyItem(it)} disabled={!canAddProducts} color="success"><AddIcon /></IconButton></Tooltip>
                         <Tooltip title={t('sell')}><IconButton onClick={() => { if (!canSell) { window.alert(t('permissionDenied')||'Permission denied'); return } setSellItem(it) }} color="primary" disabled={!canSell}><SellIcon /></IconButton></Tooltip>
                         <Tooltip title={t('move_to_store')}><IconButton onClick={() => { if (!canMove) { window.alert(t('permissionDenied')||'Permission denied'); return } setMoveItem(it) }} color="info" disabled={!canMove}><MoveToStoreIcon /></IconButton></Tooltip>
                     </TableCell>
@@ -182,6 +213,7 @@ export default function Warehouse() {
       </Paper>
 
       <WarehouseForm open={openForm} onClose={() => setOpenForm(false)} initial={editItem} onSubmit={(p) => editItem ? handleEdit(p) : handleAdd(p)} />
+      <AddQuantityForm open={!!addQtyItem} initial={addQtyItem} onClose={() => setAddQtyItem(null)} onSubmit={(payload) => { handleAddQuantity(payload); setAddQtyItem(null) }} source="warehouse" />
       <MoveToStoreForm open={!!moveItem} initial={moveItem} onClose={() => setMoveItem(null)} onSubmit={(payload) => {
         const itemPrice = parseNumber(payload.item.price || 0);
         const amount = Number(payload.qty) * itemPrice;

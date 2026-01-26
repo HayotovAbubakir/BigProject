@@ -39,11 +39,11 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
   
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle sx={{ fontSize: { xs: '1.05rem', md: '1.15rem' } }}>Ombordan mahsulot sotish</DialogTitle>
-      <DialogContent>
-        <TextField label="Mahsulot" fullWidth margin="dense" value={initial?.name || ''} disabled />
-        <Typography variant="caption" color="text.secondary">Mavjud: {available} dona</Typography>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
+      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
+      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
+        <TextField label="Mahsulot" fullWidth margin="dense" size="small" value={initial?.name || ''} disabled />
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Mavjud: {available}</Typography>
         <NumberField
           label="Soni"
           fullWidth
@@ -51,30 +51,30 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
           value={qty}
           onChange={(v) => setQty(Number(v || 0))}
           error={invalid}
-          helperText={invalid ? (parsedQty <= 0 ? 'Iltimos 1 yoki undan ko\'p kiriting' : 'Mavjud sondan ortiq kiritdingiz') : ''}
+          helperText={invalid ? (parsedQty <= 0 ? 'Min 1 kiriting' : 'Ko\'p kiritdingiz') : ''}
         />
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel id="wsell-currency-label">Valyuta</InputLabel>
-          <Select labelId="wsell-currency-label" value={currency} label="Valyuta" onChange={(e) => setCurrency(e.target.value)}>
+        <FormControl fullWidth sx={{ mt: 1.5 }}>
+          <InputLabel id="wsell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Valyuta</InputLabel>
+          <Select labelId="wsell-currency-label" value={currency} label="Valyuta" onChange={(e) => setCurrency(e.target.value)} size="small">
             <MenuItem value="UZS">UZS</MenuItem>
             <MenuItem value="USD">USD</MenuItem>
           </Select>
         </FormControl>
 
-        <CurrencyField label="Sotish narxi (bir dona)" fullWidth margin="dense" value={price} onChange={(v) => setPrice(v)} currency={currency} />
+        <CurrencyField label="Narxi (bir dona)" fullWidth margin="dense" value={price} onChange={(v) => setPrice(v)} currency={currency} />
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>
-            <Typography variant="body2">Jami: {parsedQty * Number(price || 0)} USD</Typography>
-            {usdToUzs ? <Typography variant="caption" color="text.secondary">Taxminiy: {formatMoney(Math.round(parsedQty * Number(price || 0) * usdToUzs))} UZS</Typography> : <Typography variant="caption" color="text.secondary">No exchange rate set</Typography>}
+            <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', md: '0.875rem' } }}>Jami: {parsedQty * Number(price || 0)} USD</Typography>
+            {usdToUzs ? <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>≈ {formatMoney(Math.round(parsedQty * Number(price || 0) * usdToUzs))} UZS</Typography> : <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Kurs yo\'q</Typography>}
           </Box>
         ) : (
-          <Typography variant="caption" color="text.secondary">Taxminiy qiymat: {formatMoney(parsedQty * Number(price || 0))} UZS</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Jami: {formatMoney(parsedQty * Number(price || 0))} UZS</Typography>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 2, pb: 2 }}>
-        <Button onClick={onClose} sx={{ minWidth: 100 }}>Bekor</Button>
-        <Button variant="contained" onClick={submit} disabled={invalid} sx={{ minWidth: 120 }}>Sotish</Button>
+      <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>
+        <Button onClick={onClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Bekor</Button>
+        <Button variant="contained" onClick={submit} disabled={invalid} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Sotish</Button>
       </DialogActions>
     </Dialog>
   )

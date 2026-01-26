@@ -117,7 +117,14 @@ export default function Layout({ children }) {
 
   const drawer = <DrawerContent navItems={translatedNavItems} t={t} />;
 
+  // Check if user is restricted
+  const isRestricted = user?.permissions?.new_account_restriction ?? false;
+
   const handleManageAccount = () => {
+    if (isRestricted) {
+      window.alert(t('new_account_restriction_message') || 'Yangi qo\'shilgan akkauntlar bu amal\'ni bajarolmaslari mumkin');
+      return;
+    }
     setAccountManagerOpen(true);
   };
 

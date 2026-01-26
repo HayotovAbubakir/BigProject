@@ -23,7 +23,7 @@ import { supabase } from '/supabase/supabaseClient';
 // Note: The credit management dialogs and logic are complex and are kept as is to avoid breaking functionality.
 // Only the main client list UI is redesigned.
 
-function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canManageCredits }) {
+function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canManageCredits, isRestricted }) {
   const { t } = useLocale();
   return (
     <Grid item xs={12} sm={6} md={4}>
@@ -38,9 +38,9 @@ function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canM
         <Box sx={{ flexGrow: 1 }} />
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
           <Tooltip title={t('viewCredits')}><IconButton onClick={onViewCredits}><CreditCardIcon /></IconButton></Tooltip>
-          <Tooltip title={t('addCredit')}><IconButton onClick={onAddCredit} color="primary"><AddCardIcon /></IconButton></Tooltip>
-          <Tooltip title={t('edit')}><IconButton onClick={onEdit}><EditIcon /></IconButton></Tooltip>
-          <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error"><DeleteIcon /></IconButton></Tooltip>
+          <Tooltip title={t('addCredit')}><IconButton onClick={onAddCredit} color="primary" disabled={isRestricted}><AddCardIcon /></IconButton></Tooltip>
+          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={isRestricted}><EditIcon /></IconButton></Tooltip>
+          <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error" disabled={isRestricted}><DeleteIcon /></IconButton></Tooltip>
         </Box>
       </Paper>
     </Grid>
@@ -50,8 +50,11 @@ function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canM
 export default function Clients() {
   const { state, addClient, updateClient, deleteClient, addCredit, addWarehouseProduct, addStoreProduct, updateWarehouseProduct, updateStoreProduct, updateCredit } = useApp();
   const { t } = useLocale();
-  const { username, hasPermission } = useAuth();
+  const { username, hasPermission, user } = useAuth();
   const { notify } = useNotification();
+  
+  // Check if current user has new_account_restriction
+  const isRestricted = user?.permissions?.new_account_restriction ?? false;
   
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -104,6 +107,10 @@ export default function Clients() {
 
 
   const handleSave = () => {
+    if (isRestricted) {
+      notify('Xato', t('new_account_restriction_message') || 'Yangi qo\'shilgan akkauntlar bu amal\'ni bajarolmaslari mumkin', 'error');
+      return;
+    }
     if (!name.trim()) return;
     if (rawPhone.length !== 9) { notify('Warning', 'Telefon raqami 9 ta raqam bo\'lishi kerak', 'warning'); return; }
     const formattedPhone = formatPhone(rawPhone);
@@ -121,6 +128,10 @@ export default function Clients() {
   };
   
   const handleDeleteClick = (id) => {
+    if (isRestricted) {
+      notify('Xato', t('new_account_restriction_message') || 'Yangi qo\'shilgan akkauntlar bu amal\'ni bajarolmaslari mumkin', 'error');
+      return;
+    }
     setConfirm({ open: true, id, password: '', verifying: false });
   };
 
@@ -396,7 +407,7 @@ export default function Clients() {
     <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">{t('clients')}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddClientClick}>{t('addClient')}</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddClientClick} disabled={isRestricted}>{t('addClient')}</Button>
       </Box>
       <Paper sx={{ p: 2 }}>
         <TextField
@@ -412,6 +423,7 @@ export default function Clients() {
               key={c.id}
               client={c}
               canManageCredits={hasPermission && hasPermission('credits_manage')}
+              isRestricted={isRestricted}
               onEdit={() => { setEditClient(c); setName(c.name); const digits = parsePhone(c.phone); setRawPhone(digits); setPhone(formatPhone(digits)); }}
               onDelete={() => handleDeleteClick(c.id)}
               onAddCredit={() => { 

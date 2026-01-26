@@ -171,3 +171,4 @@ export default function AccountLock({ open, onClose }) {
     </Dialog>
   )
 }
+}

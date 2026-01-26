@@ -1,5 +1,5 @@
 import React from 'react';
-import { Typography, Card, CardContent, Grid, Box } from '@mui/material';
+import { Typography, Card, CardContent, Grid, Box, Alert } from '@mui/material';
 import { formatWithSpaces } from '../utils/format';
 import { useApp } from '../context/useApp';
 import useExchangeRate from '../hooks/useExchangeRate';
@@ -11,6 +11,18 @@ export default function Accounts() {
   const { rate: usdToUzs } = useExchangeRate();
   const { t } = useLocale();
   const { user } = useAuth();
+
+  // Check if current user is restricted - if so, prevent access to this page
+  const isRestricted = user?.permissions?.new_account_restriction ?? false;
+  if (isRestricted) {
+    return (
+      <Box sx={{ width: '100%', px: { xs: 2, sm: 3 }, py: 4 }}>
+        <Alert severity="error">
+          {t('new_account_restriction_message') || 'Yangi qo\'shilgan akkauntlar bu sahifaga kira olmaydi'}
+        </Alert>
+      </Box>
+    );
+  }
 
   // Calculate warehouse value in UZS
   const warehouseValueUzs = state.warehouse.reduce((sum, item) => {

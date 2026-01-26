@@ -16,6 +16,17 @@ export default function AccountManager({ open, onClose }) {
   const [newAccountRestricted, setNewAccountRestricted] = useState(false)
   const [selected, setSelected] = useState(null) 
 
+  // Reset form state when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      setAdding(false)
+      setSelected(null)
+      setNewUsername('')
+      setNewPassword('')
+      setNewAccountRestricted(false)
+    }
+  }, [open])
+
   // Admins and developers can manage accounts, or users with manage_accounts permission
   const canManageAccounts = hasPermission && (hasPermission('manage_accounts'))
 
@@ -51,14 +62,14 @@ export default function AccountManager({ open, onClose }) {
         return
       }
       window.alert(t('account_added') || 'Akkaunt muvaffaqiyatli qo\'shildi')
+      setNewUsername('')
+      setNewPassword('')
+      setNewAccountRestricted(false)
+      setAdding(false)
     } catch (err) {
       console.error('handleAdd error:', err)
       window.alert(err && err.message || t('add_account_failed') || 'Akkaunt qo\'shish xatosi')
     }
-    setNewUsername('')
-    setNewPassword('')
-    setNewAccountRestricted(false)
-    setAdding(false)
   }
 
   const togglePermission = (username, key) => {

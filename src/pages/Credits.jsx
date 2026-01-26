@@ -21,7 +21,7 @@ import CreditForm from '../components/CreditForm';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { calculateCreditTotals } from '../utils/currencyUtils';
 
-function CreditCard({ credit, onEdit, onDelete, onComplete }) {
+function CreditCard({ credit, onEdit, onDelete, onComplete, isRestricted }) {
   const { t } = useLocale();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
   const remaining = credit.remaining !== undefined ? credit.remaining : credit.amount - (credit.bosh_toluv || 0);
@@ -56,8 +56,8 @@ function CreditCard({ credit, onEdit, onDelete, onComplete }) {
         <Typography variant="body2" color="text.secondary">{credit.note}</Typography>
         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
           {!credit.completed && <Tooltip title={t('complete')}><IconButton onClick={onComplete} color="success"><CheckIcon /></IconButton></Tooltip>}
-          <Tooltip title={t('edit')}><IconButton onClick={onEdit}><EditIcon /></IconButton></Tooltip>
-          <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error"><DeleteIcon /></IconButton></Tooltip>
+          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={isRestricted}><EditIcon /></IconButton></Tooltip>
+          <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error" disabled={isRestricted}><DeleteIcon /></IconButton></Tooltip>
         </Box>
       </Paper>
     </Grid>
@@ -71,12 +71,15 @@ export default function Credits() {
   const [filter, setFilter] = useState('active');
   const [confirm, setConfirm] = useState({ open: false, item: null, action: null });
 
-  const { username } = useAuth();
+  const { username, user } = useAuth();
   const { t } = useLocale();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
   const { rate: usdToUzs } = useExchangeRate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Check if current user has new_account_restriction
+  const isRestricted = user?.permissions?.new_account_restriction ?? false;
 
   const creditTotals = useMemo(() => {
     const active = calculateCreditTotals(state.credits, displayCurrency, usdToUzs, 'active');
@@ -86,6 +89,10 @@ export default function Credits() {
   }, [state.credits, displayCurrency, usdToUzs]);
 
   const handleAdd = (payload) => {
+    if (isRestricted) {
+      window.alert(t('new_account_restriction_message') || 'Yangi qo\'shilgan akkauntlar bu amal\'ni bajarolmaslari mumkin');
+      return;
+    }
     const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_added', kind: 'credit', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining: payload.amount - payload.bosh_toluv, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya qo'shildi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${payload.bosh_toluv}, Qolgan: ${payload.amount - payload.bosh_toluv} ${payload.currency}` };
     addCredit(payload, logData);
   };
@@ -165,7 +172,7 @@ export default function Credits() {
       </Box>
       <Paper sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenForm(true)}>{t('add_new_credit')}</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenForm(true)} disabled={isRestricted}>{t('add_new_credit')}</Button>
           <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
             <Button variant={filter === 'active' ? 'contained' : 'outlined'} onClick={() => setFilter('active')}>Active</Button>
             <Button variant={filter === 'completed' ? 'contained' : 'outlined'} onClick={() => setFilter('completed')}>Completed</Button>
@@ -179,6 +186,7 @@ export default function Credits() {
               <CreditCard 
                 key={c.id} 
                 credit={c}
+                isRestricted={isRestricted}
                 onEdit={() => setEditing(c)}
                 onDelete={() => setConfirm({ open: true, item: c, action: 'delete' })}
                 onComplete={() => setConfirm({ open: true, item: c, action: 'complete' })}

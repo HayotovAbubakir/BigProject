@@ -35,38 +35,38 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth>
-      <DialogTitle>Mahsulot sotish</DialogTitle>
-      <DialogContent>
-        <Typography variant="caption" color="text.secondary">Mavjud: {available} dona</Typography>
-        <NumberField label="Soni" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth sx={{ mt: 2 }} error={parsedQty <= 0 || parsedQty > available} helperText={(parsedQty <= 0 ? '1 yoki undan ko\'p kiriting' : (parsedQty > available ? 'Mavjud sondan ortiq' : ''))} />
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
+      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
+      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Mavjud: {available}</Typography>
+        <NumberField label="Soni" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth sx={{ mt: 1.5 }} size="small" error={parsedQty <= 0 || parsedQty > available} helperText={(parsedQty <= 0 ? 'Min 1' : (parsedQty > available ? 'Ko\'p' : ''))} />
 
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel id="sell-currency-label">Valyuta</InputLabel>
-          <Select labelId="sell-currency-label" value={currency} label="Valyuta" onChange={(e) => setCurrency(e.target.value)}>
+        <FormControl fullWidth sx={{ mt: 1.5 }}>
+          <InputLabel id="sell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Valyuta</InputLabel>
+          <Select labelId="sell-currency-label" value={currency} label="Valyuta" onChange={(e) => setCurrency(e.target.value)} size="small">
             <MenuItem value="UZS">UZS</MenuItem>
             <MenuItem value="USD">USD</MenuItem>
           </Select>
         </FormControl>
 
-        <CurrencyField label="Birlik narxi" value={price} onChange={(v) => setPrice(v)} fullWidth sx={{ mt: 2 }} error={parsedPrice <= 0} helperText={parsedPrice <= 0 ? 'Musbat narx kiriting' : ''} currency={currency} />
+        <CurrencyField label="Narxi" value={price} onChange={(v) => setPrice(v)} fullWidth sx={{ mt: 1.5 }} error={parsedPrice <= 0} helperText={parsedPrice <= 0 ? 'Musbat' : ''} currency={currency} />
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>
-            <Typography variant="body2" sx={{ mt: 1 }}>Jami: {total} USD</Typography>
+            <Typography variant="body2" sx={{ mt: 1, fontSize: { xs: '0.8rem', md: '0.875rem' } }}>Jami: {total} USD</Typography>
             {usdToUzs ? (
-              <Typography variant="caption" color="text.secondary">Taxminiy: {Math.round(total * usdToUzs)} UZS</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>≈ {Math.round(total * usdToUzs)} UZS</Typography>
             ) : (
-              <Typography variant="caption" color="text.secondary">No exchange rate set</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Kurs yo\'q</Typography>
             )}
           </Box>
         ) : (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>Taxminiy qiymat: {Math.round(total)} UZS</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Jami: {Math.round(total)} UZS</Typography>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Bekor</Button>
-        <Button variant="contained" onClick={submit} disabled={invalid}>Sotish</Button>
+      <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>
+        <Button onClick={onClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Bekor</Button>
+        <Button variant="contained" onClick={submit} disabled={invalid} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Sotish</Button>
       </DialogActions>
     </Dialog>
   )

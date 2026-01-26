@@ -24,28 +24,30 @@ import useExchangeRate from '../hooks/useExchangeRate';
 import useDisplayCurrency from '../hooks/useDisplayCurrency';
 import StoreForm from '../components/StoreForm';
 import SellForm from '../components/SellForm';
+import AddQuantityForm from '../components/AddQuantityForm';
 import SalesHistory from '../components/SalesHistory';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WholesaleSale from '../components/WholesaleSale';
 import { calculateInventoryTotal } from '../utils/currencyUtils';
 
-function ProductCard({ product, onEdit, onDelete, onSell, onHistory, canAddProducts, canSell }) {
+function ProductCard({ product, onEdit, onDelete, onSell, onHistory, onAddQty, canAddProducts, canSell }) {
   const { t } = useLocale();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
 
   return (
     <Grid item xs={12} sm={6}>
-      <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="h6">{product.name}</Typography>
-          <Typography variant="h6">{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
+      <Paper elevation={2} sx={{ p: { xs: 1, sm: 2 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' }, flex: 1, wordBreak: 'break-word' }}>{product.name}</Typography>
+          <Typography variant="h6" sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}>{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary">{t('qty')}: {product.qty}</Typography>
-        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={!canAddProducts}><EditIcon /></IconButton></Tooltip>
-          <Tooltip title={t('delete')}><IconButton onClick={onDelete} disabled={!canAddProducts} color="error"><DeleteIcon /></IconButton></Tooltip>
-          <Tooltip title={t('sell')}><IconButton onClick={onSell} color="primary" disabled={!canSell}><SellIcon /></IconButton></Tooltip>
-          <Tooltip title={t('history')}><IconButton onClick={onHistory} color="info"><HistoryIcon /></IconButton></Tooltip>
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: 1 }}>{t('qty')}: {product.qty}</Typography>
+        <Box sx={{ mt: 'auto', display: 'flex', justifyContent: 'flex-end', gap: 0.5, flexWrap: 'wrap-reverse' }}>
+          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={!canAddProducts} size="small"><EditIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={t('delete')}><IconButton onClick={onDelete} disabled={!canAddProducts} color="error" size="small"><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Qo'shish"><IconButton onClick={onAddQty} disabled={!canAddProducts} color="success" size="small"><AddIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={t('sell')}><IconButton onClick={onSell} color="primary" disabled={!canSell} size="small"><SellIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={t('history')}><IconButton onClick={onHistory} color="info" size="small"><HistoryIcon fontSize="small" /></IconButton></Tooltip>
         </Box>
       </Paper>
     </Grid>
@@ -59,6 +61,7 @@ export default function Store() {
   const [editItem, setEditItem] = useState(null);
   const [sellItem, setSellItem] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
+  const [addQtyItem, setAddQtyItem] = useState(null);
   const [openWholesale, setOpenWholesale] = useState(false);
   const [confirm, setConfirm] = useState({ open: false, id: null });
 
@@ -91,6 +94,32 @@ export default function Store() {
     const item = state.store.find(p => p.id === id);
     const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: 'product_deleted', kind: 'DELETE', product_name: item?.name || id, qty: Number(item?.qty || 0), unit_price: parseNumber(item?.price || 0), amount: Number(item?.qty || 0) * parseNumber(item?.price || 0), currency: item?.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Do'kon mahsuloti o'chirildi, Mahsulot: ${item?.name || id}, Soni: ${Number(item?.qty || 0)}, Narx: ${parseNumber(item?.price || 0)} ${item?.currency || 'UZS'}, Jami: ${Number(item?.qty || 0) * parseNumber(item?.price || 0)} ${item?.currency || 'UZS'}` };
     await deleteStoreProduct(id, logData);
+  };
+
+  const handleAddQuantity = async (payload) => {
+    const item = state.store.find(p => p.id === payload.id);
+    if (!item) return;
+    
+    const addedQty = Number(payload.qty);
+    const newTotalQty = Number(item.qty) + addedQty;
+    const unitPrice = parseNumber(item.price || 0);
+    const amount = addedQty * unitPrice;
+    
+    const logData = { 
+      id: uuidv4(), 
+      date: new Date().toISOString().slice(0, 10), 
+      time: new Date().toLocaleTimeString(), 
+      user_name: username || 'Admin', 
+      action: 'Mahsulot qo\'shildi', 
+      kind: 'ADD_QTY', 
+      product_name: item.name, 
+      qty: addedQty, 
+      unit_price: unitPrice, 
+      currency: item.currency || 'UZS', 
+      detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Do'konga mahsulot qo'shildi, Mahsulot: ${item.name}, Soni: ${addedQty}, Narx: ${unitPrice} ${item.currency || 'UZS'}, Jami: ${amount} ${item.currency || 'UZS'}` 
+    };
+    
+    await updateStoreProduct(payload.id, { ...item, qty: newTotalQty }, logData);
   };
 
   const handleSell = async (payload) => {
@@ -208,6 +237,7 @@ export default function Store() {
                 product={it}
                 onEdit={() => { setEditItem(it); setOpenForm(true); }}
                 onDelete={() => setConfirm({ open: true, id: it.id })}
+                onAddQty={() => setAddQtyItem(it)}
                 onSell={() => { if (!canSell) { window.alert(t('permissionDenied')||'Permission denied'); return } setSellItem(it) }}
                 onHistory={() => setHistoryFor(it)}
                 canAddProducts={canAddProducts}
@@ -241,6 +271,7 @@ export default function Store() {
                     <TableCell align="right">
                       <Tooltip title={t('edit')}><IconButton onClick={() => { setEditItem(it); setOpenForm(true); }} disabled={!canAddProducts}><EditIcon /></IconButton></Tooltip>
                       <Tooltip title={t('delete')}><IconButton onClick={() => setConfirm({ open: true, id: it.id })} disabled={!canAddProducts} color="error"><DeleteIcon /></IconButton></Tooltip>
+                      <Tooltip title="Qo'shish"><IconButton onClick={() => setAddQtyItem(it)} disabled={!canAddProducts} color="success"><AddIcon /></IconButton></Tooltip>
                       <Tooltip title={t('sell')}><IconButton onClick={() => { if (!canSell) { window.alert(t('permissionDenied')||'Permission denied'); return } setSellItem(it) }} color="primary" disabled={!canSell}><SellIcon /></IconButton></Tooltip>
                       <Tooltip title={t('history')}><IconButton onClick={() => setHistoryFor(it)} color="info"><HistoryIcon /></IconButton></Tooltip>
                     </TableCell>
@@ -253,6 +284,7 @@ export default function Store() {
       </Paper>
 
       <StoreForm open={openForm} onClose={() => setOpenForm(false)} initial={editItem} onSubmit={(p) => editItem ? handleEdit(p) : handleAdd(p)} />
+      <AddQuantityForm open={!!addQtyItem} initial={addQtyItem} onClose={() => setAddQtyItem(null)} onSubmit={(payload) => { handleAddQuantity(payload); setAddQtyItem(null) }} source="store" />
       <SellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={(payload) => { handleSell(payload); setSellItem(null) }} />
       <WholesaleSale open={openWholesale} onClose={() => setOpenWholesale(false)} source="store" />
       <ConfirmDialog open={confirm.open} onClose={() => setConfirm({ open: false, id: null })} title={t('confirm_delete_title')} onConfirm={() => { handleRemove(confirm.id); setConfirm({ open: false, id: null }); }}>

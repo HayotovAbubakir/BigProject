@@ -86,21 +86,21 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
 
   return (
     <>
-      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-    <DialogTitle sx={{ fontSize: { xs: '1.05rem', md: '1.25rem' } }}>{initial ? "Do'kondagi mahsulotni tahrirlash" : "Do'konga mahsulot qo'shish"}</DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
+      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
+    <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>{initial ? "Tahrirlash" : "Qo'shish"}</DialogTitle>
+        <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word', pt: { xs: 1, md: 1.5 } }}>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
-            <Button variant="outlined" onClick={() => setCurrencyOpenInternal(true)}>Valyuta: {form.currency || 'UZS'}</Button>
+            <Button variant="outlined" size="small" onClick={() => setCurrencyOpenInternal(true)} sx={{ fontSize: { xs: '0.7rem', md: '0.875rem' }, p: { xs: '4px 8px', md: '6px 12px' } }}>{form.currency || 'UZS'}</Button>
           </Box>
-          <TextField label="Nomi" fullWidth margin="dense" value={form.name} onChange={handle('name')} />
+          <TextField label="Nomi" fullWidth margin="dense" size="small" value={form.name} onChange={handle('name')} InputProps={{ style: { fontSize: '0.875rem' } }} />
           <NumberField label="Soni" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: Number(v || 0) }))} />
-          <CurrencyField label="Narxi (do'konda)" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v }))} currency={form.currency} />
-          <TextField label="Olingan sana" fullWidth margin="dense" value={form.date} onChange={handle('date')} />
-          <TextField label="Izoh" fullWidth margin="dense" value={form.note} onChange={handle('note')} />
+          <CurrencyField label="Narxi" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v }))} currency={form.currency} />
+          <TextField label="Sana" fullWidth margin="dense" size="small" value={form.date} onChange={handle('date')} />
+          <TextField label="Izoh" fullWidth margin="dense" size="small" value={form.note} onChange={handle('note')} InputProps={{ style: { fontSize: '0.875rem' } }} />
         </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 2 }}>
-          <Button onClick={handleClose} sx={{ minWidth: 100 }}>Bekor qilish</Button>
-          <Button variant="contained" onClick={submit} sx={{ minWidth: 120 }}>Saqlash</Button>
+        <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>
+          <Button onClick={handleClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Bekor</Button>
+          <Button variant="contained" onClick={submit} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Saqlash</Button>
         </DialogActions>
       </Dialog>
 
