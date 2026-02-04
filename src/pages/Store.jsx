@@ -20,6 +20,7 @@ import { formatMoney, parseNumber } from '../utils/format';
 import { useApp } from '../context/useApp';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../context/LocaleContext';
+import { useNotification } from '../context/NotificationContext';
 import useExchangeRate from '../hooks/useExchangeRate';
 import useDisplayCurrency from '../hooks/useDisplayCurrency';
 import StoreForm from '../components/StoreForm';
@@ -67,6 +68,7 @@ export default function Store() {
 
   const { username, hasPermission } = useAuth();
   const { t } = useLocale();
+  const { notify } = useNotification();
   const { rate: usdToUzs } = useExchangeRate();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
   const theme = useTheme();
@@ -290,7 +292,17 @@ export default function Store() {
       <ConfirmDialog open={confirm.open} onClose={() => setConfirm({ open: false, id: null })} title={t('confirm_delete_title')} onConfirm={() => { handleRemove(confirm.id); setConfirm({ open: false, id: null }); }}>
         {t('confirm_delete_body')}
       </ConfirmDialog>
-      <SalesHistory open={!!historyFor} onClose={() => setHistoryFor(null)} sells={state.logs.filter(l => l && l.kind === 'SELL' && String(l.productId) === String(historyFor?.id)).sort((a,b)=> (b.date||'').localeCompare(a.date||'') )} />
+      <SalesHistory
+        open={!!historyFor}
+        onClose={() => setHistoryFor(null)}
+        sells={state.logs
+          .filter((log) => {
+            if (!log || log.kind !== 'SELL' || !historyFor?.id) return false;
+            const logProductId = log.productId ?? log.product_id;
+            return String(logProductId) === String(historyFor.id);
+          })
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''))}
+      />
     </Box>
   );
 }
