@@ -1,5 +1,5 @@
 import React from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Table, TableHead, TableRow, TableCell, TableBody, IconButton, TextField, Box, Typography, Tooltip, Select, MenuItem, Alert, CircularProgress } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Table, TableHead, TableRow, TableCell, TableBody, IconButton, TextField, Box, Typography, Tooltip, Select, MenuItem, Alert, CircularProgress, useMediaQuery, useTheme } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import RemoveIcon from '@mui/icons-material/Remove'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
@@ -13,6 +13,8 @@ import CurrencyField from './CurrencyField'
 import { supabase } from '/supabase/supabaseClient'
 
 export default function CreditsDialog({ open, onClose, clientId, clientName }) {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const { state, updateCredit, deleteCredit } = useApp()
   const { username } = useAuth()
   const { t } = useLocale()
@@ -203,67 +205,179 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
         {credits.length === 0 ? (
           <Typography sx={{ py: 2 }}>{filter === 'active' ? 'Aktiv nasiyalar yo\'q' : 'Yakunlangan nasiyalar yo\'q'}</Typography>
         ) : (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>{t('client') || 'Client'}</TableCell>
-                <TableCell>{t('type') || 'Type'}</TableCell>
-                <TableCell>{t('product') || 'Product'}</TableCell>
-                <TableCell align="right">{t('quantity') || 'Qty'}</TableCell>
-                <TableCell align="right">{t('unit_price') || 'Unit Price'}</TableCell>
-                <TableCell>{t('amount') || 'Amount'}</TableCell>
-                <TableCell>{t('initial_payment') || 'Initial Payment'}</TableCell>
-                <TableCell>{t('remaining') || 'Remaining'}</TableCell>
-                <TableCell>{t('date') || 'Date'}</TableCell>
-                <TableCell align="right">{t('actions') || 'Actions'}</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {credits.map(c => {
-                const remaining = (c.remaining !== undefined) ? c.remaining : ((c.amount || 0) - (c.bosh_toluv || 0));
-                return (
-                  <TableRow key={c.id}>
-                    <TableCell>{c.clientName || c.name}</TableCell>
-                    <TableCell>{c.credit_type === 'product' ? 'Mahsulot' : 'Pul'}</TableCell>
-                    <TableCell>{c.credit_type === 'product' ? (c.product_name || c.productName || '-') : '-'}</TableCell>
-                    <TableCell align="right">{c.credit_type === 'product' && (c.qty || c.quantity) ? (c.qty || c.quantity) : '-'}</TableCell>
-                    <TableCell align="right">{c.credit_type === 'product' && (c.unit_price || c.price) ? ((c.unit_price || c.price).toLocaleString() + ' ' + (c.currency || 'UZS')) : '-'}</TableCell>
-                    <TableCell>{(c.amount || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
-                    <TableCell>{(c.bosh_toluv || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
-                    <TableCell>{remaining + ' ' + (c.currency || 'UZS')}</TableCell>
-                    <TableCell>{c.date || ''}</TableCell>
-                    <TableCell align="right">
-                      {filter === 'active' && (
-                        <>
-                          <Tooltip title={t('deduct') || 'Deduct'}>
-                            <IconButton size="small" onClick={() => setDeductState({ id: c.id, value: '' })}><RemoveIcon /></IconButton>
-                          </Tooltip>
-                          <Tooltip title={t('complete') || 'Complete'}>
-                            <IconButton size="small" onClick={() => handleComplete(c.id)}><DoneAllIcon /></IconButton>
-                          </Tooltip>
-                        </>
-                      )}
-                      <Tooltip title={t('delete') || 'Delete'}>
-                        <IconButton size="small" color="error" onClick={() => handleDeleteClick(c.id)}><DeleteIcon /></IconButton>
-                      </Tooltip>
-                    </TableCell>
+          <>
+            {isMobile ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {credits.map(c => {
+                  const remaining = (c.remaining !== undefined) ? c.remaining : ((c.amount || 0) - (c.bosh_toluv || 0))
+                  const typeLabel = c.credit_type === 'product' ? 'Mahsulot' : 'Pul'
+                  const productLabel = c.credit_type === 'product' ? (c.product_name || c.productName || '-') : '-'
+                  const qtyLabel = c.credit_type === 'product' && (c.qty || c.quantity) ? (c.qty || c.quantity) : '-'
+                  const unitPriceLabel = c.credit_type === 'product' && (c.unit_price || c.price)
+                    ? ((c.unit_price || c.price).toLocaleString() + ' ' + (c.currency || 'UZS'))
+                    : '-'
+                  const amountLabel = (c.amount || 0) + ' ' + (c.currency || 'UZS')
+                  const initialLabel = (c.bosh_toluv || 0) + ' ' + (c.currency || 'UZS')
+                  const remainingLabel = remaining + ' ' + (c.currency || 'UZS')
+                  const createdAtLabel = c.created_at
+                    ? new Date(c.created_at).toLocaleString('uz-UZ', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
+                    : (c.date || '')
+                  const createdByLabel = c.created_by || '-'
+                  const noteLabel = c.note || '-'
+
+                  return (
+                    <Box key={c.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.25 }}>
+                      <Typography sx={{ fontWeight: 700, mb: 0.5 }}>{c.clientName || c.name}</Typography>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Turi</Typography>
+                        <Typography>{typeLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Mahs.</Typography>
+                        <Typography sx={{ textAlign: 'right' }}>{productLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Soni</Typography>
+                        <Typography>{qtyLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Narx</Typography>
+                        <Typography sx={{ textAlign: 'right' }}>{unitPriceLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Jami</Typography>
+                        <Typography>{amountLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Bosh</Typography>
+                        <Typography>{initialLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Qolgan</Typography>
+                        <Typography>{remainingLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Sana/Soat</Typography>
+                        <Typography>{createdAtLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Kim</Typography>
+                        <Typography>{createdByLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography color="text.secondary">Izoh</Typography>
+                        <Typography sx={{ textAlign: 'right' }}>{noteLabel}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5, mt: 1, flexWrap: 'wrap' }}>
+                        {filter === 'active' && (
+                          <>
+                            <Tooltip title={t('deduct') || 'Deduct'}>
+                              <IconButton size="small" onClick={() => setDeductState({ id: c.id, value: '' })}><RemoveIcon /></IconButton>
+                            </Tooltip>
+                            <Tooltip title={t('complete') || 'Complete'}>
+                              <IconButton size="small" onClick={() => handleComplete(c.id)}><DoneAllIcon /></IconButton>
+                            </Tooltip>
+                          </>
+                        )}
+                        <Tooltip title={t('delete') || 'Delete'}>
+                          <IconButton size="small" color="error" onClick={() => handleDeleteClick(c.id)}><DeleteIcon /></IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+                  )
+                })}
+              </Box>
+            ) : (
+              <Box sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>{t('client') || 'Client'}</TableCell>
+                      <TableCell>{t('type') || 'Type'}</TableCell>
+                      <TableCell>{t('product') || 'Product'}</TableCell>
+                      <TableCell align="right">{t('quantity') || 'Qty'}</TableCell>
+                      <TableCell align="right">{t('unit_price') || 'Unit Price'}</TableCell>
+                      <TableCell>{t('amount') || 'Amount'}</TableCell>
+                      <TableCell>{t('initial_payment') || 'Initial Payment'}</TableCell>
+                      <TableCell>{t('remaining') || 'Remaining'}</TableCell>
+                    <TableCell>Sana/Soat</TableCell>
+                    <TableCell>Kim</TableCell>
+                    <TableCell>Izoh</TableCell>
+                    <TableCell align="right">{t('actions') || 'Actions'}</TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                </TableHead>
+                <TableBody>
+                  {credits.map(c => {
+                      const remaining = (c.remaining !== undefined) ? c.remaining : ((c.amount || 0) - (c.bosh_toluv || 0))
+                      const createdAtLabel = c.created_at
+                        ? new Date(c.created_at).toLocaleString('uz-UZ', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : (c.date || '')
+                      const createdByLabel = c.created_by || '-'
+                      const noteLabel = c.note || '-'
+                      return (
+                        <TableRow key={c.id}>
+                          <TableCell>{c.clientName || c.name}</TableCell>
+                          <TableCell>{c.credit_type === 'product' ? 'Mahsulot' : 'Pul'}</TableCell>
+                          <TableCell>{c.credit_type === 'product' ? (c.product_name || c.productName || '-') : '-'}</TableCell>
+                          <TableCell align="right">{c.credit_type === 'product' && (c.qty || c.quantity) ? (c.qty || c.quantity) : '-'}</TableCell>
+                          <TableCell align="right">{c.credit_type === 'product' && (c.unit_price || c.price) ? ((c.unit_price || c.price).toLocaleString() + ' ' + (c.currency || 'UZS')) : '-'}</TableCell>
+                          <TableCell>{(c.amount || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
+                          <TableCell>{(c.bosh_toluv || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
+                          <TableCell>{remaining + ' ' + (c.currency || 'UZS')}</TableCell>
+                          <TableCell>{createdAtLabel}</TableCell>
+                          <TableCell>{createdByLabel}</TableCell>
+                          <TableCell>{noteLabel}</TableCell>
+                          <TableCell align="right">
+                            {filter === 'active' && (
+                              <>
+                                <Tooltip title={t('deduct') || 'Deduct'}>
+                                  <IconButton size="small" onClick={() => setDeductState({ id: c.id, value: '' })}><RemoveIcon /></IconButton>
+                                </Tooltip>
+                                <Tooltip title={t('complete') || 'Complete'}>
+                                  <IconButton size="small" onClick={() => handleComplete(c.id)}><DoneAllIcon /></IconButton>
+                                </Tooltip>
+                              </>
+                            )}
+                            <Tooltip title={t('delete') || 'Delete'}>
+                              <IconButton size="small" color="error" onClick={() => handleDeleteClick(c.id)}><DeleteIcon /></IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </>
         )}
         {deductState.id && (
-          <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'center', flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
             <CurrencyField 
               label={t('amount') || 'Amount'} 
               value={deductState.value} 
               onChange={(val) => setDeductState(s => ({ ...s, value: val }))}
               currency={credits.find(c => c.id === deductState.id)?.currency || 'UZS'}
-              sx={{ minWidth: '200px' }}
+              sx={{ minWidth: { xs: '100%', sm: '200px' } }}
             />
-            <Button variant="contained" onClick={() => handleDeduct(deductState.id)}>{t('deduct') || 'Deduct'}</Button>
-            <Button onClick={() => setDeductState({ id: null, value: '' })}>{t('cancel') || 'Cancel'}</Button>
+            <Button variant="contained" onClick={() => handleDeduct(deductState.id)} sx={{ flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
+              {t('deduct') || 'Deduct'}
+            </Button>
+            <Button onClick={() => setDeductState({ id: null, value: '' })} sx={{ flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
+              {t('cancel') || 'Cancel'}
+            </Button>
           </Box>
         )}
       </DialogContent>

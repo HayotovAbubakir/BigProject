@@ -1,27 +1,283 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Sora:wght@300;400;500;600;700&display=swap');
 
 :root{
   --space-xs: 6px;
   --space-sm: 10px;
   --space-md: 16px;
   --space-lg: 24px;
-  --radius: 10px;
-  --muted: #64748b;
-  --accent: #0b84ff;
+  --radius: 14px;
+  --accent: #2C7A7B;
+  --accent-strong: #1F5F60;
+  --accent-warm: #C8A46B;
+  --ink-900: #121416;
+  --ink-700: #2E343B;
+  --ink-500: #5B6570;
+  --cream-50: #F8F5F0;
+  --cream-100: #F3EFE8;
+  --surface-light: rgba(255, 255, 255, 0.9);
+  --surface-light-strong: rgba(255, 255, 255, 0.96);
+  --surface-dark: rgba(20, 24, 28, 0.86);
+  --surface-dark-strong: rgba(18, 22, 26, 0.94);
+  --line-light: rgba(15, 23, 42, 0.08);
+  --line-dark: rgba(255, 255, 255, 0.08);
+  --glow-light: rgba(200, 164, 107, 0.28);
+  --glow-dark: rgba(44, 122, 123, 0.35);
+  --shadow-soft: 0 12px 26px rgba(15, 23, 42, 0.12);
+  --shadow-deep: 0 18px 38px rgba(5, 8, 12, 0.35);
 }
 
 *{box-sizing:border-box}
-html,body,#root{height:100%}
+html{
+  height: 100%;
+  width: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: hidden;
+  max-width: 100%;
+}
+body,#root{
+  height:100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body{
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  font-family: 'Sora', 'IBM Plex Sans', 'Segoe UI', sans-serif;
   -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
-  background: #f6f9fc; color: #0f1724; line-height:1.4;
+  background:
+    radial-gradient(900px 540px at 10% -10%, rgba(200, 164, 107, 0.18), transparent 55%),
+    radial-gradient(880px 520px at 92% 0%, rgba(44, 122, 123, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--cream-50), var(--cream-100));
+  color: var(--ink-900);
+  line-height:1.5;
+  position: relative;
+  overflow-x: hidden;
 }
 
 *:focus{outline:none}
-button:focus, [role="button"]:focus{box-shadow:0 0 0 4px rgba(11,132,255,0.12); border-radius:var(--radius)}
+button:focus, [role="button"]:focus{box-shadow:0 0 0 4px rgba(44, 122, 123, 0.18); border-radius:var(--radius)}
 
 .fade-in{animation:fadeIn .24s ease both}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
+body::before{
+  content:'';
+  position: fixed;
+  inset: -10% 0 0 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(260px 260px at 12% 18%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(320px 320px at 88% 16%, rgba(44, 122, 123, 0.12), transparent 62%),
+    radial-gradient(380px 380px at 70% 82%, rgba(200, 164, 107, 0.2), transparent 65%);
+  opacity: 0.7;
+  filter: blur(0.2px);
+}
+
+#root{
+  position: relative;
+  z-index: 1;
+}
+
+body[data-theme='light']{
+  background:
+    radial-gradient(900px 540px at 10% -10%, rgba(200, 164, 107, 0.18), transparent 55%),
+    radial-gradient(880px 520px at 92% 0%, rgba(44, 122, 123, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--cream-50), var(--cream-100));
+  color: var(--ink-900);
+}
+
+body[data-theme='light']::before{
+  opacity: 0.7;
+}
+
+body[data-theme='light'] .MuiPaper-root:not(.MuiAppBar-root):not(.MuiDrawer-paper),
+body[data-theme='light'] .MuiCard-root,
+body[data-theme='light'] .MuiTableContainer-root{
+  border: 1px solid var(--line-light);
+  background:
+    linear-gradient(180deg, var(--surface-light-strong), var(--surface-light)) padding-box,
+    linear-gradient(135deg, rgba(44, 122, 123, 0.28), rgba(200, 164, 107, 0.24)) border-box;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+body[data-theme='light'] .MuiButton-root{
+  background-image: linear-gradient(135deg, rgba(44, 122, 123, 0.18), rgba(200, 164, 107, 0.16));
+}
+
+body[data-theme='dark']{
+  background:
+    radial-gradient(900px 540px at 12% -12%, rgba(44, 122, 123, 0.22), transparent 58%),
+    radial-gradient(860px 520px at 88% 4%, rgba(200, 164, 107, 0.2), transparent 60%),
+    linear-gradient(180deg, #0D1013, #13171C);
+  color: #E6E9EC;
+}
+
+body[data-theme='dark']::before{
+  opacity: 0.45;
+}
+
+.MuiButton-root,
+.MuiIconButton-root{
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.MuiButton-root{
+  background-image: linear-gradient(135deg, rgba(44, 122, 123, 0.22), rgba(200, 164, 107, 0.18));
+  backdrop-filter: blur(4px);
+  position: relative;
+  overflow: hidden;
+}
+
+.MuiButton-root:hover,
+.MuiIconButton-root:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2), 0 0 16px var(--glow-light);
+  filter: brightness(1.04);
+}
+
+body[data-theme='dark'] .MuiButton-root:hover,
+body[data-theme='dark'] .MuiIconButton-root:hover{
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35), 0 0 18px var(--glow-dark);
+}
+
+.MuiButton-root:active,
+.MuiIconButton-root:active{
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+.MuiButton-root::after{
+  content:'';
+  position:absolute;
+  inset:-2px;
+  background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.35) 45%, transparent 65%);
+  opacity:0;
+  transform: translateX(-120%);
+}
+
+.MuiButton-root:hover::after{
+  opacity:0.6;
+  animation: sheen 0.9s ease;
+}
+
+.MuiPaper-root:not(.MuiAppBar-root):not(.MuiDrawer-paper),
+.MuiCard-root,
+.MuiTableContainer-root{
+  border: 1px solid var(--line-light);
+  background:
+    linear-gradient(180deg, var(--surface-light-strong), var(--surface-light)) padding-box,
+    linear-gradient(135deg, rgba(44, 122, 123, 0.25), rgba(200, 164, 107, 0.2)) border-box;
+  box-shadow: var(--shadow-soft);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+body[data-theme='dark'] .MuiPaper-root:not(.MuiAppBar-root):not(.MuiDrawer-paper),
+body[data-theme='dark'] .MuiCard-root,
+body[data-theme='dark'] .MuiTableContainer-root{
+  border: 1px solid var(--line-dark);
+  background:
+    linear-gradient(180deg, var(--surface-dark-strong), var(--surface-dark)) padding-box,
+    linear-gradient(135deg, rgba(44, 122, 123, 0.45), rgba(200, 164, 107, 0.32)) border-box;
+  box-shadow: var(--shadow-deep);
+}
+
+.MuiPaper-root:not(.MuiAppBar-root):not(.MuiDrawer-paper):hover,
+.MuiCard-root:hover,
+.MuiTableContainer-root:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.22);
+}
+
+body[data-theme='dark'] .MuiPaper-root:not(.MuiAppBar-root):not(.MuiDrawer-paper):hover,
+body[data-theme='dark'] .MuiCard-root:hover,
+body[data-theme='dark'] .MuiTableContainer-root:hover{
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Micro-animations across UI */
+.MuiChip-root,
+.MuiTab-root,
+.MuiListItemButton-root,
+.MuiTableRow-root,
+.MuiTextField-root,
+.MuiSelect-select,
+.MuiCheckbox-root,
+.MuiSwitch-root{
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.MuiListItemButton-root:hover{
+  transform: translateX(2px);
+  box-shadow: inset 0 0 0 1px rgba(44, 122, 123, 0.25);
+}
+
+.MuiChip-root:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.2);
+}
+
+.MuiTableRow-root:hover{
+  transform: translateY(-1px);
+}
+
+.MuiTextField-root .MuiInputBase-root:focus-within,
+.MuiSelect-select:focus{
+  box-shadow: 0 0 0 3px rgba(44, 122, 123, 0.22);
+  border-radius: 10px;
+}
+
+.MuiSwitch-root{
+  animation: floatSmall 6s ease-in-out infinite;
+}
+
+.MuiCheckbox-root{
+  animation: floatSmall 7s ease-in-out infinite;
+}
+
+@keyframes sheen{
+  0%{transform: translateX(-120%);}
+  100%{transform: translateX(120%);}
+}
+
+@keyframes floatSmall{
+  0%{transform: translateY(0);}
+  50%{transform: translateY(-2px);}
+  100%{transform: translateY(0);}
+}
+
+@media (prefers-reduced-motion: reduce){
+  *,
+  *::before,
+  *::after{
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 code,pre{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace}
+
+@media (max-width: 600px){
+  .MuiDialogActions-root{
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .MuiDialogActions-root .MuiButton-root{
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+  .MuiCardActions-root{
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .MuiCardActions-root .MuiButton-root{
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+  .MuiButton-root{
+    max-width: 100%;
+    white-space: normal;
+  }
+}

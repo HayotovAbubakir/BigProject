@@ -16,7 +16,7 @@ export default function AddQuantityForm({ open, onClose, onSubmit, initial, sour
   const submit = () => {
     const nQty = Number(qty)
     if (!initial) return
-    if (!nQty || nQty <= 0) return setError('Iltimos, qo\'shish uchun miqdorni to\'g\'ri kiriting')
+    if (nQty <= 0) return setError('Qiymat 0 dan katta bo\'lishi kerak')
 
     onSubmit({ id: initial.id, qty: nQty, item: initial })
     onClose()

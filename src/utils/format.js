@@ -4,12 +4,12 @@
  * @returns {string} Formatted number string (e.g., "1.234,50")
  */
 export function formatMoney(value) {
-  if (value === null || value === undefined) return '0'
+  if (value === null || value === undefined || value === '') return ''
   const n = Number(value)
   if (Number.isNaN(n)) return String(value)
   
-  // Use de-DE locale for German format: 1.234,50
-  return new Intl.NumberFormat('de-DE').format(n)
+  // Use en-US locale for US format: 1,234.50
+  return new Intl.NumberFormat('en-US').format(n)
 }
 
 /**
@@ -41,10 +41,11 @@ export default formatMoney
  * "1 234 567" → 1234567
  */
 export function parseNumber(value) {
-  if (value === null || value === undefined) return 0
+  if (value === null || value === undefined || value === '') return null
   
   // Convert to string and remove spaces
   const s = String(value).replace(/\s/g, '')
+  if (s === '') return null
   
   // Detect format by looking for comma and dot positions
   const lastCommaIndex = s.lastIndexOf(',')
@@ -81,9 +82,10 @@ export function parseNumber(value) {
       // Otherwise it's decimal separator - keep as is
     }
   }
-  
+
+  if (normalized === '') return null
   const n = Number(normalized)
-  return Number.isNaN(n) ? 0 : n
+  return Number.isNaN(n) ? null : n
 }
 
 /**
@@ -94,7 +96,7 @@ export function parseNumber(value) {
 export function formatInteger(value) {
   if (value === null || value === undefined) return '0'
   const n = Math.round(Number(value) || 0)
-  return new Intl.NumberFormat('de-DE').format(n)
+  return new Intl.NumberFormat('en-US').format(n)
 }
 
 /**
@@ -108,7 +110,7 @@ export function formatCurrency(value, currency = 'UZS') {
   const n = Number(value)
   if (Number.isNaN(n)) return String(value)
   
-  const formatted = new Intl.NumberFormat('de-DE').format(n)
+  const formatted = new Intl.NumberFormat('en-US').format(n)
   return `${formatted} ${currency}`
 }
 

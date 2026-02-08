@@ -18,6 +18,7 @@ import { useNotification } from '../context/NotificationContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CreditsDialog from '../components/CreditsDialog';
 import CurrencyField from '../components/CurrencyField';
+import NumberField from '../components/NumberField';
 import { insertLog } from '../firebase/supabaseLogs';
 import { supabase } from '/supabase/supabaseClient';
 // Note: The credit management dialogs and logic are complex and are kept as is to avoid breaking functionality.
@@ -53,7 +54,7 @@ export default function Clients() {
   const { username, hasPermission, user } = useAuth();
   const { notify } = useNotification();
   
-  // Check if current user has new_account_restriction
+  // Cheklangan userlar (new_account_restriction) qo'shish/tahrirlash/o'chirish/qarz qo'sha olmaydi
   const isRestricted = user?.permissions?.new_account_restriction ?? false;
   
   const [open, setOpen] = useState(false);
@@ -610,25 +611,24 @@ export default function Clients() {
                     </Box>
                   </Grid>
                   <Grid item xs={6} sm={2}>
-                    <TextField
+                    <NumberField
                       label={t('miqdor')}
-                      type="number"
                       fullWidth
                       margin="dense"
                       value={p.qty}
-                      onChange={(e) => updateProduct(index, 'qty', e.target.value)}
+                      onChange={(val) => updateProduct(index, 'qty', val)}
                     />
                   </Grid>
                   {creditSubtype === 'olingan' && (
                     <>
                       <Grid item xs={6} sm={2}>
-                        <TextField
+                        <CurrencyField
                           label="Olingan narx"
-                          type="number"
                           fullWidth
                           margin="dense"
                           value={p.receivePrice}
-                          onChange={(e) => updateProduct(index, 'receivePrice', e.target.value)}
+                          onChange={(val) => updateProduct(index, 'receivePrice', val)}
+                          currency={p.receiveCurrency || 'UZS'}
                         />
                       </Grid>
                       <Grid item xs={6} sm={1}>
@@ -647,13 +647,13 @@ export default function Clients() {
                     </>
                   )}
                   <Grid item xs={6} sm={2}>
-                    <TextField
+                    <CurrencyField
                       label={creditSubtype === 'olingan' ? "Aytilgan narx" : t('price')}
-                      type="number"
                       fullWidth
                       margin="dense"
                       value={p.sellPrice}
-                      onChange={(e) => updateProduct(index, 'sellPrice', e.target.value)}
+                      onChange={(val) => updateProduct(index, 'sellPrice', val)}
+                      currency={p.sellCurrency || 'UZS'}
                     />
                   </Grid>
                   <Grid item xs={6} sm={1}>
@@ -677,13 +677,13 @@ export default function Clients() {
                 </Grid>
               ))}
               <Button onClick={addProduct} variant="outlined" sx={{ mt: 1 }}>Mahsulot qo'shish</Button>
-              <TextField
+              <CurrencyField
                 label={t('boshToluv')}
-                type="number"
                 fullWidth
                 margin="dense"
                 value={initialPayment}
-                onChange={(e) => setInitialPayment(e.target.value)}
+                onChange={(val) => setInitialPayment(val)}
+                currency={creditCurrency}
               />
             </>
           )}

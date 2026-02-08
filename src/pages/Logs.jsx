@@ -79,6 +79,21 @@ function LogItem({ log }) {
   const isCreditLog = (log.kind || '').toString().toUpperCase().includes('CREDIT') || (log.action || '').toString().toUpperCase().includes('CREDIT');
   const { t } = useLocale();
 
+  const parseDetailPairs = (detail) => {
+    if (!detail) return [];
+    const parts = detail.split(',').map(p => p.trim()).filter(Boolean);
+    const pairs = [];
+    parts.forEach(part => {
+      const idx = part.indexOf(':');
+      if (idx > -1) {
+        const key = part.slice(0, idx).trim();
+        const value = part.slice(idx + 1).trim();
+        if (key && value) pairs.push({ key, value });
+      }
+    });
+    return pairs;
+  };
+
   // Parse detail for credit logs
   const parseCreditDetail = (detail) => {
     const parsed = {};
@@ -94,6 +109,7 @@ function LogItem({ log }) {
   };
 
   const creditDetail = isCreditLog ? parseCreditDetail(log.detail) : {};
+  const detailPairs = parseDetailPairs(log.detail);
 
   return (
     <Card sx={{ 
@@ -105,48 +121,116 @@ function LogItem({ log }) {
         boxShadow: theme.shadows[4]
       }
     }}>
-      <CardContent>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={1}>
-            <Box sx={{ color: meta.color }}>
-              {meta.icon}
-            </Box>
-          </Grid>
-          <Grid item xs={11}>
-            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{t(log.action) || log.action}</Typography>
-            <Chip label={t(log.action) || log.kind || log.action || 'LOG'} size="small" sx={{ mr: 1, backgroundColor: meta.color, color: 'white' }} />
-            <Typography variant="caption" color="text.secondary">
-              {log.date} {log.time} &bull; {log.user_name}
+      <CardContent sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Box sx={{ color: meta.color }}>
+            {meta.icon}
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body1" sx={{ fontWeight: 'bold', wordBreak: 'break-word' }}>
+              {t(log.action) || log.action}
             </Typography>
-          </Grid>
-        </Grid>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
+              <Chip label={t(log.action) || log.kind || log.action || 'LOG'} size="small" sx={{ backgroundColor: meta.color, color: 'white' }} />
+              <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                {log.date} {log.time} • {log.user_name}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
         <Divider sx={{ my: 1.5 }} />
         {isCreditLog ? (
           <Box>
-            {creditDetail.Klient && <Typography variant="body2"><strong>Klient:</strong> {creditDetail.Klient}</Typography>}
-            {creditDetail.Mahsulot && <Typography variant="body2"><strong>Mahsulot:</strong> {creditDetail.Mahsulot}</Typography>}
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 1 }}>
-              {creditDetail.Soni && <Typography variant="body2"><strong>Soni:</strong> {creditDetail.Soni}</Typography>}
-              {creditDetail.Narx && <Typography variant="body2"><strong>Narx:</strong> {creditDetail.Narx}</Typography>}
-              {creditDetail.Jami && <Typography variant="body2"><strong>Jami:</strong> {creditDetail.Jami}</Typography>}
-              {creditDetail['Bosh to\'lov'] && <Typography variant="body2"><strong>Bosh to'lov:</strong> {creditDetail['Bosh to\'lov']}</Typography>}
-              {creditDetail.Qolgan && <Typography variant="body2"><strong>Qolgan:</strong> {creditDetail.Qolgan}</Typography>}
-            </Box>
-            {log.detail && <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic', fontSize: '0.8rem', color: 'text.secondary' }}>{log.detail}</Typography>}
+            <Grid container spacing={1}>
+              {creditDetail.Klient && (
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2"><strong>Klient:</strong> {creditDetail.Klient}</Typography>
+                </Grid>
+              )}
+              {creditDetail.Mahsulot && (
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2"><strong>Mahsulot:</strong> {creditDetail.Mahsulot}</Typography>
+                </Grid>
+              )}
+              {creditDetail.Soni && (
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2"><strong>Soni:</strong> {creditDetail.Soni}</Typography>
+                </Grid>
+              )}
+              {creditDetail.Narx && (
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2"><strong>Narx:</strong> {creditDetail.Narx}</Typography>
+                </Grid>
+              )}
+              {creditDetail.Jami && (
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2"><strong>Jami:</strong> {creditDetail.Jami}</Typography>
+                </Grid>
+              )}
+              {creditDetail['Bosh to\'lov'] && (
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2"><strong>Bosh to'lov:</strong> {creditDetail['Bosh to\'lov']}</Typography>
+                </Grid>
+              )}
+              {creditDetail.Qolgan && (
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2"><strong>Qolgan:</strong> {creditDetail.Qolgan}</Typography>
+                </Grid>
+              )}
+            </Grid>
+            {detailPairs.length > 0 && (
+              <Box sx={{ mt: 1 }}>
+                <Divider sx={{ my: 1 }} />
+                <Grid container spacing={1}>
+                  {detailPairs.map((pair, idx) => (
+                    <Grid item xs={12} sm={6} key={`${pair.key}-${idx}`}>
+                      <Typography variant="body2" sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                        <strong>{pair.key}:</strong> {pair.value}
+                      </Typography>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            )}
           </Box>
         ) : (
           <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
-              {log.product_name && <Typography variant="body2"><strong>Mahsulot:</strong> {log.product_name}</Typography>}
-              {log.detail && <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>{log.detail}</Typography>}
+              {log.product_name && <Typography variant="body2" sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>Mahsulot:</strong> {log.product_name}</Typography>}
             </Grid>
             <Grid item xs={12} md={6}>
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                {log.qty && <Typography variant="body2"><strong>Soni:</strong> {log.qty}</Typography>}
-                {log.unit_price != null && <Typography variant="body2"><strong>Narx:</strong> {formatMoney(log.unit_price)} {log.currency}</Typography>}
-                {log.amount != null && <Typography variant="body2"><strong>Jami:</strong> {formatMoney(log.amount)} {log.currency}</Typography>}
-              </Box>
+              <Grid container spacing={1}>
+                {log.qty && (
+                  <Grid item xs={6}>
+                    <Typography variant="body2"><strong>Soni:</strong> {log.qty}</Typography>
+                  </Grid>
+                )}
+                {log.unit_price != null && (
+                  <Grid item xs={6}>
+                    <Typography variant="body2"><strong>Narx:</strong> {formatMoney(log.unit_price)} {log.currency}</Typography>
+                  </Grid>
+                )}
+                {log.amount != null && (
+                  <Grid item xs={6}>
+                    <Typography variant="body2"><strong>Jami:</strong> {formatMoney(log.amount)} {log.currency}</Typography>
+                  </Grid>
+                )}
+              </Grid>
             </Grid>
+            {detailPairs.length > 0 && (
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Grid container spacing={1}>
+                  {detailPairs.map((pair, idx) => (
+                    <Grid item xs={12} sm={6} key={`${pair.key}-${idx}`}>
+                      <Typography variant="body2" sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                        <strong>{pair.key}:</strong> {pair.value}
+                      </Typography>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Grid>
+            )}
           </Grid>
         )}
       </CardContent>

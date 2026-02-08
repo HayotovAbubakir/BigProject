@@ -38,6 +38,7 @@ export const insertCredit = async (credit) => {
       id: 'id',
       name: 'name',
       note: 'note',
+      down_payment_note: 'down_payment_note',
       date: 'date',
       amount: 'amount',
       currency: 'currency',
@@ -45,6 +46,8 @@ export const insertCredit = async (credit) => {
       type: 'credit_type',
       product_id: 'product_id',
       productId: 'product_id',
+      product_name: 'product_name',
+      productName: 'product_name',
       qty: 'qty',
       unit_price: 'unit_price',
       price: 'unit_price',
@@ -142,6 +145,8 @@ export const updateCredit = async (id, updates) => {
       type: 'credit_type',
       product_id: 'product_id',
       productId: 'product_id',
+      product_name: 'product_name',
+      productName: 'product_name',
       qty: 'qty',
       price: 'unit_price',
       unit_price: 'unit_price',
@@ -153,6 +158,7 @@ export const updateCredit = async (id, updates) => {
       completed_at: 'completed_at',
       completed_by: 'completed_by',
       note: 'note',
+      down_payment_note: 'down_payment_note',
       // Do NOT allow direct updates to `remaining` here — remaining is computed
       // in the DB schema (generated) and cannot be set directly. Updates that
       // affect remaining should update source columns (amount, bosh_toluv, etc.).

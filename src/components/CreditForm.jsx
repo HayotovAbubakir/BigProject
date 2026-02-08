@@ -12,6 +12,8 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
   const [isPayment, setIsPayment] = useState(false)
   const { rate: usdToUzs } = useExchangeRate()
   const { t } = useLocale()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   useEffect(() => {
     const newForm = initial ? { ...initial } : { name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '' };
@@ -72,7 +74,7 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
   const remainingDisplay = initial ? (initial.amount - (initial.bosh_toluv || 0)) : 0
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={handleClose} fullWidth={isMobile} maxWidth="sm">
       <DialogTitle sx={{ fontSize: { xs: '1.05rem', md: '1.25rem' } }}>
         {isPayment ? t('credit_receive_payment') : (initial ? t('credit_edit') : t('credit_new'))}
       </DialogTitle>
@@ -83,6 +85,7 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
             {(initial.bosh_toluv || initial.downPayment) > 0 && <Typography variant="body2" color="textSecondary">{t('boshToluv')}: {formatMoney(initial.bosh_toluv || initial.downPayment)} {initial.currency}{(initial.down_payment_note) ? ` (${initial.down_payment_note})` : ''}</Typography>}
             <Typography variant="body2" color="textSecondary">{t('paid')}: {formatMoney(initial.paid || 0)} {initial.currency}</Typography>
             <Typography variant="body1" sx={{ fontWeight: 'bold', mt: 0.5 }}>{t('remaining')}: {formatMoney(remainingDisplay)} {initial.currency}</Typography>
+            {initial.note && <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>{t('note')}: {initial.note}</Typography>}
           </Box>
         )}
         
@@ -90,20 +93,19 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
           <>
             <Typography variant="body2" sx={{ mb: 1 }}>{t('how_much_to_pay')}</Typography>
             <CurrencyField label={t('payment')} fullWidth margin="dense" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} currency={initial?.currency || 'UZS'} />
-            <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
-            <TextField label={t('note')} fullWidth margin="dense" value={form.note} onChange={handle('note')} />
+            <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
           </>
         ) : (
           <>
-            <TextField label={t('who')} fullWidth margin="dense" value={form.name} onChange={handle('name')} />
-            <TextField label={t('productName')} fullWidth margin="dense" value={form.product_name} onChange={handle('product_name')} disabled={!!initial} />
+            <TextField label={t('who')} fullWidth margin="dense" value={form.name} onChange={handle('name')} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
+            <TextField label={t('productName')} fullWidth margin="dense" value={form.product_name} onChange={handle('product_name')} disabled={!!initial} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
             <NumberField label={t('qty')} fullWidth margin="dense" value={form.qty} onChange={(v) => setForm({ ...form, qty: v })} disabled={!!initial} />
             <CurrencyField label={t('price')} fullWidth margin="dense" value={form.price} onChange={(v) => setForm({ ...form, price: v })} disabled={!!initial} currency={form.currency} />
-            <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
+            <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
             <Typography variant="body2" sx={{ mt: 1 }}>{t('total_amount')}: {formatMoney((Number(form.qty) || 1) * (Number(form.price) || 0))} {form.currency}</Typography>
             <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mt: 2 }}>
               <CurrencyField label={t('boshToluv')} fullWidth margin="dense" value={form.bosh_toluv} onChange={(v) => setForm({ ...form, bosh_toluv: v })} currency={form.currency} />
-              <TextField label={t('down_payment_note')} fullWidth margin="dense" value={form.down_payment_note} onChange={handle('down_payment_note')} />
+              <TextField label={t('down_payment_note')} fullWidth margin="dense" value={form.down_payment_note} onChange={handle('down_payment_note')} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
             </Box>
             <TextField select label={t('currency')} fullWidth margin="dense" value={form.currency} onChange={handle('currency')} disabled={!!initial}>
               <MenuItem value="UZS">UZS</MenuItem>
@@ -123,7 +125,7 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
               <MenuItem value="do'kon">{t('store')}</MenuItem>
               <MenuItem value="ombor">{t('warehouse')}</MenuItem>
             </TextField>
-            <TextField label={t('note')} fullWidth margin="dense" value={form.note} onChange={handle('note')} />
+            <TextField label={t('note')} fullWidth margin="dense" value={form.note} onChange={handle('note')} disabled={!!initial} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
           </>
         )}
       </DialogContent>

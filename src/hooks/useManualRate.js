@@ -22,12 +22,21 @@ export default function useManualRate() {
     return state?.exchangeRate || 12700;
   });
 
-  // Effect to sync with global state if it changes from another source
+  // Load from localStorage on mount only (preserve manual rate across refresh)
   useEffect(() => {
-    if (state?.exchangeRate !== rate) {
-        setRate(state.exchangeRate || null);
+    try {
+      const storedRate = localStorage.getItem(MANUAL_RATE_KEY);
+      if (storedRate) {
+        const parsedRate = JSON.parse(storedRate);
+        if (typeof parsedRate === 'number' && parsedRate > 0) {
+          setRate(parsedRate);
+          dispatch({ type: 'SET_EXCHANGE_RATE', payload: parsedRate });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load manual rate from localStorage on mount", error);
     }
-  }, [state?.exchangeRate]);
+  }, []);
 
   const save = useCallback((newRate) => {
     const n = Number(newRate);

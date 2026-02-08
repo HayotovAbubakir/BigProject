@@ -74,6 +74,16 @@ export const deleteClient = async (id) => {
   if (!isSupabaseConfigured()) return false
   try {
     console.log('supabase.deleteClient ->', id)
+    
+    // First, delete all credits for this client
+    const { error: deleteCreditsError } = await supabase
+      .from('credits')
+      .delete()
+      .eq('client_id', id)
+    
+    if (deleteCreditsError) throw deleteCreditsError
+    
+    // Now delete the client
     const { error } = await supabase
       .from('clients')
       .delete()

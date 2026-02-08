@@ -55,12 +55,12 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
 
   return (
     <Paper elevation={4} sx={{ p: 2, width: '100%' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 2, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', mb: 2, gap: 2, flexWrap: 'wrap', flexDirection: { xs: 'column', sm: 'row' } }}>
         <Box>
           <Typography variant="h6">{t('dailySalesFor', { date: selectedDate })}</Typography>
           <Typography variant="body2" color="text.secondary">{t('dailySalesHint')}</Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
           <TextField
             label={t('selectDate')}
             type="date"
@@ -68,8 +68,11 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: { xs: '100%', sm: 180 } }}
           />
-          <Button variant="outlined" size="small" onClick={() => setSelectedDate(today)}>{t('today')}</Button>
+          <Button variant="outlined" size="small" onClick={() => setSelectedDate(today)} sx={{ flex: { xs: '1 1 100%', sm: '0 0 auto' } }}>
+            {t('today')}
+          </Button>
           <Button
             variant="contained"
             size="small"
@@ -92,6 +95,7 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
                     window.alert(t('deleteFailed') || 'Delete failed')
                   }
                 }}
+            sx={{ flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
           >
             {t('delete') || 'Delete'}
           </Button>
@@ -111,8 +115,12 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
                   <CardContent sx={{ py: 1, px: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
                       <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography sx={{ fontWeight: 700 }}>{l.productName || l.detail || '-'}</Typography>
-                        <Typography variant="caption" color="text.secondary">{l.date} {l.time} • {l.user}</Typography>
+                        <Typography sx={{ fontWeight: 700, wordBreak: 'break-word' }}>
+                          {l.productName || l.detail || '-'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                          {l.date} {l.time} • {l.user}
+                        </Typography>
                         <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
                           <Typography variant="body2">{t('qty')}: <strong>{l.qty ?? '-'}</strong></Typography>
                           {(() => {

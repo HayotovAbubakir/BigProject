@@ -21,9 +21,9 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
     const nQty = Number(qty)
     const nPrice = Number(price)
     if (!initial) return
-    if (!nQty || nQty <= 0) return setError('Iltimos, oylik sonini toʻgʻri kiriting')
-    if (nQty > (initial.qty || 0)) return setError('Omborda yetarli miqdor yoʻq')
-    if (!nPrice || nPrice <= 0) return setError('Iltimos, narxni toʻgʻri kiriting')
+    if (nQty <= 0) return setError('Soni 0 dan katta bo\'lishi kerak')
+    if (nQty > (initial.qty || 0)) return setError('Omborda yetarli miqdor yo\'q')
+    if (nPrice <= 0) return setError('Narx 0 dan katta bo\'lishi kerak')
 
     onSubmit({ id: initial.id, qty: nQty, item: { ...initial, qty: nQty, date: new Date().toISOString().slice(0,10), price: nPrice } })
     onClose()

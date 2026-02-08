@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { formatMoney, parseNumber } from '../utils/format';
+import CurrencyField from './CurrencyField';
 import { useLocale } from '../context/LocaleContext';
 
 const ProductCalculator = ({ isDarkMode }) => {
@@ -71,11 +72,14 @@ const ProductCalculator = ({ isDarkMode }) => {
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
           />
-          <input
-            type="text"
+          <CurrencyField
+            label={t('price')}
             placeholder={t('price')}
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
+            value={price === '' ? '' : Number(price)}
+            onChange={(val) => setPrice(val == null ? '' : val)}
+            currency={currency}
+            fullWidth
+            variant="outlined"
           />
           <button onClick={addProduct}>{t('add')}</button>
         </div>

@@ -97,7 +97,7 @@ function DrawerContent({ navItems, t }) {
 }
 
 export default function Layout({ children }) {
-  const { logout, user, hasPermission } = useAuth();
+  const { logout, user } = useAuth();
   const { t, locale, setLocale } = useLocale();
   const { isDarkMode, setIsDarkMode } = useContext(ThemeModeContext);
   const { displayCurrency, setDisplayCurrency } = useDisplayCurrency();
@@ -117,16 +117,25 @@ export default function Layout({ children }) {
 
   const drawer = <DrawerContent navItems={translatedNavItems} t={t} />;
 
+  const currentRole = (user?.role || '').toLowerCase();
+  const isDeveloper = currentRole === 'developer';
+  const isAdmin = currentRole === 'admin';
+  const canOpenAccountSettings = isDeveloper || isAdmin;
   // Check if user is restricted
   const isRestricted = user?.permissions?.new_account_restriction ?? false;
 
   const handleManageAccount = () => {
-    if (isRestricted) {
+    if (!canOpenAccountSettings) {
+      window.alert("Bu bo'lim faqat admin va developerlar uchun");
+      return;
+    }
+    if (isRestricted && !isDeveloper) {
       window.alert(t('new_account_restriction_message') || 'Yangi qo\'shilgan akkauntlar bu amal\'ni bajarolmaslari mumkin');
       return;
     }
     setAccountManagerOpen(true);
   };
+
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -141,7 +150,7 @@ export default function Layout({ children }) {
           <IconButton color="inherit" edge="start" onClick={handleDrawerToggle} sx={{ mr: 2, display: { md: 'none' } }}>
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, minWidth: 0 }}>
             {t('appTitle')}
           </Typography>
 
@@ -194,8 +203,10 @@ export default function Layout({ children }) {
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: 0,
           p: 3,
           width: { md: `calc(100% - ${drawerWidth}px)` },
+          minHeight: '100vh',
           animation: 'fadeIn 0.5s ease-in-out',
           '@keyframes fadeIn': {
             '0%': { opacity: 0, transform: 'translateY(10px)' },

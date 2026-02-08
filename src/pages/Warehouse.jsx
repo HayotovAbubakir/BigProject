@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Typography, Button, Table, TableHead, TableRow, TableCell, TableBody,
-  TableContainer, Box, Grid, TextField, Paper, IconButton, Tooltip, useTheme, useMediaQuery
+  TableContainer, Box, Grid, TextField, Paper, IconButton, Tooltip, Select, MenuItem, useTheme, useMediaQuery
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -57,6 +57,7 @@ function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canA
 export default function Warehouse() {
   const { state, dispatch, addWarehouseProduct, updateWarehouseProduct, deleteWarehouseProduct } = useApp();
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [openForm, setOpenForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [moveItem, setMoveItem] = useState(null);
@@ -125,36 +126,48 @@ export default function Warehouse() {
     await updateWarehouseProduct(payload.id, { ...product, qty: newTotalQty }, logData);
   };
 
-  const filteredWarehouse = state.warehouse.filter(it => !search || it.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredWarehouse = state.warehouse.filter(it => (!search || it.name.toLowerCase().includes(search.toLowerCase())) &&
+    (!categoryFilter || (it.category || '').toLowerCase().includes(categoryFilter.toLowerCase())));
+  const categories = [...new Set(state.warehouse.map(it => it.category).filter(Boolean))];
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4">{t('warehouse')}</Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, gap: { xs: 1, sm: 0 } }}>
+        <Typography variant="h4" sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>{t('warehouse')}</Typography>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 0.5, sm: 2 }, alignItems: { xs: 'flex-start', sm: 'center' } }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: { xs: '0.9rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}>
             {displayCurrency === 'USD' 
               ? `Total: $${formatMoney(inventoryValue.totalInDisplay)}`
               : `Total: ${formatMoney(inventoryValue.totalInDisplay)} UZS`
             }
           </Typography>
           {displayCurrency === 'UZS' && inventoryValue.totalUsd > 0 && (
-            <Typography variant="caption" color="textSecondary">
+            <Typography variant="caption" color="textSecondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               (≈ ${formatMoney(inventoryValue.totalUsd)})
             </Typography>
           )}
           {displayCurrency === 'USD' && inventoryValue.totalUzs > 0 && (
-            <Typography variant="caption" color="textSecondary">
+            <Typography variant="caption" color="textSecondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               (≈ {formatMoney(inventoryValue.totalUzs)} UZS)
             </Typography>
           )}
         </Box>
       </Box>
-      <Paper sx={{ p: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditItem(null); setOpenForm(true); }} disabled={!canAddProducts}>{t('add_product')}</Button>
-          <Button variant="outlined" startIcon={<StoreIcon />} onClick={() => setOpenWholesale(true)} disabled={!canWholesale}>{t('wholesale_sale')}</Button>
-          <TextField size="small" placeholder={t('search_item') || 'Search...'} value={search} onChange={(e) => setSearch(e.target.value)} sx={{ ml: 'auto' }} />
+      <Paper sx={{ p: { xs: 1, md: 2 } }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 1, md: 2 }, alignItems: { xs: 'stretch', md: 'center' }, mb: 2 }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditItem(null); setOpenForm(true); }} disabled={!canAddProducts} sx={{ whiteSpace: 'nowrap', flex: { xs: 1, md: 'unset' } }}>{t('add_product')}</Button>
+          <Button variant="outlined" startIcon={<StoreIcon />} onClick={() => setOpenWholesale(true)} disabled={!canWholesale} sx={{ whiteSpace: 'nowrap', flex: { xs: 1, md: 'unset' } }}>{t('wholesale_sale')}</Button>
+          <TextField size="small" placeholder={t('search_item') || 'Search...'} value={search} onChange={(e) => setSearch(e.target.value)} sx={{ ml: { xs: 0, md: 'auto' }, flex: { xs: 1, md: 'unset' } }} />
+          <Select
+            size="small"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            displayEmpty
+            sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 120 } }}
+          >
+            <MenuItem value="">Barcha kategoriyalar</MenuItem>
+            {categories.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
+          </Select>
         </Box>
 
         {isMobile ? (

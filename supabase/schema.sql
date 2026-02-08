@@ -45,6 +45,7 @@ CREATE TABLE products (
   qty INTEGER DEFAULT 0,
   price NUMERIC DEFAULT 0,
   currency TEXT CHECK (currency IN ('UZS','USD')) NOT NULL,
+  category TEXT,
   location TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -70,11 +71,14 @@ CREATE TABLE credits (
   amount NUMERIC,
   currency TEXT CHECK (currency IN ('UZS','USD')),
   product_id UUID REFERENCES products(id),
+  product_name TEXT,
   qty INTEGER,
   unit_price NUMERIC,
   bosh_toluv NUMERIC DEFAULT 0,
   -- server-side computed remaining (amount - bosh_toluv)
   remaining NUMERIC GENERATED ALWAYS AS (COALESCE(amount,0) - COALESCE(bosh_toluv,0)) STORED,
+  note TEXT,
+  down_payment_note TEXT,
   completed BOOLEAN DEFAULT false,
   completed_at TIMESTAMPTZ,
   completed_by TEXT,

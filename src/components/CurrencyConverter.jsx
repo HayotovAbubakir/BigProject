@@ -1,15 +1,15 @@
 import React from 'react';
-import { IconButton, Popover, Box, TextField, Typography, Tooltip } from '@mui/material';
+import { IconButton, Popover, Box, TextField, Typography, Tooltip, Button, Divider } from '@mui/material';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import useManualRate from '../hooks/useManualRate';
 import { useLocale } from '../context/LocaleContext';
-import { useApp } from '../context/useApp';
+import useExchangeRate from '../hooks/useExchangeRate';
 
 export default function CurrencyConverter() {
   const { rate: manualRate, save: saveManualRate } = useManualRate();
+  const { rate: liveRate, loading, error, refresh } = useExchangeRate();
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const [result, setResult] = React.useState(null);
-  const { dispatch } = useApp();
+  const [usdAmount, setUsdAmount] = React.useState('');
   const { t } = useLocale();
 
   const open = Boolean(anchorEl);
@@ -19,9 +19,10 @@ export default function CurrencyConverter() {
   const handleOpen = (e) => setAnchorEl(e.currentTarget);
   const handleClose = () => setAnchorEl(null);
 
-  React.useEffect(() => {
-    setResult(null);
-  }, [manualRate]);
+  const rate = manualRate || liveRate || null;
+  const parsedUsd = Number(usdAmount || 0);
+  const convertedUzs = rate && usdAmount !== '' ? Math.round(parsedUsd * Number(rate)) : '';
+  const formattedUzs = convertedUzs === '' ? '' : Number(convertedUzs).toLocaleString('uz-UZ');
 
   return (
     <>
@@ -31,22 +32,46 @@ export default function CurrencyConverter() {
         </IconButton>
       </Tooltip>
       <Popover id={id} open={open} anchorEl={anchorEl} onClose={handleClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
-        <Box sx={{ p: 2, width: 300, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box sx={{ p: 2, width: 320, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="subtitle1">{t('exchangeRate') || 'Rate'}</Typography>
-            <TextField
-                size="small"
-                type="number"
-                value={manualRate || ''}
-                onChange={(e) => {
-                    const val = e.target.value;
-                    saveManualRate(val);
-                }}
-                sx={{ width: 120 }}
-            />
+            <Button size="small" variant="outlined" onClick={refresh} disabled={loading}>
+              {loading ? (t('loading') || 'Loading') : (t('refresh') || 'Refresh')}
+            </Button>
           </Box>
+          <TextField
+            size="small"
+            type="number"
+            value={manualRate || ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              saveManualRate(val);
+            }}
+            InputProps={{ endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>{toCurrency}</Typography> }}
+            sx={{ width: '100%' }}
+          />
+          {error && <Typography variant="caption" color="error">{error}</Typography>}
 
-          <Typography variant="body2">{t('exchangeRate') || 'Enter manual exchange rate to convert elsewhere in the app.'}</Typography>
+          <Divider />
+
+          <Typography variant="subtitle2">USD → UZS</Typography>
+          <TextField
+            size="small"
+            type="number"
+            value={usdAmount}
+            onChange={(e) => setUsdAmount(e.target.value)}
+            placeholder="USD"
+            InputProps={{ endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>USD</Typography> }}
+          />
+          <TextField
+            size="small"
+            value={formattedUzs}
+            placeholder={rate ? 'UZS' : (t('exchangeRate') || 'Rate required')}
+            InputProps={{ readOnly: true, endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>UZS</Typography> }}
+          />
+          <Typography variant="body2">
+            {rate ? `1 USD = ${Number(rate).toLocaleString('uz-UZ')} UZS` : (t('exchangeRate') || 'Enter manual exchange rate to convert elsewhere in the app.')}
+          </Typography>
         </Box>
       </Popover>
     </>

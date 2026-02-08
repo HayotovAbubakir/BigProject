@@ -27,10 +27,10 @@ export const AuthProvider = ({ children }) => {
             const { data: fresh, error: freshErr } = await supabase.from('user_credentials').select('username, role, permissions').eq('username', userData.username).maybeSingle()
             if (!freshErr && fresh) {
               const role = fresh.role || userData.role || 'user'
-              let permissions = role === 'user' ? (fresh.permissions || {}) : {}
-              // Ensure admin and developer accounts are never restricted
-              if (role === 'admin' || role === 'developer') {
-                permissions = { new_account_restriction: false }
+              let permissions = (role === 'user' || role === 'admin') ? (fresh.permissions || {}) : {}
+              // Ensure developer accounts are never restricted
+              if (role === 'developer') {
+                permissions = { ...permissions, new_account_restriction: false }
               }
               const merged = { username: (fresh.username || userData.username), role, permissions }
               setUser(merged)
@@ -100,10 +100,10 @@ export const AuthProvider = ({ children }) => {
       if (data.password_hash === normalizedPassword) {
         console.log('Password match! Logging in user:', normalizedUsername)
         const role = data.role || 'user'
-        let permissions = role === 'user' ? (data.permissions || {}) : {}
-        // Ensure admin and developer accounts are never restricted
-        if (role === 'admin' || role === 'developer') {
-          permissions = { new_account_restriction: false }
+        let permissions = (role === 'user' || role === 'admin') ? (data.permissions || {}) : {}
+        // Ensure developer accounts are never restricted
+        if (role === 'developer') {
+          permissions = { ...permissions, new_account_restriction: false }
         }
         const userData = {
           username: data.username,
@@ -124,7 +124,7 @@ export const AuthProvider = ({ children }) => {
         try {
           const email = username && username.includes('@') ? username : (username + '@example.com')
           if (supabase?.auth && typeof supabase.auth.signInWithPassword === 'function') {
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, normalizedPassword })
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password: normalizedPassword })
             if (!authError && authData?.user) {
               // Sync into user_credentials table for future local logins
               const syncUsername = username && username.includes('@') ? username.split('@')[0] : username

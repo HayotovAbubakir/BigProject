@@ -7,41 +7,24 @@ export default function NumberField({ value, onChange, label, fullWidth = true, 
   const [cursorPosition, setCursorPosition] = useState(null)
 
   useEffect(() => {
+    if (value === parseNumber(display)) {
+      return;
+    }
     const next = value == null || value === '' ? '' : formatMoney(value)
     setDisplay(next)
-  }, [value])
+  }, [value, display])
 
   /**
    * Handle input change with smart cursor position preservation
    * Maintains cursor position relative to actual numeric content
    */
   const handleChange = (e) => {
-    const input = e.target
-    const oldDisplay = display
-    const raw = input.value
-    
-    // Parse raw input to get numeric value
-    const num = parseNumber(raw)
-    const formatted = formatMoney(num)
-    
-    // Update display and call onChange callback
-    setDisplay(formatted)
-    if (onChange) onChange(num)
-    
-    // Restore cursor position in next render
-    requestAnimationFrame(() => {
-      const oldNumericLength = oldDisplay.replace(/[^\d]/g, '').length
-      const newNumericLength = formatted.replace(/[^\d]/g, '').length
-      const difference = newNumericLength - oldNumericLength
-      
-      // Calculate new cursor position based on numeric content growth
-      let newCursorPos = input.selectionStart + difference
-      if (newCursorPos < 0) newCursorPos = 0
-      if (newCursorPos > formatted.length) newCursorPos = formatted.length
-      
-      input.setSelectionRange(newCursorPos, newCursorPos)
-    })
-  }
+    const raw = e.target.value.replace('.', ',');
+    setDisplay(raw);
+    if (onChange) {
+      onChange(parseNumber(raw));
+    }
+  };
 
   /**
    * Prevent mouse wheel from changing numeric input value
@@ -83,8 +66,8 @@ export default function NumberField({ value, onChange, label, fullWidth = true, 
       variant={variant}
       size={size}
       inputProps={{ 
-        inputMode: 'numeric',
-        pattern: '[0-9 .,]*',
+        inputMode: 'decimal',
+        pattern: '[0-9.,]*',
         autoComplete: 'off'
       }}
       {...rest}

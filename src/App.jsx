@@ -29,6 +29,13 @@ const App = () => {
     localStorage.setItem('isDarkMode', isDarkMode);
   }, [isDarkMode]);
 
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return
+    const themeValue = isDarkMode ? 'dark' : 'light'
+    document.body.setAttribute('data-theme', themeValue)
+    document.documentElement.setAttribute('data-theme', themeValue)
+  }, [isDarkMode])
+
   // Enable DevTools lock on mount
   React.useEffect(() => {
     enableDevToolsLock()

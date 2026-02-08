@@ -55,13 +55,14 @@ function reducer(state, action) {
     case 'INIT': {
       const payload = { ...action.payload }
       if (payload.accounts) {
-        // Remove any restrictions from admin accounts and filter out shogirt
+        // Filter out shogirt and ensure developer accounts have no restrictions
         payload.accounts = payload.accounts
           .filter(a => a.username !== 'shogirt')
           .map(a => {
-            const isAdmin = (a.username || '').toLowerCase() === 'hamdamjon' || (a.username || '').toLowerCase() === 'habibjon'
-            if (isAdmin) {
-              // Ensure admin accounts have no restrictions
+            const uname = (a.username || '').toString().toLowerCase()
+            const role = (a.role || '').toString().toLowerCase()
+            const isDeveloper = role === 'developer' || uname === 'developer'
+            if (isDeveloper) {
               return {
                 ...a,
                 permissions: {
@@ -193,10 +194,14 @@ function reducer(state, action) {
         const existing = (state.accounts || []).find(a => (a.username || '').toString().toLowerCase() === uname)
         if (existing) return state
         const cleanPayload = { ...action.payload, username: uname }
-        return { ...state, accounts: [...state.accounts, cleanPayload], logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${cleanPayload.username} added` }] }
+        const newState = { ...state, accounts: [...state.accounts, cleanPayload], logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${cleanPayload.username} added` }] }
+        // syncState(newState)
+        return newState
       } catch (_ignore) {
         void _ignore
-        return { ...state, accounts: [...state.accounts, action.payload], logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${action.payload.username} added` }] }
+        const newState = { ...state, accounts: [...state.accounts, action.payload], logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${action.payload.username} added` }] }
+        // syncState(newState)
+        return newState
       }
     case 'ADD_CLIENT':
       try {
@@ -247,8 +252,11 @@ function reducer(state, action) {
     }
     case 'EDIT_ACCOUNT': {
       const uname = (action.payload.username || '').toString().toLowerCase()
+      const actorRole = (action.payload.actorRole || '').toString().toLowerCase()
+      const actorUser = (action.payload.user || '').toString().toLowerCase()
+      const actorIsDeveloper = actorRole === 'developer' || actorUser === 'developer'
       if (uname === 'developer') return state // Prevent developer account from being edited
-      if ((uname === 'hamdamjon' || uname === 'habibjon') && (action.payload.user || '').toString().toLowerCase() !== 'developer') return state
+      if ((uname === 'hamdamjon' || uname === 'habibjon') && !actorIsDeveloper) return state
       return { ...state, accounts: state.accounts.map(a => ((a.username || '').toString().toLowerCase() === uname) ? { ...a, ...action.payload.updates } : a), logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${action.payload.username} edited` }] }
     }
     case 'DELETE_LOGS_FOR_DATE': {
@@ -266,12 +274,19 @@ function reducer(state, action) {
     }
     case 'DELETE_ACCOUNT': {
       const uname = (action.payload.username || '').toString().toLowerCase()
+      const actorRole = (action.payload.actorRole || '').toString().toLowerCase()
+      const actorUser = (action.payload.user || '').toString().toLowerCase()
+      const actorIsDeveloper = actorRole === 'developer' || actorUser === 'developer'
       if (uname === 'developer') return state // Prevent developer account from being deleted
-      if ((uname === 'hamdamjon' || uname === 'habibjon') && (action.payload.user || '').toString().toLowerCase() !== 'developer') return state
-      return { ...state, accounts: state.accounts.filter(a => (a.username || '').toString().toLowerCase() !== uname), logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${action.payload.username} deleted` }] }
+      if ((uname === 'hamdamjon' || uname === 'habibjon') && !actorIsDeveloper) return state
+      const newState = { ...state, accounts: state.accounts.filter(a => (a.username || '').toString().toLowerCase() !== uname), logs: [...state.logs, action.log || { ts: Date.now(), action: `Account ${action.payload.username} deleted` }] }
+      // syncState(newState)
+      return newState
     }
     case 'SET_ACCOUNTS':
-      return { ...state, accounts: action.payload }
+      const newState = { ...state, accounts: action.payload }
+      // syncState(newState)
+      return newState
     default:
       return state
   }
@@ -283,6 +298,17 @@ export const AppProvider = ({ children }) => {
   const { notify } = useNotification()
   const [hydrated, setHydrated] = React.useState(false)
   const mountedRef = useRef(true)
+  const normalizeProductName = React.useCallback((value) => {
+    return (value || '')
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+  }, [])
+  const isDuplicateProductNameError = React.useCallback((err) => {
+    const msg = (err?.message || err?.details || err?.error || '').toString().toLowerCase()
+    return msg.includes('products_name_key') || msg.includes('duplicate key value')
+  }, [])
   
   React.useEffect(() => {
     mountedRef.current = true;
@@ -307,16 +333,8 @@ export const AppProvider = ({ children }) => {
 
         // Merge user balances with existing accounts
         if (userBalances && userBalances.length > 0) {
-          const updatedAccounts = (initialState.accounts || []).map(acc => {
-            const bal = userBalances.find(b => b.username === acc.username);
-            return bal ? { 
-              ...acc, 
-              balance_uzs: bal.balance_uzs || 0, 
-              balance_usd: bal.balance_usd || 0 
-            } : acc;
-          });
-          console.log('[AppContext] Loaded account balances:', updatedAccounts);
-          dispatch({ type: 'SET_ACCOUNTS', payload: updatedAccounts });
+          console.log('[AppContext] Loaded user accounts:', userBalances);
+          dispatch({ type: 'SET_ACCOUNTS', payload: userBalances });
         }
 
       } catch (_err) {
@@ -339,29 +357,105 @@ export const AppProvider = ({ children }) => {
   // Action creators with DB persistence
   const addWarehouseProduct = React.useCallback(async (payload, logData) => {
     try {
+      const targetName = normalizeProductName(payload?.name)
+      const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
+      const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
+
+      if (existingWarehouse) {
+        const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
+        const updates = { qty: newQty }
+        const data = await dbUpdateProduct(existingWarehouse.id, updates)
+        let log = null
+        try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse add-merge), continuing', e) }
+        dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates: data || updates }, log })
+        notify('Diqqat', 'Mahsulot allaqachon omborda bor edi. Miqdoriga qo\'shildi.', 'warning')
+        return data
+      }
+
+      if (existingStore) {
+        notify('Xato', 'Bu nomdagi mahsulot do\'konda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
+        throw new Error('Product already exists in store')
+      }
+
       const product = await dbInsertProduct({ ...payload, location: 'warehouse' })
       let log = null
       try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse add), continuing', e) }
       dispatch({ type: 'ADD_WAREHOUSE', payload: product, log })
     } catch (_err) {
+      if (isDuplicateProductNameError(_err)) {
+        const targetName = normalizeProductName(payload?.name)
+        const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
+        const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
+        if (existingWarehouse) {
+          const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
+          const updates = { qty: newQty }
+          const data = await dbUpdateProduct(existingWarehouse.id, updates)
+          let log = null
+          try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse add-merge), continuing', e) }
+          dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates: data || updates }, log })
+          notify('Diqqat', 'Mahsulot allaqachon omborda bor edi. Miqdoriga qo\'shildi.', 'warning')
+          return data
+        }
+        if (existingStore) {
+          notify('Xato', 'Bu nomdagi mahsulot do\'konda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
+        }
+      }
       const message = `Failed to add warehouse product: ${_err.message}`;
       notify('Error', message, 'error')
       throw _err
     }
-  }, [dispatch, notify])
+  }, [dispatch, notify, normalizeProductName, isDuplicateProductNameError, state.store, state.warehouse])
 
   const addStoreProduct = React.useCallback(async (payload, logData) => {
     try {
+      const targetName = normalizeProductName(payload?.name)
+      const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
+      const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
+
+      if (existingStore) {
+        const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
+        const updates = { qty: newQty }
+        const data = await dbUpdateProduct(existingStore.id, updates)
+        let log = null
+        try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store add-merge), continuing', e) }
+        dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates: data || updates }, log })
+        notify('Diqqat', 'Mahsulot allaqachon do\'konda bor edi. Miqdoriga qo\'shildi.', 'warning')
+        return data
+      }
+
+      if (existingWarehouse) {
+        notify('Xato', 'Bu nomdagi mahsulot omborda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
+        throw new Error('Product already exists in warehouse')
+      }
+
       const product = await dbInsertProduct({ ...payload, location: 'store' })
       let log = null
       try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store add), continuing', e) }
       dispatch({ type: 'ADD_STORE', payload: product, log })
     } catch (_err) {
+      if (isDuplicateProductNameError(_err)) {
+        const targetName = normalizeProductName(payload?.name)
+        const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
+        const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
+        if (existingStore) {
+          const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
+          const updates = { qty: newQty }
+          const data = await dbUpdateProduct(existingStore.id, updates)
+          let log = null
+          try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store add-merge), continuing', e) }
+          dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates: data || updates }, log })
+          notify('Diqqat', 'Mahsulot allaqachon do\'konda bor edi. Miqdoriga qo\'shildi.', 'warning')
+          return data
+        }
+        if (existingWarehouse) {
+          notify('Xato', 'Bu nomdagi mahsulot omborda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
+        }
+      }
       const message = `Failed to add store product: ${_err.message}`;
       notify('Error', message, 'error')
       throw _err
     }
-  }, [dispatch, notify])
+  }, [dispatch, notify, normalizeProductName, isDuplicateProductNameError, state.store, state.warehouse])
 
   const updateWarehouseProduct = React.useCallback(async (id, updates, logData) => {
     let data = updates; // fallback to updates if DB fails

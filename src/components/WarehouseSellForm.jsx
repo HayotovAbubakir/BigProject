@@ -18,16 +18,17 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
 
   const available = Number(initial?.qty || 0)
   const parsedQty = Number(qty || 0)
-  const invalid = parsedQty <= 0 || parsedQty > available
+  const parsedPrice = Number(price || 0)
+  const invalid = parsedQty <= 0 || parsedQty > available || parsedPrice <= 0
   const { rate: usdToUzs } = useExchangeRate()
 
   const submit = () => {
     if (invalid) return
-    const total = parsedQty * Number(price)
+    const total = parsedQty * parsedPrice
   const usedRate = usdToUzs || null
-    const payload = { id: initial.id, qty: parsedQty, price: Number(price), currency }
+    const payload = { id: initial.id, qty: parsedQty, price: parsedPrice, currency }
     if (currency === 'USD' && usedRate) {
-      payload.price_uzs = Math.round(Number(price) * usedRate)
+      payload.price_uzs = Math.round(parsedPrice * usedRate)
       payload.total_uzs = Math.round(total * usedRate)
     } else {
       payload.total_uzs = Math.round(total)

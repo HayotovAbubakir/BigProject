@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth'
 
 export default function AccountManager({ open, onClose }) {
   const { state, dispatch } = useApp()
-  const { user, hasPermission } = useAuth()
+  const { user, registerUser, deleteUser } = useAuth()
   const { t } = useLocale()
   const [adding, setAdding] = useState(false)
   const [newUsername, setNewUsername] = useState('')
@@ -27,12 +27,35 @@ export default function AccountManager({ open, onClose }) {
     }
   }, [open])
 
-  // Admins and developers can manage accounts, or users with manage_accounts permission
-  const canManageAccounts = hasPermission && (hasPermission('manage_accounts'))
+  const currentRole = (user?.role || '').toLowerCase()
+  const isCurrentDeveloper = currentRole === 'developer'
+  const isCurrentAdmin = currentRole === 'admin'
+
+  // Only developers and admins can manage accounts
+  const canManageAccounts = isCurrentDeveloper || isCurrentAdmin
 
   const accounts = state.accounts || []
 
-  const { registerUser, deleteUser } = useAuth()
+  const normalizeUsername = (value) => (value || '').toString().toLowerCase()
+  const isDeveloperAccount = (accOrName) => {
+    const uname = normalizeUsername(typeof accOrName === 'string' ? accOrName : accOrName?.username)
+    const role = (typeof accOrName === 'object' && accOrName?.role) ? accOrName.role.toString().toLowerCase() : ''
+    return role === 'developer' || uname === 'developer'
+  }
+  const isAdminAccount = (accOrName) => {
+    const uname = normalizeUsername(typeof accOrName === 'string' ? accOrName : accOrName?.username)
+    const role = (typeof accOrName === 'object' && accOrName?.role) ? accOrName.role.toString().toLowerCase() : ''
+    return role === 'admin' || uname === 'hamdamjon' || uname === 'habibjon'
+  }
+
+  const visibleAccounts = accounts.filter(a => !isDeveloperAccount(a))
+  const selectedAccount = accounts.find(a => normalizeUsername(a?.username) === normalizeUsername(selected))
+
+  React.useEffect(() => {
+    if (selectedAccount && isDeveloperAccount(selectedAccount)) {
+      setSelected(null)
+    }
+  }, [selectedAccount, isDeveloperAccount])
 
   const handleAdd = async () => {
     if (!newUsername) return
@@ -73,13 +96,23 @@ export default function AccountManager({ open, onClose }) {
   }
 
   const togglePermission = (username, key) => {
+    if (!canManageAccounts) {
+      window.alert("Bu bo'lim faqat admin va developerlar uchun")
+      return
+    }
     const acc = accounts.find(a => a.username === username)
     if (!acc) return
-    
-    // Check if this is an admin account - admins cannot be restricted
-    const isTargetAdmin = ['hamdamjon', 'habibjon'].includes((username || '').toLowerCase())
-    if (isTargetAdmin) {
-      window.alert("Admin akkayuntini cheklovga qo'yib bo'lmaydi")
+
+    const targetIsDeveloper = isDeveloperAccount(acc)
+    const targetIsAdmin = isAdminAccount(acc)
+
+    if (targetIsDeveloper) {
+      window.alert("Developer akkayunti cheklanmaydi")
+      return
+    }
+
+    if (targetIsAdmin && !isCurrentDeveloper) {
+      window.alert("Admin akkayuntini faqat developer cheklashi mumkin")
       return
     }
     
@@ -91,16 +124,30 @@ export default function AccountManager({ open, onClose }) {
       return
     }
     
-    const updates = { permissions: { ...acc.permissions, [key]: !acc.permissions[key] } }
-    
-    dispatch({ type: 'EDIT_ACCOUNT', payload: { username: (username || '').toString().toLowerCase(), updates }, log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_EDIT', detail: `${username} ${key} -> ${!acc.permissions[key]}` } })
+    const currentPermissions = acc.permissions || {}
+    const updates = { permissions: { ...currentPermissions, [key]: !currentPermissions[key] } }
+
+    dispatch({
+      type: 'EDIT_ACCOUNT',
+      payload: {
+        username: (username || '').toString().toLowerCase(),
+        updates,
+        actorRole: currentRole
+      },
+      log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_EDIT', detail: `${username} ${key} -> ${!currentPermissions[key]}` }
+    })
   }
 
   const handleDelete = (username) => {
     const uname = (username || '').toLowerCase()
-    if (uname === 'hamdamjon' || uname === 'habibjon') {
-      
-      window.alert("Bu accountni o'chirish mumkin emas")
+    const targetAcc = accounts.find(a => (a.username || '').toLowerCase() === uname)
+    const targetRole = (targetAcc?.role || '').toLowerCase()
+    if (uname === 'developer' || targetRole === 'developer') {
+      window.alert("Developer accountini o'chirib bo'lmaydi")
+      return
+    }
+    if ((uname === 'hamdamjon' || uname === 'habibjon' || targetRole === 'admin') && !isCurrentDeveloper) {
+      window.alert("Admin accountini faqat developer o'chira oladi")
       return
     }
     ;(async () => {
@@ -108,15 +155,20 @@ export default function AccountManager({ open, onClose }) {
         // attempt to delete credential row if available
         if (deleteUser) {
           const res = await deleteUser(uname)
-          if (!res || !res.ok) {
-            // still remove from app state, but warn
-            console.warn('AccountManager: deleteUser failed', res && res.error)
+          if (res && res.success) {
+            dispatch({ type: 'DELETE_ACCOUNT', payload: { username: uname, actorRole: currentRole }, log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_DELETE', detail: `Deleted ${uname}` } })
+            window.alert(t('account_deleted') || 'Akkaunt muvaffaqiyatli o\'chirildi')
+          } else {
+            window.alert((res && res.error) || t('delete_account_failed') || 'Akkauntni o\'chirish xatosi')
           }
+        } else {
+          // If no deleteUser, still allow state removal for backwards compatibility
+          dispatch({ type: 'DELETE_ACCOUNT', payload: { username: uname, actorRole: currentRole }, log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_DELETE', detail: `Deleted ${uname}` } })
         }
       } catch (e) {
         console.debug('AccountManager: deleteUser threw', e)
+        window.alert('Akkauntni o\'chirishda xatolik yuz berdi')
       }
-      dispatch({ type: 'DELETE_ACCOUNT', payload: { username: uname }, log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_DELETE', detail: `Deleted ${uname}` } })
     })()
   }
 
@@ -143,37 +195,37 @@ export default function AccountManager({ open, onClose }) {
         <Divider sx={{ mb: 2 }} />
 
         <List>
-          {accounts.map(a => {
-            const targetIsAdmin = ['hamdamjon', 'habibjon'].includes((a.username || '').toLowerCase())
-            return (
-              <ListItem key={a.username} onClick={() => setSelected(a.username)} sx={{ cursor: 'pointer' }} secondaryAction={(
-                <Box>
-                  <IconButton onClick={() => setSelected(a.username)} aria-label="edit"><EditIcon /></IconButton>
-                  <IconButton onClick={() => handleDelete(a.username)} aria-label="delete"><DeleteIcon /></IconButton>
-                </Box>
-              )}>
-                <ListItemText primary={a.username} secondary={`@${a.username}`} />
-              </ListItem>
-            )
-          })}
+          {visibleAccounts.map(a => (
+            <ListItem key={a.username} onClick={() => setSelected(a.username)} sx={{ cursor: 'pointer' }} secondaryAction={(
+              <Box>
+                <IconButton onClick={() => setSelected(a.username)} aria-label="edit"><EditIcon /></IconButton>
+                <IconButton onClick={() => handleDelete(a.username)} aria-label="delete"><DeleteIcon /></IconButton>
+              </Box>
+            )}>
+              <ListItemText primary={a.username} secondary={`@${a.username}`} />
+            </ListItem>
+          ))}
         </List>
 
-        {selected && (
+        {selected && selectedAccount && (
           <Box sx={{ mt: 2 }}>
             <Typography sx={{ fontWeight: 700 }}>{selected}</Typography>
-            {!['hamdamjon', 'habibjon'].includes((selected || '').toLowerCase()) ? (
+            {!isAdminAccount(selectedAccount) ? (
               <>
-                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.credits_manage)} onChange={() => togglePermission(selected, 'credits_manage')} />} label={t('credit_manage_permission') || 'Nasiya qo\'shish/tahrirlash'} />
-                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.wholesale_allowed)} onChange={() => togglePermission(selected, 'wholesale_allowed')} />} label={t('wholesale_permission') || 'Optom sotuv ruxsati'} />
-                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.add_products)} onChange={() => togglePermission(selected, 'add_products')} />} label={t('add_product_permission') || 'Mahsulot qo\'shish ruxsati'} />
-                <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.manage_accounts)} onChange={() => togglePermission(selected, 'manage_accounts')} />} label={t('manage_accounts_permission') || 'Boshqaruv paneliga kirish'} />
-                {/* Only show restriction toggle if account doesn't have restriction OR if current user is an admin */}
-                {!accounts.find(x => x.username === selected)?.permissions?.new_account_restriction && (
-                  <FormControlLabel control={<Switch checked={!!(accounts.find(x => x.username === selected)?.permissions?.new_account_restriction)} onChange={() => togglePermission(selected, 'new_account_restriction')} />} label={t('restrict_access') || 'Cheklovlarni yoniq qil'} />
-                )}
+                <FormControlLabel control={<Switch checked={!!(selectedAccount?.permissions?.credits_manage)} onChange={() => togglePermission(selected, 'credits_manage')} />} label={t('credit_manage_permission') || 'Nasiya qo\'shish/tahrirlash'} />
+                <FormControlLabel control={<Switch checked={!!(selectedAccount?.permissions?.wholesale_allowed)} onChange={() => togglePermission(selected, 'wholesale_allowed')} />} label={t('wholesale_permission') || 'Optom sotuv ruxsati'} />
+                <FormControlLabel control={<Switch checked={!!(selectedAccount?.permissions?.add_products)} onChange={() => togglePermission(selected, 'add_products')} />} label={t('add_product_permission') || 'Mahsulot qo\'shish ruxsati'} />
+                <FormControlLabel control={<Switch checked={!!(selectedAccount?.permissions?.manage_accounts)} onChange={() => togglePermission(selected, 'manage_accounts')} />} label={t('manage_accounts_permission') || 'Boshqaruv paneliga kirish'} />
+                <FormControlLabel control={<Switch checked={!!(selectedAccount?.permissions?.new_account_restriction)} onChange={() => togglePermission(selected, 'new_account_restriction')} />} label={t('restrict_access') || 'Cheklovlarni yoniq qil'} />
               </>
             ) : (
-              <Typography sx={{ color: 'text.secondary', fontStyle: 'italic' }}>Admin akkayuntini o'zgartirish mumkin emas</Typography>
+              <>
+                {isCurrentDeveloper ? (
+                  <FormControlLabel control={<Switch checked={!!(selectedAccount?.permissions?.new_account_restriction)} onChange={() => togglePermission(selected, 'new_account_restriction')} />} label={t('restrict_access') || 'Cheklovlarni yoniq qil'} />
+                ) : (
+                  <Typography sx={{ color: 'text.secondary', fontStyle: 'italic' }}>Admin akkayuntini faqat developer o'zgartira oladi</Typography>
+                )}
+              </>
             )}
             <Box sx={{ mt: 1 }}>
               <Button variant="outlined" onClick={() => setSelected(null)}>Yopish</Button>

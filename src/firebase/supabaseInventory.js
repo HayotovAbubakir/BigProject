@@ -40,6 +40,7 @@ export const insertProduct = async (product) => {
       location: product.location || null,
       date: product.date || null,
       note: product.note || null,
+      category: product.category || null,
     }
 
     console.log('supabase.insertProduct ->', safe)
@@ -76,6 +77,13 @@ export const updateProduct = async (id, updates) => {
   try {
     // Remove 'id' from updates to avoid trying to update the primary key
     const { id: _, ...safeUpdates } = updates;
+    if (typeof safeUpdates.name === 'string') safeUpdates.name = safeUpdates.name.trim();
+    if (safeUpdates.qty !== undefined) safeUpdates.qty = Number(safeUpdates.qty || 0);
+    if (safeUpdates.price !== undefined) safeUpdates.price = Number(safeUpdates.price);
+    if (safeUpdates.category !== undefined) {
+      const cat = (safeUpdates.category || '').toString().trim();
+      safeUpdates.category = cat ? cat : null;
+    }
     console.log('updateProduct: id=', id, 'safeUpdates=', safeUpdates);
     const { data, error } = await supabase
       .from('products')

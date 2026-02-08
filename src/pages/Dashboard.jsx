@@ -122,8 +122,9 @@ function Dashboard() {
         
         logs.filter(l => l && l.kind === 'SELL' && l.date === selectedDate).forEach(l => {
           const username = l.user || l.user_name || 'Unknown';
-          const account = state.accounts.find(a => a.username === username);
-          const user = account ? account.label : username;
+          const unameLower = (username || '').toString().toLowerCase();
+          const account = state.accounts.find(a => (a.username || '').toString().toLowerCase() === unameLower);
+          const user = account ? (account.label || account.username || username) : username;
           
           // Initialize if needed
           if (!accountSales[user]) {
@@ -294,7 +295,7 @@ function Dashboard() {
       <Typography variant="h4" gutterBottom>
         {t('dashboard')}
       </Typography>
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', gap: { xs: 1, md: 2 }, alignItems: 'center', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
         <TextField
           label={t('select_date') || 'Select Date'}
           type="date"
