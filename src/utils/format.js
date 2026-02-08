@@ -1,15 +1,24 @@
 /**
- * Format a number with thousands separator using German locale (dot/comma)
+ * Format a number with thousands separator (commas)
+ * Explicitly uses comma as thousands separator and dot as decimal
  * @param {number|string} value - The numeric value to format
- * @returns {string} Formatted number string (e.g., "1.234,50")
+ * @returns {string} Formatted number string (e.g., "1,234.50")
  */
 export function formatMoney(value) {
   if (value === null || value === undefined || value === '') return ''
   const n = Number(value)
   if (Number.isNaN(n)) return String(value)
   
-  // Use en-US locale for US format: 1,234.50
-  return new Intl.NumberFormat('en-US').format(n)
+  // Split into integer and decimal parts
+  const parts = String(n).split('.')
+  const intPart = parts[0]
+  const decPart = parts[1]
+  
+  // Add commas to integer part: 1000000 → 1,000,000
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  
+  // Reconstruct with decimal part if exists
+  return decPart ? `${withCommas}.${decPart}` : withCommas
 }
 
 /**

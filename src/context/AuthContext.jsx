@@ -1,166 +1,408 @@
 import React from 'react'
 import { supabase } from '/supabase/supabaseClient'
-import { isDeveloper, isAdmin, hasPermission, canModifyAccount } from '../utils/permissions'
+import { isDeveloper, isAdmin, hasPermission } from '../utils/permissions'
 
 const AuthContext = React.createContext(null)
 
-const USERNAME_TO_EMAIL = {}
+const AUTH_TIMEOUT_MS = 1000 * 60 * 60 // 1 hour
+const SESSION_START_KEY = 'bigproject_auth_started_at'
+const AUTH_DOMAIN = import.meta.env.VITE_SUPABASE_AUTH_DOMAIN || 'app.local'
+const ALLOW_LEGACY = import.meta.env.VITE_ALLOW_LEGACY === 'true'
+const LEGACY_USER_KEY = 'bigproject_legacy_user'
+const LEGACY_FALLBACK_KEY = 'currentUser'
 
-  const accounts = []
+const normalizeUsername = (value) => (value || '').toString().trim().toLowerCase()
+const usernameToEmail = (username) => {
+  const normalized = normalizeUsername(username)
+  if (!normalized) return ''
+  return normalized.includes('@') ? normalized : `${normalized}@${AUTH_DOMAIN}`
+}
+
+const passwordPolicy = {
+  minLength: 10,
+  requireUpper: true,
+  requireLower: true,
+  requireNumber: true,
+  requireSymbol: true
+}
+
+const validatePassword = (password) => {
+  const value = (password || '').toString()
+  const errors = []
+  if (value.length < passwordPolicy.minLength) {
+    errors.push(`Password must be at least ${passwordPolicy.minLength} characters`)
+  }
+  if (passwordPolicy.requireUpper && !/[A-Z]/.test(value)) errors.push('Password must include an uppercase letter')
+  if (passwordPolicy.requireLower && !/[a-z]/.test(value)) errors.push('Password must include a lowercase letter')
+  if (passwordPolicy.requireNumber && !/[0-9]/.test(value)) errors.push('Password must include a number')
+  if (passwordPolicy.requireSymbol && !/[^A-Za-z0-9]/.test(value)) errors.push('Password must include a symbol')
+  return { ok: errors.length === 0, errors }
+}
+
+const readSessionStart = () => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(SESSION_START_KEY)
+    const ts = raw ? Number(raw) : null
+    return Number.isFinite(ts) ? ts : null
+  } catch (_err) {
+    return null
+  }
+}
+
+const writeSessionStart = (ts) => {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem(SESSION_START_KEY, String(ts))
+  } catch (_err) {
+    void _err
+  }
+}
+
+const clearSessionStart = () => {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.removeItem(SESSION_START_KEY)
+  } catch (_err) {
+    void _err
+  }
+}
+
+const readLegacyUser = () => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(LEGACY_USER_KEY) || localStorage.getItem(LEGACY_FALLBACK_KEY)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch (_err) {
+    return null
+  }
+}
+
+const writeLegacyUser = (payload) => {
+  if (typeof window === 'undefined') return
+  try {
+    const encoded = JSON.stringify(payload)
+    localStorage.setItem(LEGACY_USER_KEY, encoded)
+    localStorage.setItem(LEGACY_FALLBACK_KEY, encoded)
+  } catch (_err) {
+    void _err
+  }
+}
+
+const clearLegacyUser = () => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(LEGACY_USER_KEY)
+    localStorage.removeItem(LEGACY_FALLBACK_KEY)
+  } catch (_err) {
+    void _err
+  }
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = React.useState(null)
+  const [authUser, setAuthUser] = React.useState(null)
+  const [session, setSession] = React.useState(null)
   const [showLogin, setShowLogin] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
+  const [authNotice, setAuthNotice] = React.useState('')
+  const [legacyMode, setLegacyMode] = React.useState(false)
+  const legacyModeRef = React.useRef(false)
 
-  const AUTH_TIMEOUT_MS = 1000 * 60 * 60 // 1 hour
+  const setLegacyActive = React.useCallback((active) => {
+    legacyModeRef.current = active
+    setLegacyMode(active)
+  }, [])
+
+  const applyLegacyUser = React.useCallback((legacyUser) => {
+    if (!legacyUser) return
+    const role = legacyUser.role || 'user'
+    let permissions = (role === 'user' || role === 'admin') ? (legacyUser.permissions || {}) : {}
+    if (role === 'developer') {
+      permissions = { ...permissions, new_account_restriction: false }
+    }
+    setSession(null)
+    setAuthUser(null)
+    setLegacyActive(true)
+    setUser({
+      username: legacyUser.username,
+      role,
+      permissions,
+      balance_uzs: legacyUser.balance_uzs,
+      balance_usd: legacyUser.balance_usd
+    })
+    setAuthNotice('Legacy login is active. Deploy Supabase Auth for full security.')
+    setShowLogin(false)
+  }, [setLegacyActive])
+
+  const loadProfile = React.useCallback(async (sessionUser) => {
+    if (!sessionUser?.id) return null
+
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, username, role, permissions, balance_uzs, balance_usd, mfa_enabled')
+        .eq('id', sessionUser.id)
+        .maybeSingle()
+
+      if (error) {
+        console.warn('Failed to load user profile:', error)
+        return null
+      }
+
+      if (data) return data
+
+      const fallbackUsername = normalizeUsername(sessionUser.email ? sessionUser.email.split('@')[0] : sessionUser.id.slice(0, 8))
+      const { data: created, error: createErr } = await supabase
+        .from('user_profiles')
+        .insert({ id: sessionUser.id, username: fallbackUsername, role: 'user', permissions: {} })
+        .select('id, username, role, permissions, balance_uzs, balance_usd, mfa_enabled')
+        .single()
+
+      if (createErr) {
+        console.warn('Failed to create missing profile:', createErr)
+        return null
+      }
+      return created
+    } catch (err) {
+      console.warn('Profile load failed:', err)
+      return null
+    }
+  }, [])
+
+  const applySession = React.useCallback(async (nextSession) => {
+    setSession(nextSession)
+    setAuthUser(nextSession?.user || null)
+    if (!nextSession) {
+      if (legacyModeRef.current) {
+        setShowLogin(false)
+        return
+      }
+      setUser(null)
+      setShowLogin(true)
+      return
+    }
+    setAuthNotice('')
+    setLegacyActive(false)
+    clearLegacyUser()
+
+    const profile = await loadProfile(nextSession.user)
+    if (profile) {
+      const role = profile.role || 'user'
+      let permissions = (role === 'user' || role === 'admin') ? (profile.permissions || {}) : {}
+      if (role === 'developer') {
+        permissions = { ...permissions, new_account_restriction: false }
+      }
+      setUser({
+        username: profile.username,
+        role,
+        permissions,
+        balance_uzs: profile.balance_uzs,
+        balance_usd: profile.balance_usd,
+        mfa_enabled: profile.mfa_enabled
+      })
+    } else {
+      setUser(null)
+    }
+    setShowLogin(false)
+  }, [loadProfile, setLegacyActive])
 
   React.useEffect(() => {
-    // Check for current user in localStorage
-    const checkAuth = async () => {
+    let mounted = true
+    const init = async () => {
       try {
-        const storedUser = localStorage.getItem('currentUser')
-        if (storedUser) {
-          const userData = JSON.parse(storedUser)
-          // Refresh role/permissions from server to avoid stale localStorage values
-          try {
-            const { data: fresh, error: freshErr } = await supabase.from('user_credentials').select('username, role, permissions').eq('username', userData.username).maybeSingle()
-            if (!freshErr && fresh) {
-              const role = fresh.role || userData.role || 'user'
-              let permissions = (role === 'user' || role === 'admin') ? (fresh.permissions || {}) : {}
-              // Ensure developer accounts are never restricted
-              if (role === 'developer') {
-                permissions = { ...permissions, new_account_restriction: false }
-              }
-              const merged = { username: (fresh.username || userData.username), role, permissions }
-              setUser(merged)
-              localStorage.setItem('currentUser', JSON.stringify(merged))
-            } else {
-              setUser(userData)
-            }
-          } catch (e) {
-            console.warn('Failed to refresh user from user_credentials:', e)
-            setUser(userData)
+        const { data, error } = await supabase.auth.getSession()
+        if (!mounted) return
+        if (error) {
+          console.warn('Auth session load error:', error)
+        }
+        const existingSession = data?.session || null
+        await applySession(existingSession)
+
+        if (existingSession) {
+          const startedAt = readSessionStart()
+          const now = Date.now()
+          if (!startedAt) {
+            writeSessionStart(now)
+          } else if (now - startedAt > AUTH_TIMEOUT_MS) {
+            await logout('expired')
           }
-          setShowLogin(false)
-        } else {
-          setShowLogin(true)
+        } else if (ALLOW_LEGACY) {
+          const legacy = readLegacyUser()
+          if (legacy && legacy.username) {
+            const startedAt = readSessionStart()
+            const now = Date.now()
+            if (!startedAt) {
+              writeSessionStart(now)
+              applyLegacyUser(legacy)
+            } else if (now - startedAt > AUTH_TIMEOUT_MS) {
+              clearLegacyUser()
+              setLegacyActive(false)
+              setAuthNotice('Session expired. Please sign in again.')
+              setShowLogin(true)
+            } else {
+              applyLegacyUser(legacy)
+            }
+          }
         }
       } catch (err) {
-        console.error('Auth check failed:', err)
+        console.error('Auth init failed:', err)
         setShowLogin(true)
       } finally {
-        setLoading(false)
+        if (mounted) setLoading(false)
       }
     }
 
-    checkAuth()
-  }, [])
+    init()
 
-  const login = async (payload = {}) => {
-    const { username, password } = payload || {}
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+      if (!mounted) return
+      if (event === 'SIGNED_IN') {
+        writeSessionStart(Date.now())
+      }
+      if (event === 'SIGNED_OUT') {
+        clearSessionStart()
+      }
+      await applySession(nextSession)
+    })
+
+    return () => {
+      mounted = false
+      authListener?.subscription?.unsubscribe?.()
+    }
+  }, [applySession, applyLegacyUser, setLegacyActive])
+
+  React.useEffect(() => {
+    if (!session) return
+    const startedAt = readSessionStart() || Date.now()
+    writeSessionStart(startedAt)
+
+    const timeoutMs = Math.max(0, AUTH_TIMEOUT_MS - (Date.now() - startedAt))
+    const timeoutId = setTimeout(() => {
+      logout('expired')
+    }, timeoutMs)
+
+    return () => clearTimeout(timeoutId)
+  }, [session])
+
+  React.useEffect(() => {
+    if (session || !legacyMode) return
+    const startedAt = readSessionStart() || Date.now()
+    writeSessionStart(startedAt)
+    const timeoutMs = Math.max(0, AUTH_TIMEOUT_MS - (Date.now() - startedAt))
+    const timeoutId = setTimeout(() => {
+      logout('expired')
+    }, timeoutMs)
+    return () => clearTimeout(timeoutId)
+  }, [legacyMode, session])
+
+  const login = async (payload = {}, options = {}) => {
+    const { username, password, captchaToken, mode } = payload || {}
+    const { silent = false } = options
     setLoading(true)
-    try {
-      // Normalize username to lowercase
-      const normalizedUsername = (username || '').toLowerCase().trim()
-      const normalizedPassword = (password || '').trim()
-      
-      console.log('Attempting login for user:', normalizedUsername)
-      console.log('Password length:', normalizedPassword.length)
-      
-      // Query by exact username (normalized)
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .select('*')
-        .eq('username', normalizedUsername)
-        .single()
+    setAuthNotice('')
 
-      if (error) {
-        // Check if it's a "not found" error (PGRST116)
-        if (error.code === 'PGRST116') {
-          console.warn('User not found in database:', normalizedUsername)
+    try {
+      const normalizedUsername = normalizeUsername(username)
+      const normalizedPassword = (password || '').toString()
+
+      if (!normalizedUsername || !normalizedPassword) {
+        setLoading(false)
+        return { ok: false, error: 'Username and password are required' }
+      }
+
+      let responseData = null
+      try {
+        const { data, error } = await supabase.functions.invoke('auth-login', {
+          body: {
+            username: normalizedUsername,
+            password: normalizedPassword,
+            captchaToken: captchaToken || null,
+            mode: mode || 'login'
+          }
+        })
+        if (error) throw error
+        responseData = data
+      } catch (fnErr) {
+        if (!ALLOW_LEGACY) throw fnErr
+        // Legacy fallback (not recommended): try Supabase Auth, then legacy table
+        const email = usernameToEmail(normalizedUsername)
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password: normalizedPassword })
+        if (!error && data?.session) {
+          writeSessionStart(Date.now())
+          setLoading(false)
+          if (!silent) setShowLogin(false)
+          return { ok: true }
+        }
+
+        try {
+          const { data: legacy, error: legacyErr } = await supabase
+            .from('user_credentials')
+            .select('username, role, permissions, balance_uzs, balance_usd, password_hash')
+            .eq('username', normalizedUsername)
+            .maybeSingle()
+
+          if (legacyErr || !legacy) {
+            setLoading(false)
+            return { ok: false, error: 'Invalid username or password' }
+          }
+
+          if (legacy.password_hash !== normalizedPassword) {
+            setLoading(false)
+            return { ok: false, error: 'Invalid username or password' }
+          }
+
+          const legacyUser = {
+            username: legacy.username,
+            role: legacy.role || 'user',
+            permissions: legacy.permissions || {},
+            balance_uzs: legacy.balance_uzs,
+            balance_usd: legacy.balance_usd
+          }
+          writeLegacyUser(legacyUser)
+          writeSessionStart(Date.now())
+          applyLegacyUser(legacyUser)
+          setLoading(false)
+          return { ok: true, legacy: true }
+        } catch (legacyCatch) {
+          console.warn('Legacy auth fallback failed:', legacyCatch)
           setLoading(false)
           return { ok: false, error: 'Invalid username or password' }
         }
-        console.error('Login query error:', error.message || error.code || JSON.stringify(error))
-        setLoading(false)
-        return { ok: false, error: 'Database error: ' + (error.message || error.code) }
       }
 
-      if (!data) {
-        console.warn('No user data returned for:', normalizedUsername)
+      if (!responseData || responseData.ok === false) {
         setLoading(false)
-        return { ok: false, error: 'Invalid username or password' }
+        return {
+          ok: false,
+          error: responseData?.error || 'Invalid username or password',
+          lockUntil: responseData?.lockUntil || null,
+          retryAfterSeconds: responseData?.retryAfterSeconds || null,
+          challengeRequired: !!responseData?.challengeRequired
+        }
       }
 
-      console.log('User found:', normalizedUsername, 'Role:', data.role)
-      console.log('Stored password_hash length:', (data.password_hash || '').length)
-
-      // Check password (direct string comparison)
-      if (data.password_hash === normalizedPassword) {
-        console.log('Password match! Logging in user:', normalizedUsername)
-        const role = data.role || 'user'
-        let permissions = (role === 'user' || role === 'admin') ? (data.permissions || {}) : {}
-        // Ensure developer accounts are never restricted
-        if (role === 'developer') {
-          permissions = { ...permissions, new_account_restriction: false }
-        }
-        const userData = {
-          username: data.username,
-          role,
-          permissions
-        }
-        localStorage.setItem('currentUser', JSON.stringify(userData))
-        setUser(userData)
-        setShowLogin(false)
+      const sessionPayload = responseData.session || {}
+      if (!sessionPayload.access_token || !sessionPayload.refresh_token) {
         setLoading(false)
-        return { ok: true }
-      } else {
-        console.warn('Password mismatch for user:', normalizedUsername)
-        console.log('Expected password_hash:', data.password_hash)
-        console.log('Provided password:', normalizedPassword)
-        
-        // Fallback: try Supabase Auth sign-in (in case account was created via Supabase Auth console)
-        try {
-          const email = username && username.includes('@') ? username : (username + '@example.com')
-          if (supabase?.auth && typeof supabase.auth.signInWithPassword === 'function') {
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password: normalizedPassword })
-            if (!authError && authData?.user) {
-              // Sync into user_credentials table for future local logins
-              const syncUsername = username && username.includes('@') ? username.split('@')[0] : username
-              // If a row already exists, preserve its role/permissions and only update password_hash
-              try {
-                const { data: existing } = await supabase.from('user_credentials').select('username, role, permissions').eq('username', syncUsername).maybeSingle()
-                if (existing) {
-                  await supabase.from('user_credentials').update({ password_hash: normalizedPassword }).eq('username', syncUsername).select('*').single()
-                  const role = existing.role || 'user'
-                  const userData = { username: syncUsername, role, permissions: role === 'user' ? (existing.permissions || {}) : {} }
-                  localStorage.setItem('currentUser', JSON.stringify(userData))
-                  setUser(userData)
-                  setShowLogin(false)
-                  setLoading(false)
-                  return { ok: true }
-                } else {
-                  await supabase.from('user_credentials').insert({ username: syncUsername, password_hash: normalizedPassword, role: 'user', permissions: {}, created_by: 'auto-sync' })
-                  const userData = { username: syncUsername, role: 'user', permissions: {} }
-                  localStorage.setItem('currentUser', JSON.stringify(userData))
-                  setUser(userData)
-                  setShowLogin(false)
-                  setLoading(false)
-                  return { ok: true }
-                }
-              } catch (syncErr) {
-                console.warn('Failed to sync external auth user into user_credentials:', syncErr)
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Auth fallback failed:', e)
-        }
-
-        setLoading(false)
-        return { ok: false, error: 'Invalid credentials' }
+        return { ok: false, error: 'Authentication response missing tokens' }
       }
+
+      const { error: setErr } = await supabase.auth.setSession({
+        access_token: sessionPayload.access_token,
+        refresh_token: sessionPayload.refresh_token
+      })
+
+      if (setErr) {
+        setLoading(false)
+        return { ok: false, error: setErr.message }
+      }
+
+      writeSessionStart(Date.now())
+      setLoading(false)
+      if (!silent) setShowLogin(false)
+      return { ok: true }
     } catch (err) {
       console.error('Login failed:', err)
       setLoading(false)
@@ -168,205 +410,138 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const logout = async (reason) => {
+    try {
+      await supabase.auth.signOut()
+    } catch (_err) {
+      void _err
+    }
+    clearSessionStart()
+    clearLegacyUser()
+    setLegacyActive(false)
+    setSession(null)
+    setAuthUser(null)
+    setUser(null)
+    setShowLogin(true)
+    if (reason === 'expired') {
+      setAuthNotice('Session expired. Please sign in again.')
+    }
+  }
+
+  const confirmPassword = async (password, captchaToken) => {
+    const target = user?.username
+    if (!target) return { ok: false, error: 'Not authenticated' }
+    if (legacyModeRef.current && ALLOW_LEGACY) {
+      try {
+        const { data: legacy, error } = await supabase
+          .from('user_credentials')
+          .select('password_hash')
+          .eq('username', normalizeUsername(target))
+          .maybeSingle()
+        if (error || !legacy) return { ok: false, error: 'Invalid password' }
+        if (legacy.password_hash !== (password || '').toString()) return { ok: false, error: 'Invalid password' }
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: 'Invalid password' }
+      }
+    }
+    return login({ username: target, password, captchaToken, mode: 'reauth' }, { silent: true })
+  }
+
   const signUp = async (payload = {}) => {
     const { username, password } = payload || {}
-    setLoading(true)
+    const normalizedUsername = normalizeUsername(username)
+    const normalizedPassword = (password || '').toString()
+
+    const policy = validatePassword(normalizedPassword)
+    if (!policy.ok) {
+      return { ok: false, error: policy.errors.join('. ') }
+    }
+
     try {
-      // If username contains @, use it as email, else map to @example.com
-      const email = username.includes('@') ? username : (USERNAME_TO_EMAIL[username] || username + '@example.com')
-      const { error } = await supabase.auth.signUp({
-        email,
-        password
-      })
+      const email = usernameToEmail(normalizedUsername)
+      const { data, error } = await supabase.auth.signUp({ email, password: normalizedPassword })
+      if (error) return { ok: false, error: error.message }
 
-      if (error) {
-        setLoading(false)
-        return { ok: false, error: error.message }
+      if (data?.user?.id) {
+        await supabase.from('user_profiles').insert({
+          id: data.user.id,
+          username: normalizedUsername,
+          role: 'user',
+          permissions: {},
+          created_by: data.user.id
+        })
       }
 
-      // Also ensure a row exists in `user_credentials` so app-level login/permissions work
-      try {
-        const syncUsername = username && username.includes('@') ? username.split('@')[0] : username
-        await supabase.from('user_credentials').upsert({ username: syncUsername, password_hash: password, role: 'user', permissions: {} , created_by: 'self-signup' })
-      } catch (e) {
-        console.warn('Failed to sync signup into user_credentials:', e)
-      }
-
-      setLoading(false)
       return { ok: true }
     } catch (err) {
       console.error('Sign up failed:', err)
-      setLoading(false)
-      return { ok: false, error: 'Ro\'yxatdan o\'tish xatosi' }
+      return { ok: false, error: 'Sign up failed' }
     }
-  }
-
-  const logout = async () => {
-    localStorage.removeItem('currentUser')
-    setUser(null)
-    setShowLogin(true)
   }
 
   const registerUser = async (username, password, role = 'user', permissions = {}) => {
-    // Called by admin UI: insert into user_credentials so login and restrictions work
+    const normalizedUsername = normalizeUsername(username)
+    const normalizedPassword = (password || '').toString()
+
+    const policy = validatePassword(normalizedPassword)
+    if (!policy.ok) {
+      return { ok: false, error: policy.errors.join('. ') }
+    }
+
     try {
-      console.log('registerUser called for:', username, 'with role:', role)
-      const res = await addUser(username, password, role, permissions)
-      console.log('addUser result:', res)
-      if (!res || !res.success) {
-        const errorMsg = (res && res.error) || 'Unknown error'
-        console.error('registerUser failed:', errorMsg)
-        return { ok: false, error: errorMsg }
-      }
-      console.log('User registered successfully:', username)
-      // Optionally create Supabase Auth user so fallback auth works (non-blocking)
-      try {
-        const email = username.includes('@') ? username : (username + '@example.com')
-        if (supabase?.auth && typeof supabase.auth.signUp === 'function') {
-          await supabase.auth.signUp({ email, password })
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          username: normalizedUsername,
+          password: normalizedPassword,
+          role,
+          permissions
         }
-      } catch (e) {
-        console.debug('registerUser: supabase.auth.signUp non-fatal error', e)
-      }
+      })
+      if (error) return { ok: false, error: error.message || 'Failed to create user' }
+      if (data?.ok === false) return { ok: false, error: data?.error || 'Failed to create user' }
       return { ok: true }
     } catch (err) {
       console.error('registerUser failed:', err)
-      return { ok: false, error: err && err.message }
-    }
-  }
-
-  const verifyLocalPassword = (username, password) => {
-    // Verify password for hamdamjon (1010) and habibjon (0000)
-    const lowerUsername = (username || '').toString().toLowerCase()
-    if (lowerUsername === 'hamdamjon' && password === '1010') return true
-    if (lowerUsername === 'habibjon' && password === '0000') return true
-    return false
-  }
-
-  const getPredefinedAccount = (username) => {
-    return null // removed
-  }
-
-  const addUser = async (username, password, role = 'user', permissions = {}) => {
-    try {
-      // Normalize username to lowercase for consistency
-      const normalizedUsername = (username || '').toLowerCase().trim()
-      const normalizedPassword = (password || '').trim()
-      
-      if (!normalizedUsername) {
-        console.warn('Empty username provided')
-        return { success: false, error: 'Username cannot be empty' }
+      if (!ALLOW_LEGACY) return { ok: false, error: 'Failed to create user' }
+      try {
+        const { error: legacyErr } = await supabase
+          .from('user_credentials')
+          .insert({
+            username: normalizedUsername,
+            password_hash: normalizedPassword,
+            role,
+            permissions,
+            created_by: user?.username || 'system'
+          })
+        if (legacyErr) return { ok: false, error: legacyErr.message || 'Failed to create user' }
+        return { ok: true, legacy: true }
+      } catch (legacyCatch) {
+        return { ok: false, error: 'Failed to create user' }
       }
-
-      if (!normalizedPassword) {
-        console.warn('Empty password provided')
-        return { success: false, error: 'Password cannot be empty' }
-      }
-
-      console.log('addUser: Creating user', normalizedUsername, 'with role:', role, 'password length:', normalizedPassword.length)
-
-      // Authorization: who can create what
-      const caller = user
-      if (!caller) {
-        // allow self-signup only for regular users
-        if (role !== 'user') {
-          console.warn('Non-admin user trying to create admin/developer')
-          return { success: false, error: 'Not authorized to create admin/developer' }
-        }
-      } else if (isDeveloper(caller)) {
-        console.log('addUser: Developer creating user')
-        // developer may create any account
-      } else if (isAdmin(caller)) {
-        console.log('addUser: Admin creating user')
-        // admins may only create ordinary users
-        if (role !== 'user') {
-          console.warn('Admin trying to create non-user account')
-          return { success: false, error: 'Admins may only create ordinary users' }
-        }
-      } else {
-        console.warn('Unauthorized user trying to create account')
-        return { success: false, error: 'Not authorized to create accounts' }
-      }
-
-      // Ensure permissions JSON is only stored for regular users
-      const sanitizedPermissions = role === 'user' ? (permissions || {}) : {}
-
-      console.log('Inserting into user_credentials:', { username: normalizedUsername, role, permissions: sanitizedPermissions })
-
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .insert({ username: normalizedUsername, password_hash: normalizedPassword, role, permissions: sanitizedPermissions, created_by: user?.username || 'system' })
-        .select()
-
-      if (error) {
-        console.error('Add user error:', error.message || JSON.stringify(error))
-        return { success: false, error: error.message || 'Failed to create user' }
-      }
-
-      console.log('User created successfully:', data)
-      return { success: true, data }
-    } catch (err) {
-      console.error('Add user failed:', err)
-      return { success: false, error: err.message }
     }
   }
 
   const updateUser = async (username, updates) => {
     try {
-      // Fetch target role
-      const { data: target, error: tErr } = await supabase.from('user_credentials').select('role, username').eq('username', username).single()
-      if (tErr) return { success: false, error: tErr.message }
-      const targetRole = target?.role || 'user'
-      const caller = user
+      const normalizedUsername = normalizeUsername(username)
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
+        .select('id, role')
+        .eq('username', normalizedUsername)
+        .single()
 
-      // Authorization checks
-      if (isDeveloper(caller)) {
-        // Developer can modify anyone
-      } else if (isAdmin(caller)) {
-        // Admins cannot modify other admins or developer
-        if (targetRole === 'admin' || targetRole === 'developer') {
-          return { success: false, error: 'Admins cannot modify other admins or developer' }
-        }
-        // Admins may set permissions only for users; sanitize below
-      } else {
-        // regular users: only allow updating own password
-        if (caller?.username !== username) return { success: false, error: 'Not authorized' }
-        // allow only password change
-        const allowed = Object.keys(updates).every(k => k === 'password_hash')
-        if (!allowed) return { success: false, error: 'Users may only update their own password' }
-      }
+      if (error || !profile) return { success: false, error: error?.message || 'User not found' }
 
-      // If updates include role/permissions, enforce rules
-      if (updates.role && !isDeveloper(caller)) {
-        // only developer can change roles
-        return { success: false, error: 'Only developer can change roles' }
-      }
-
-      if (updates.permissions) {
-        // Ensure permissions only applied to users
-        if (targetRole !== 'user' && updates.role !== 'user') {
-          return { success: false, error: 'Permissions may only be assigned to ordinary users' }
-        }
-      }
-
-      // Sanitize: if resulting role is not 'user', clear permissions
-      const resultingRole = updates.role || targetRole
-      const sanitizedUpdates = { ...updates }
-      if (resultingRole !== 'user') sanitizedUpdates.permissions = {}
-
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .update(sanitizedUpdates)
-        .eq('username', username)
+      const { data: updated, error: upErr } = await supabase
+        .from('user_profiles')
+        .update({ ...updates })
+        .eq('id', profile.id)
         .select('*')
         .single()
 
-      if (error) {
-        console.error('Update user error:', error)
-        return { success: false, error: error.message }
-      }
-
-      return { success: true, data }
+      if (upErr) return { success: false, error: upErr.message }
+      return { success: true, data: updated }
     } catch (err) {
       console.error('Update user failed:', err)
       return { success: false, error: err.message }
@@ -375,58 +550,105 @@ export const AuthProvider = ({ children }) => {
 
   const deleteUser = async (username) => {
     try {
-      const { data: target, error: tErr } = await supabase.from('user_credentials').select('role, username').eq('username', username).single()
-      if (tErr) return { success: false, error: tErr.message }
-      const targetRole = target?.role || 'user'
-      const caller = user
-
-      if (isDeveloper(caller)) {
-        // allowed
-      } else if (isAdmin(caller)) {
-        if (targetRole !== 'user') return { success: false, error: 'Admins may not delete other admins or developer' }
-      } else {
-        return { success: false, error: 'Not authorized' }
-      }
-
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .delete()
-        .eq('username', username)
-        .select('*')
-        .single()
-
-      if (error) {
-        console.error('Delete user error:', error)
-        return { success: false, error: error.message }
-      }
-
+      const normalizedUsername = normalizeUsername(username)
+      const { data, error } = await supabase.functions.invoke('admin-delete-user', {
+        body: { username: normalizedUsername }
+      })
+      if (error) return { success: false, error: error.message || 'Failed to delete user' }
+      if (data?.ok === false) return { success: false, error: data?.error || 'Failed to delete user' }
       return { success: true, data }
     } catch (err) {
       console.error('Delete user failed:', err)
-      return { success: false, error: err.message }
+      if (!ALLOW_LEGACY) return { success: false, error: 'Failed to delete user' }
+      try {
+        const normalizedUsername = normalizeUsername(username)
+        const { data, error } = await supabase
+          .from('user_credentials')
+          .delete()
+          .eq('username', normalizedUsername)
+          .select('*')
+          .single()
+        if (error) return { success: false, error: error.message || 'Failed to delete user' }
+        return { success: true, data, legacy: true }
+      } catch (_legacyErr) {
+        return { success: false, error: 'Failed to delete user' }
+      }
     }
   }
 
   const getUsers = async () => {
     try {
       const { data, error } = await supabase
-        .from('user_credentials')
-        .select('username, role, permissions, created_at')
+        .from('user_profiles')
+        .select('id, username, role, permissions, balance_uzs, balance_usd, created_at')
+        .order('created_at', { ascending: true })
 
-      if (error) {
-        console.error('Get users error:', error)
-        return { success: false, error: error.message }
-      }
-
-      return { success: true, users: data }
+      if (error) return { success: false, error: error.message }
+      return { success: true, users: data || [] }
     } catch (err) {
       console.error('Get users failed:', err)
-      return { success: false, error: err.message }
+      if (!ALLOW_LEGACY) return { success: false, error: err.message }
+      try {
+        const { data, error } = await supabase
+          .from('user_credentials')
+          .select('id, username, role, permissions, balance_uzs, balance_usd, created_at')
+          .order('created_at', { ascending: true })
+        if (error) return { success: false, error: error.message }
+        return { success: true, users: data || [], legacy: true }
+      } catch (legacyErr) {
+        return { success: false, error: legacyErr.message }
+      }
+    }
+  }
+
+  const listMfaFactors = async () => {
+    try {
+      if (!supabase.auth?.mfa) return { ok: false, error: 'MFA not supported' }
+      const { data, error } = await supabase.auth.mfa.listFactors()
+      if (error) return { ok: false, error: error.message }
+      return { ok: true, data }
+    } catch (err) {
+      return { ok: false, error: err.message || 'MFA failed' }
+    }
+  }
+
+  const enrollMfa = async () => {
+    try {
+      if (!supabase.auth?.mfa) return { ok: false, error: 'MFA not supported' }
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' })
+      if (error) return { ok: false, error: error.message }
+      return { ok: true, data }
+    } catch (err) {
+      return { ok: false, error: err.message || 'MFA enroll failed' }
+    }
+  }
+
+  const challengeMfa = async (factorId) => {
+    try {
+      if (!supabase.auth?.mfa) return { ok: false, error: 'MFA not supported' }
+      const { data, error } = await supabase.auth.mfa.challenge({ factorId })
+      if (error) return { ok: false, error: error.message }
+      return { ok: true, data }
+    } catch (err) {
+      return { ok: false, error: err.message || 'MFA challenge failed' }
+    }
+  }
+
+  const verifyMfa = async (factorId, challengeId, code) => {
+    try {
+      if (!supabase.auth?.mfa) return { ok: false, error: 'MFA not supported' }
+      const { data, error } = await supabase.auth.mfa.verify({ factorId, challengeId, code })
+      if (error) return { ok: false, error: error.message }
+      return { ok: true, data }
+    } catch (err) {
+      return { ok: false, error: err.message || 'MFA verify failed' }
     }
   }
 
   const value = {
     user,
+    authUser,
+    session,
     username: user?.username,
     login,
     logout,
@@ -438,19 +660,23 @@ export const AuthProvider = ({ children }) => {
     isAdmin: isAdmin(user),
     isDeveloper: isDeveloper(user),
     permissions: user?.permissions || {},
+    authNotice,
+    legacyMode,
     hasPermission: (perm) => {
       try {
         return hasPermission(user, perm)
-      } catch (e) {
+      } catch (_e) {
         return false
       }
     },
-    verifyLocalPassword,
-    getPredefinedAccount,
-    addUser,
+    confirmPassword,
     updateUser,
     deleteUser,
-    getUsers
+    getUsers,
+    listMfaFactors,
+    enrollMfa,
+    challengeMfa,
+    verifyMfa
   }
 
   return (
@@ -460,4 +686,4 @@ export const AuthProvider = ({ children }) => {
 
 export default AuthContext
 
-export { AuthContext }
+export { AuthContext, validatePassword, passwordPolicy, normalizeUsername, usernameToEmail }

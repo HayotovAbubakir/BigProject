@@ -1,11 +1,11 @@
 // DevTools lock — parol qo'yib DevTools ni berkitish
-const DEVTOOLS_PASSWORD = '0'
+const DEVTOOLS_PASSWORD = import.meta.env.VITE_DEVTOOLS_LOCK_PASSWORD || ''
 // Progressive lockout settings
 const ESCALATION_THRESH = 4 // after 4 consecutive wrong attempts escalate
 const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000] // 1 minute, then 5 minutes
 
 // Control flag to enable/disable the lock
-let isDevToolsLockEnabled = false // Temporarily disabled - DevTools open without PIN
+let isDevToolsLockEnabled = import.meta.env.DEV && import.meta.env.VITE_DEVTOOLS_LOCK === 'true' && !!DEVTOOLS_PASSWORD
 
 let consecutiveFailed = 0 // consecutive wrong attempts counter
 let escalationLevel = 0 // which escalation duration to use next

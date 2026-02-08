@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { useLocale } from '../context/LocaleContext'
 import { formatMoney } from '../utils/format'
+import { formatProductName } from '../utils/productDisplay'
 import jsPDF from 'jspdf'
 import { insertLog } from '../firebase/supabaseLogs'
 
@@ -23,7 +24,11 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
 
   useEffect(() => {
     const pool = selectedSource === 'warehouse' ? (state.warehouse || []) : (state.store || [])
-    setItems(pool.map(p => ({ id: p.id, name: p.name || p.title || '—', available: Number(p.qty || 0), qty: 0, unitPrice: Number(p.price || 0), currency: p.currency || 'UZS' })))
+    setItems(pool.map(p => {
+      const baseName = p.name || p.title || '—'
+      const displayName = formatProductName(p) || baseName
+      return { id: p.id, name: baseName, displayName, available: Number(p.qty || 0), qty: 0, unitPrice: Number(p.price || 0), currency: p.currency || 'UZS' }
+    }))
   }, [selectedSource, state.store, state.warehouse])
 
   const updateQty = (id, qty) => setItems(it => it.map(i => i.id === id ? { ...i, qty: Number(qty) } : i))
@@ -53,7 +58,8 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     lines.forEach(async l => {
       const payload = { id: l.id, qty: l.qty }
         const rateText = (l.currency === 'USD' && usedRate) ? `, ${t('rate_text', { rate: Math.round(usedRate) })}` : '';
-      const log = { id: uuidv4(), ts, date: new Date(ts).toISOString().slice(0,10), time: new Date(ts).toLocaleTimeString(), user_name: user?.username || 'Admin', action: 'wholesale_sale', kind: 'SELL', product_name: l.name, qty: l.qty, unit_price: l.unitPrice, amount: l.qty * l.unitPrice, currency: l.currency, total_uzs: l.currency === 'USD' ? Math.round((l.qty * l.unitPrice) * (usedRate || 1)) : Math.round(l.qty * l.unitPrice), detail: `Kim: ${user?.username || 'Admin'}, Vaqt: ${new Date(ts).toLocaleTimeString()}, Harakat: Optom sotuv, Mahsulot: ${l.name}, Soni: ${l.qty}, Narx: ${l.unitPrice} ${l.currency || 'UZS'}, Jami: ${l.qty * l.unitPrice} ${l.currency || 'UZS'}${rateText}` }
+      const nameForLog = l.displayName || l.name
+      const log = { id: uuidv4(), ts, date: new Date(ts).toISOString().slice(0,10), time: new Date(ts).toLocaleTimeString(), user_name: user?.username || 'Admin', action: 'wholesale_sale', kind: 'SELL', product_name: nameForLog, qty: l.qty, unit_price: l.unitPrice, amount: l.qty * l.unitPrice, currency: l.currency, total_uzs: l.currency === 'USD' ? Math.round((l.qty * l.unitPrice) * (usedRate || 1)) : Math.round(l.qty * l.unitPrice), detail: `Kim: ${user?.username || 'Admin'}, Vaqt: ${new Date(ts).toLocaleTimeString()}, Harakat: Optom sotuv, Mahsulot: ${nameForLog}, Soni: ${l.qty}, Narx: ${l.unitPrice} ${l.currency || 'UZS'}, Jami: ${l.qty * l.unitPrice} ${l.currency || 'UZS'}${rateText}` }
       
       if (selectedSource === 'warehouse') {
         dispatch({ type: 'SELL_WAREHOUSE', payload, log })
@@ -84,7 +90,8 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
         doc.line(x + pad, yPos, x + boxW - pad, yPos)
         yPos += 12
         lines.forEach(l => {
-          const lineText = `${l.name} x ${l.qty} = ${l.currency === 'USD' ? (l.qty * l.unitPrice) + ' $' : formatMoney(l.qty * l.unitPrice) + ' UZS'}`
+          const lineName = l.displayName || l.name
+          const lineText = `${lineName} x ${l.qty} = ${l.currency === 'USD' ? (l.qty * l.unitPrice) + ' $' : formatMoney(l.qty * l.unitPrice) + ' UZS'}`
           doc.text(lineText, x + pad, yPos)
           yPos += 12
         })
@@ -129,7 +136,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
           {items.map(it => (
             <Grid item xs={12} sm={6} md={4} key={it.id}>
               <Box sx={{ border: '1px solid rgba(0,0,0,0.06)', p: 1, borderRadius: 1 }}>
-                <Typography sx={{ fontWeight: 600 }}>{it.name}</Typography>
+                <Typography sx={{ fontWeight: 600 }}>{it.displayName || it.name}</Typography>
                 <Typography variant="caption">Mavjud: {it.available}</Typography>
                 <NumberField label="Soni" value={it.qty} onChange={(v) => updateQty(it.id, Number(v || 0))} fullWidth sx={{ mt: 1 }} />
                 <CurrencyField label="Narxi" value={it.unitPrice} onChange={(v) => updatePrice(it.id, v)} fullWidth sx={{ mt: 1 }} currency={it.currency} />

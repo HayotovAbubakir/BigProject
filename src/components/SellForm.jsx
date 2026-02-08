@@ -22,16 +22,16 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
       setQty(1)
       setUnit('dona')
       setCurrency(initial?.currency || 'UZS')
-      setPrice(piecePriceDefault || '')
+      setPrice(piecePriceDefault > 0 ? piecePriceDefault : '')
     }
   }, [initial, open, piecePriceDefault])
 
   useEffect(() => {
     if (!isElectrode) return
     if (unit === 'pachka') {
-      setPrice(packPriceDefault || '')
+      if (packPriceDefault > 0) setPrice(packPriceDefault)
     } else {
-      setPrice(piecePriceDefault || '')
+      if (piecePriceDefault > 0) setPrice(piecePriceDefault)
     }
   }, [unit, isElectrode, packPriceDefault, piecePriceDefault])
 

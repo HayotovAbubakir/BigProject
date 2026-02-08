@@ -104,19 +104,30 @@ export default function Credits() {
     return { active, completed, all };
   }, [state.credits, displayCurrency, usdToUzs]);
 
+  const formatDownPaymentDetail = (payload) => {
+    const baseCurrency = payload?.currency || 'UZS'
+    const baseValue = Number(payload?.bosh_toluv || 0)
+    const originalValue = payload?.bosh_toluv_original
+    const originalCurrency = payload?.bosh_toluv_currency
+    if (originalValue !== undefined && originalValue !== null && originalCurrency && originalCurrency !== baseCurrency) {
+      return `${baseValue} ${baseCurrency} (${originalValue} ${originalCurrency})`
+    }
+    return `${baseValue} ${baseCurrency}`
+  }
+
   const handleAdd = (payload) => {
     if (isRestricted) {
       window.alert(t('new_account_restriction_message') || 'Yangi qo\'shilgan akkauntlar bu amal\'ni bajarolmaslari mumkin');
       return;
     }
     const enhancedPayload = { ...payload, created_by: username };
-    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_added', kind: 'credit', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining: payload.amount - payload.bosh_toluv, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya qo'shildi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${payload.bosh_toluv}, Qolgan: ${payload.amount - payload.bosh_toluv} ${payload.currency}` };
+    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_added', kind: 'credit', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining: payload.amount - payload.bosh_toluv, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya qo'shildi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${formatDownPaymentDetail(payload)}, Qolgan: ${payload.amount - payload.bosh_toluv} ${payload.currency}` };
     addCredit(enhancedPayload, logData);
   };
 
   const handleEdit = (payload) => {
     const remaining = payload.amount - (payload.bosh_toluv || 0);
-    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_updated', kind: 'CREDIT_EDIT', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya tahrirlandi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${payload.bosh_toluv}, Qolgan: ${remaining} ${payload.currency}` };
+    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_updated', kind: 'CREDIT_EDIT', product_name: payload.product_name || payload.name, qty: payload.qty || 1, unit_price: payload.price || payload.amount, amount: payload.amount, currency: payload.currency || 'UZS', client_name: payload.name, down_payment: payload.bosh_toluv, remaining, credit_type: payload.type, detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya tahrirlandi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${payload.qty}, Narx: ${payload.price}, Jami: ${payload.amount}, Bosh to'lov: ${formatDownPaymentDetail(payload)}, Qolgan: ${remaining} ${payload.currency}` };
     // Do not send `remaining` to the server (it's a generated column). Send source fields instead.
     const updates = { ...payload };
     delete updates.remaining;

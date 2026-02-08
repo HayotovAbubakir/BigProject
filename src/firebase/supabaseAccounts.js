@@ -5,6 +5,7 @@ const isSupabaseConfigured = () => {
   const key = import.meta.env.VITE_SUPABASE_KEY
   return url && key && !url.includes('placeholder') && !key.includes('placeholder')
 }
+const ALLOW_LEGACY = import.meta.env.VITE_ALLOW_LEGACY === 'true'
 
 /**
  * Update user account balance in Supabase
@@ -110,7 +111,7 @@ export const getAccountBalance = async (username) => {
 
   try {
     const { data, error } = await supabase
-      .from('user_credentials')
+      .from('user_profiles')
       .select('balance_uzs, balance_usd')
       .eq('username', username.toLowerCase())
       .single()
@@ -125,6 +126,19 @@ export const getAccountBalance = async (username) => {
     return result
   } catch (err) {
     console.error('[getAccountBalance] Failed:', err?.message || err)
+    if (ALLOW_LEGACY) {
+      try {
+        const { data, error } = await supabase
+          .from('user_credentials')
+          .select('balance_uzs, balance_usd')
+          .eq('username', username.toLowerCase())
+          .single()
+        if (error && error.code !== 'PGRST116') throw error
+        return data || { balance_uzs: 0, balance_usd: 0 }
+      } catch (legacyErr) {
+        console.error('[getAccountBalance] Legacy fallback failed:', legacyErr?.message || legacyErr)
+      }
+    }
     return { balance_uzs: 0, balance_usd: 0 }
   }
 }
@@ -196,7 +210,7 @@ export const getTodaysSalesSummary = async () => {
 }
 
 /**
- * Get all user credentials with balances
+ * Get all user profiles with balances
  * @returns {Promise<array>} Array of user accounts with balance info
  */
 export const getAllUserBalances = async () => {
@@ -208,14 +222,14 @@ export const getAllUserBalances = async () => {
   try {
     // Try to get balance columns if they exist
     let { data, error } = await supabase
-      .from('user_credentials')
+      .from('user_profiles')
       .select('username, balance_uzs, balance_usd, role, permissions')
 
     // If columns don't exist, try basic query
     if (error && error.message && error.message.includes('column')) {
       console.warn('[getAllUserBalances] Balance columns not found, using basic query')
       const { data: basicData, error: basicError } = await supabase
-        .from('user_credentials')
+        .from('user_profiles')
         .select('username, role, permissions')
       
       if (basicError) throw basicError
@@ -234,6 +248,17 @@ export const getAllUserBalances = async () => {
     return data || []
   } catch (err) {
     console.error('[getAllUserBalances] Failed:', err?.message || err)
+    if (ALLOW_LEGACY) {
+      try {
+        const { data, error } = await supabase
+          .from('user_credentials')
+          .select('username, balance_uzs, balance_usd, role, permissions')
+        if (error) throw error
+        return data || []
+      } catch (legacyErr) {
+        console.warn('[getAllUserBalances] Legacy fallback failed:', legacyErr?.message || legacyErr)
+      }
+    }
     console.warn('[getAllUserBalances] Returning empty array (columns may not exist in Supabase)')
     return []
   }

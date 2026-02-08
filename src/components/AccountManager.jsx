@@ -5,6 +5,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import { useLocale } from '../context/LocaleContext'
 import { useApp } from '../context/useApp'
 import { useAuth } from '../hooks/useAuth'
+import { validatePassword } from '../context/AuthContext'
 import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory } from '../utils/productCategories'
 
 export default function AccountManager({ open, onClose }) {
@@ -63,6 +64,15 @@ export default function AccountManager({ open, onClose }) {
 
   const handleAdd = async () => {
     if (!newUsername) return
+    if (!newPassword) {
+      window.alert(t('password_min_length') || 'Password is required')
+      return
+    }
+    const policy = validatePassword(newPassword)
+    if (!policy.ok) {
+      window.alert(policy.errors.join('. '))
+      return
+    }
     const username = newUsername.toLowerCase()
     if (accounts.find(a => a.username === username)) {
       window.alert(t('account_exists') || 'Bunday akkaunt allaqachon mavjud')
@@ -83,7 +93,7 @@ export default function AccountManager({ open, onClose }) {
     dispatch({ type: 'ADD_ACCOUNT', payload, log: { ts: Date.now(), user: user?.username, action: 'ACCOUNT_ADD', detail: `Added account ${username}` } })
     
     try {
-      const res = await registerUser(username, newPassword || username)
+      const res = await registerUser(username, newPassword, 'user', payload.permissions)
       if (!res || !res.ok) {
         window.alert((res && res.error) || t('add_account_failed') || 'Akkaunt qo\'shish xatosi')
         return
@@ -212,7 +222,13 @@ export default function AccountManager({ open, onClose }) {
           {adding && (
             <Box sx={{ mt: 1, display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' }, alignItems: 'flex-start' }}>
               <TextField label={t('username') || 'Username'} value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
-              <TextField label={t('password') || 'Password'} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+              <TextField
+                label={t('password') || 'Password'}
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                helperText="Min 10 chars, upper/lower/number/symbol"
+              />
               <FormControlLabel 
                 control={<Checkbox checked={newAccountRestricted} onChange={(e) => setNewAccountRestricted(e.target.checked)} />} 
                 label={t('restrict_access') || 'Cheklovlarni yoniq qil'} 

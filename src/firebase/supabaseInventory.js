@@ -52,6 +52,12 @@ export const insertProduct = async (product) => {
     if (product.electrode_size) {
       safe.electrode_size = product.electrode_size.toString().trim()
     }
+    if (product.stone_thickness) {
+      safe.stone_thickness = product.stone_thickness.toString().trim()
+    }
+    if (product.stone_size) {
+      safe.stone_size = product.stone_size.toString().trim()
+    }
     if (product.location) {
       safe.location = product.location
     }
@@ -102,6 +108,14 @@ export const updateProduct = async (id, updates) => {
     if (safeUpdates.electrode_size !== undefined) {
       const size = (safeUpdates.electrode_size || '').toString().trim();
       safeUpdates.electrode_size = size ? size : null;
+    }
+    if (safeUpdates.stone_thickness !== undefined) {
+      const thickness = (safeUpdates.stone_thickness || '').toString().trim();
+      safeUpdates.stone_thickness = thickness ? thickness : null;
+    }
+    if (safeUpdates.stone_size !== undefined) {
+      const size = (safeUpdates.stone_size || '').toString().trim();
+      safeUpdates.stone_size = size ? size : null;
     }
     if (safeUpdates.category !== undefined) {
       const cat = (safeUpdates.category || '').toString().trim();

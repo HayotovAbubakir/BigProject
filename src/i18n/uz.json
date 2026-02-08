@@ -164,7 +164,7 @@
   "login_required": "Foydalanuvchi nomi va parol majburiy",
   "login_failed": "Kirish muvaffaqiyatsiz",
   "password_mismatch": "Parollar mos kelmaydi",
-  "password_min_length": "Parol kamida 4 ta belgidan iborat bo'lishi kerak",
+  "password_min_length": "Parol kamida 10 ta belgidan iborat bo'lishi kerak",
   "registration_failed": "Ro'yxatdan o'tish muvaffaqiyatsiz",
   "registration_success": "Foydalanuvchi muvaffaqiyatli qo'shildi",
   "login": "Kirish",

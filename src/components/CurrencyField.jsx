@@ -55,35 +55,33 @@ export default function CurrencyField({
   /**
    * Format string with thousands separators while typing.
    * Keeps decimal part user typed (no rounding) and preserves trailing separator.
+   * Uses explicit comma formatting to avoid locale issues.
    */
   const formatLive = (raw) => {
     if (!raw) return ''
-    const cleaned = raw.replace(/[^\d.,]/g, '')
-    if (!cleaned) return ''
+    
+    // Remove all non-numeric characters except dot
+    const cleaned = raw.replace(/[^\d.]/g, '')
+    if (!cleaned || cleaned === '.') return ''
 
-    // last separator position (comma or dot) is treated as decimal point
-    const lastComma = cleaned.lastIndexOf(',')
-    const lastDot = cleaned.lastIndexOf('.')
-    const lastSep = Math.max(lastComma, lastDot)
+    // Split by dot to separate integer and decimal parts
+    const parts = cleaned.split('.')
+    const intPart = parts[0]
+    const decPart = parts[1]
 
-    const digitsOnly = cleaned.replace(/[^\d]/g, '')
-    if (digitsOnly === '') return ''
+    // Format integer part with commas
+    const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
-    if (lastSep === -1) {
-      // no decimal, just format int with commas
-      return new Intl.NumberFormat('en-US').format(Number(digitsOnly))
+    // Reconstruct with decimal part if present
+    if (decPart !== undefined) {
+      // If user just typed a dot, keep trailing dot
+      if (raw.endsWith('.')) {
+        return `${intFormatted}.`
+      }
+      return `${intFormatted}.${decPart}`
     }
 
-    const intPartRaw = cleaned.slice(0, lastSep).replace(/[^\d]/g, '')
-    const decimalPart = cleaned.slice(lastSep + 1).replace(/[^\d]/g, '')
-    const intFormatted = intPartRaw ? new Intl.NumberFormat('en-US').format(Number(intPartRaw)) : ''
-
-    // keep trailing dot if user just typed separator
-    if (lastSep === cleaned.length - 1) {
-      return `${intFormatted}.`
-    }
-
-    return `${intFormatted}.${decimalPart}`
+    return intFormatted
   }
 
   /**
@@ -94,7 +92,7 @@ export default function CurrencyField({
     const formatted = formatLive(raw)
     setDisplay(formatted)
     if (onChange) {
-      onChange(parseNumber(formatted))
+      onChange(formatted ? parseNumber(formatted) : null)
     }
   };
 
@@ -113,9 +111,9 @@ export default function CurrencyField({
   const handleBlur = (e) => {
     const raw = e.target.value
     const num = parseNumber(raw)
-    const formatted = formatMoney(num)
+    const formatted = num ? formatMoney(num) : ''
     setDisplay(formatted)
-    if (onChange) onChange(num)
+    if (onChange) onChange(formatted ? num : null)
     if (onBlur) onBlur(e)
   }
 

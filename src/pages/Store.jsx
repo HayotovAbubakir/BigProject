@@ -48,7 +48,8 @@ import SalesHistory from "../components/SalesHistory";
 import ConfirmDialog from "../components/ConfirmDialog";
 import WholesaleSale from "../components/WholesaleSale";
 import { calculateInventoryTotal } from "../utils/currencyUtils";
-import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories } from "../utils/productCategories";
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory } from "../utils/productCategories";
+import { formatProductName } from "../utils/productDisplay";
 
 function ProductCard({
   product,
@@ -91,7 +92,7 @@ function ProductCard({
               wordBreak: "break-word",
             }}
           >
-            {product.name}
+            {formatProductName(product)}
           </Typography>
           <Typography
             variant="h6"
@@ -181,6 +182,9 @@ export default function Store() {
   } = useApp();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [sizeFilter, setSizeFilter] = useState("");
+  const [stoneThicknessFilter, setStoneThicknessFilter] = useState("");
+  const [stoneSizeFilter, setStoneSizeFilter] = useState("");
   const [openForm, setOpenForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [sellItem, setSellItem] = useState(null);
@@ -380,12 +384,31 @@ export default function Store() {
     }
   };
 
+  const isElectrodeFilter = normalizeCategory(categoryFilter) === 'elektrod'
+  const isStoneFilter = normalizeCategory(categoryFilter) === 'tosh'
+  const normalizedSizeFilter = sizeFilter.toLowerCase().trim()
+  const normalizedStoneThicknessFilter = stoneThicknessFilter.toLowerCase().trim()
+  const normalizedStoneSizeFilter = stoneSizeFilter.toLowerCase().trim()
   const filteredStore = state.store.filter(
     (it) => (!search || it.name.toLowerCase().includes(search.toLowerCase())) &&
-            (!categoryFilter || (it.category || '').toLowerCase().includes(categoryFilter.toLowerCase())),
+            (!categoryFilter || (it.category || '').toLowerCase().includes(categoryFilter.toLowerCase())) &&
+            (!isElectrodeFilter || !normalizedSizeFilter || (it.electrode_size || '').toString().toLowerCase().includes(normalizedSizeFilter)) &&
+            (!isStoneFilter || !normalizedStoneThicknessFilter || (it.stone_thickness || '').toString().toLowerCase().includes(normalizedStoneThicknessFilter)) &&
+            (!isStoneFilter || !normalizedStoneSizeFilter || (it.stone_size || '').toString().toLowerCase().includes(normalizedStoneSizeFilter)),
   );
 
   const categories = mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES, state.store.map(it => it.category));
+
+  React.useEffect(() => {
+    if (!isElectrodeFilter && sizeFilter) setSizeFilter('')
+  }, [isElectrodeFilter, sizeFilter])
+
+  React.useEffect(() => {
+    if (!isStoneFilter && (stoneThicknessFilter || stoneSizeFilter)) {
+      setStoneThicknessFilter('')
+      setStoneSizeFilter('')
+    }
+  }, [isStoneFilter, stoneThicknessFilter, stoneSizeFilter])
 
   return (
     <Box>
@@ -493,6 +516,33 @@ export default function Store() {
             <MenuItem value="">Barcha kategoriyalar</MenuItem>
             {categories.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
           </Select>
+          {isElectrodeFilter && (
+            <TextField
+              size="small"
+              placeholder="Razmer"
+              value={sizeFilter}
+              onChange={(e) => setSizeFilter(e.target.value)}
+              sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 160 } }}
+            />
+          )}
+          {isStoneFilter && (
+            <TextField
+              size="small"
+              placeholder="Qalinlik"
+              value={stoneThicknessFilter}
+              onChange={(e) => setStoneThicknessFilter(e.target.value)}
+              sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 160 } }}
+            />
+          )}
+          {isStoneFilter && (
+            <TextField
+              size="small"
+              placeholder="Hajmi"
+              value={stoneSizeFilter}
+              onChange={(e) => setStoneSizeFilter(e.target.value)}
+              sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 160 } }}
+            />
+          )}
         </Box>
 
         {isMobile ? (
@@ -536,7 +586,7 @@ export default function Store() {
               <TableBody>
                 {filteredStore.map((it) => (
                   <TableRow key={it.id} hover>
-                    <TableCell>{it.name}</TableCell>
+                    <TableCell>{formatProductName(it)}</TableCell>
                     <TableCell align="center">{it.qty}</TableCell>
                     <TableCell align="right">
                       {formatForDisplay(it.price, it.currency)}{" "}

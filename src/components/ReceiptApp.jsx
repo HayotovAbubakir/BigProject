@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../context/useApp'
+import { useNumericInput } from '../hooks/useNumericInput'
 
 
 
@@ -22,15 +23,22 @@ function roundUsd(number) {
 }
 
 export default function ReceiptApp({ items: propItems }) {
-  
-
-  
-  
-  
-
   const { state, dispatch } = useApp()
   const dark = state?.ui?.dark || false
   const rate = state?.ui?.receiptRate || 13000
+
+  // Use numeric input hook for exchange rate with formatting
+  const {
+    displayValue: rateDisplay,
+    handleChange: handleRateChange,
+    handleBlur: handleRateBlur,
+    inputRef: rateInputRef,
+  } = useNumericInput(rate, (rawValue) => {
+    if (rawValue && rawValue > 0) {
+      dispatch({ type: 'SET_UI', payload: { receiptRate: rawValue } })
+      dispatch({ type: 'SET_EXCHANGE_RATE', payload: rawValue })
+    }
+  })
 
   const [alertVisible, setAlertVisible] = useState(true)
   const demoItems = [
@@ -76,14 +84,6 @@ export default function ReceiptApp({ items: propItems }) {
     const cx = rect.left + rect.width / 2
     const cy = rect.top + rect.height / 2
     setPointer({ x: (e.clientX - cx) / rect.width, y: (e.clientY - cy) / rect.height })
-  }
-
-  const onRateChange = (v) => {
-    const n = Number(String(v).replace(/[^0-9.]/g, ''))
-    if (!Number.isNaN(n) && n > 0) {
-      dispatch({ type: 'SET_UI', payload: { receiptRate: n } })
-      dispatch({ type: 'SET_EXCHANGE_RATE', payload: n })
-    }
   }
 
   useEffect(() => {
@@ -162,7 +162,16 @@ export default function ReceiptApp({ items: propItems }) {
             <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-white/6 px-3 py-2 rounded-lg border border-white/6 backdrop-blur-sm">
               <label className="text-sm text-slate-200 mr-2">1 USD =</label>
-              <input type="text" value={rate} onChange={(e) => onRateChange(e.target.value)} className="w-28 bg-transparent text-white placeholder:text-slate-300 outline-none text-right" />
+              <input 
+                ref={rateInputRef}
+                type="text" 
+                value={rateDisplay} 
+                onChange={handleRateChange}
+                onBlur={handleRateBlur}
+                className="w-28 bg-transparent text-white placeholder:text-slate-300 outline-none text-right"
+                inputMode="decimal"
+                placeholder="13000"
+              />
               <span className="ml-2 text-sm text-slate-200">UZS</span>
             </div>
 

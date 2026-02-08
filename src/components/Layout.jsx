@@ -28,6 +28,7 @@ import useDisplayCurrency from '../hooks/useDisplayCurrency';
 import CurrencyConverter from './CurrencyConverter';
 import AccountManager from './AccountManager';
 import Notifications from './Notifications';
+import MfaSetupDialog from './MfaSetupDialog';
 
 const navItems = [
   { to: '/', key: 'dashboard', icon: <DashboardIcon /> },
@@ -39,7 +40,7 @@ const navItems = [
   { to: '/calculator', key: 'calculator', icon: <CalculateIcon /> },
 ];
 
-function UserMenu({ user, onLogout, onManageAccount }) {
+function UserMenu({ user, onLogout, onManageAccount, onSecurity }) {
   const { t } = useLocale();
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -58,6 +59,9 @@ function UserMenu({ user, onLogout, onManageAccount }) {
       </Tooltip>
       <Menu anchorEl={anchorEl} open={open} onClose={handleClose}>
         <MenuItem onClick={() => { handleClose(); onManageAccount(); }}>{user?.username || t('account') || ''}</MenuItem>
+        <MenuItem onClick={() => { handleClose(); onSecurity(); }}>
+          <ListItemText>Security</ListItemText>
+        </MenuItem>
         <MenuItem onClick={() => { handleClose(); onLogout(); }}>
           <ListItemIcon><LogoutIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{t('logout') || ''}</ListItemText>
@@ -104,6 +108,7 @@ export default function Layout({ children }) {
   
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
+  const [mfaOpen, setMfaOpen] = useState(false);
   
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -180,6 +185,7 @@ export default function Layout({ children }) {
             user={user}
             onLogout={logout}
             onManageAccount={handleManageAccount}
+            onSecurity={() => setMfaOpen(true)}
           />
         </Toolbar>
       </AppBar>
@@ -218,6 +224,7 @@ export default function Layout({ children }) {
         {children}
       </Box>
       <AccountManager open={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
+      <MfaSetupDialog open={mfaOpen} onClose={() => setMfaOpen(false)} />
       
     </Box>
   );

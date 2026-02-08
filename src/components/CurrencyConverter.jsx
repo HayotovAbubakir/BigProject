@@ -4,6 +4,7 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import useManualRate from '../hooks/useManualRate';
 import { useLocale } from '../context/LocaleContext';
 import useExchangeRate from '../hooks/useExchangeRate';
+import NumberField from './NumberField';
 
 export default function CurrencyConverter() {
   const { rate: manualRate, save: saveManualRate } = useManualRate();
@@ -39,13 +40,11 @@ export default function CurrencyConverter() {
               {loading ? (t('loading') || 'Loading') : (t('refresh') || 'Refresh')}
             </Button>
           </Box>
-          <TextField
+          <NumberField
             size="small"
-            type="number"
-            value={manualRate || ''}
-            onChange={(e) => {
-              const val = e.target.value;
-              saveManualRate(val);
+            value={manualRate ?? ''}
+            onChange={(val) => {
+              if (val != null) saveManualRate(val);
             }}
             InputProps={{ endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>{toCurrency}</Typography> }}
             sx={{ width: '100%' }}
@@ -55,11 +54,10 @@ export default function CurrencyConverter() {
           <Divider />
 
           <Typography variant="subtitle2">USD → UZS</Typography>
-          <TextField
+          <NumberField
             size="small"
-            type="number"
             value={usdAmount}
-            onChange={(e) => setUsdAmount(e.target.value)}
+            onChange={(val) => setUsdAmount(val == null ? '' : val)}
             placeholder="USD"
             InputProps={{ endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>USD</Typography> }}
           />

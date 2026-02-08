@@ -289,6 +289,8 @@ function reducer(state, action) {
       const newState = { ...state, accounts: action.payload }
       // syncState(newState)
       return newState
+    case 'RESET_STATE':
+      return { ...initialState, ui: state.ui }
     default:
       return state
   }
@@ -315,6 +317,11 @@ export const AppProvider = ({ children }) => {
   React.useEffect(() => {
     mountedRef.current = true;
     const loadData = async () => {
+      if (!username) {
+        if (mountedRef.current) setHydrated(false)
+        dispatch({ type: 'RESET_STATE' })
+        return
+      }
       try {
         const [credits, warehouse, store, logs, clients, userBalances] = await Promise.all([
           getCredits(),

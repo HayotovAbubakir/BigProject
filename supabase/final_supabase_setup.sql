@@ -155,6 +155,8 @@ create table if not exists public.products (
   price_pack numeric default 0,
   pack_qty integer default 0,
   electrode_size text,
+  stone_thickness text,
+  stone_size text,
   currency text check (currency in ('UZS','USD')) not null,
   location text,
   created_at timestamptz default now(),
@@ -200,6 +202,8 @@ CREATE TABLE public.credits (
   qty INTEGER,
   unit_price NUMERIC,
   bosh_toluv NUMERIC DEFAULT 0,
+  bosh_toluv_original NUMERIC,
+  bosh_toluv_currency TEXT CHECK (bosh_toluv_currency IN ('UZS','USD')),
   completed BOOLEAN DEFAULT false,
   created_by TEXT,
   created_at TIMESTAMPTZ DEFAULT now()

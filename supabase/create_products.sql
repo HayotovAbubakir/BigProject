@@ -13,6 +13,8 @@ create table if not exists public.products (
   price_pack numeric default 0,
   pack_qty integer default 0,
   electrode_size text,
+  stone_thickness text,
+  stone_size text,
   currency text check (currency in ('UZS','USD')) not null,
   location text,
   created_at timestamptz default now(),

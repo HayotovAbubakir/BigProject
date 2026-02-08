@@ -20,7 +20,6 @@ import CreditsDialog from '../components/CreditsDialog';
 import CurrencyField from '../components/CurrencyField';
 import NumberField from '../components/NumberField';
 import { insertLog } from '../firebase/supabaseLogs';
-import { supabase } from '/supabase/supabaseClient';
 // Note: The credit management dialogs and logic are complex and are kept as is to avoid breaking functionality.
 // Only the main client list UI is redesigned.
 
@@ -51,7 +50,7 @@ function ClientCard({ client, onAddCredit, onViewCredits, onEdit, onDelete, canM
 export default function Clients() {
   const { state, addClient, updateClient, deleteClient, addCredit, addWarehouseProduct, addStoreProduct, updateWarehouseProduct, updateStoreProduct, updateCredit } = useApp();
   const { t } = useLocale();
-  const { username, hasPermission, user } = useAuth();
+  const { username, hasPermission, user, confirmPassword } = useAuth();
   const { notify } = useNotification();
   
   // Cheklangan userlar (new_account_restriction) qo'shish/tahrirlash/o'chirish/qarz qo'sha olmaydi
@@ -105,6 +104,7 @@ export default function Clients() {
   const [creditDate, setCreditDate] = useState(new Date().toISOString().slice(0,10));
   const [creditNote, setCreditNote] = useState('');
   const [initialPayment, setInitialPayment] = useState('');
+  const [initialPaymentCurrency, setInitialPaymentCurrency] = useState('UZS');
 
 
   const handleSave = () => {
@@ -145,21 +145,8 @@ export default function Clients() {
     setConfirm(s => ({ ...s, verifying: true }));
 
     try {
-      // Parolni tekshirish
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .select('password_hash')
-        .eq('username', username)
-        .maybeSingle();
-
-      if (error || !data) {
-        notify('Xato', 'Foydalanuvchi topilmadi', 'error');
-        setConfirm(s => ({ ...s, verifying: false }));
-        return;
-      }
-
-      // Parol tekshirish
-      if (data.password_hash !== confirm.password) {
+      const verify = await confirmPassword(confirm.password);
+      if (!verify || !verify.ok) {
         notify('Xato', 'Parol noto\'g\'ri! Klient o\'chirilmadi.', 'error');
         setConfirm(s => ({ ...s, verifying: false, password: '' }));
         return;
@@ -181,13 +168,31 @@ export default function Clients() {
   const updateProduct = (index, field, value) => setProducts(products.map((p, i) => i === index ? { ...p, [field]: value } : p));
   const removeProduct = (index) => setProducts(products.filter((_, i) => i !== index));
 
+  const convertDownPayment = (amount, fromCurrency, toCurrency) => {
+    const value = Number(amount || 0)
+    const from = (fromCurrency || 'UZS').toUpperCase()
+    const to = (toCurrency || 'UZS').toUpperCase()
+    if (from === to) return value
+    const rate = Number(state.exchangeRate || 0)
+    if (!rate || rate <= 0) return null
+    if (from === 'USD' && to === 'UZS') return Math.round(value * rate)
+    if (from === 'UZS' && to === 'USD') return Number((value / rate).toFixed(2))
+    return value
+  }
+
   const handleAddCredit = async () => {
     const initialPayAmount = Number(initialPayment) || 0;
+    const initialPayCurrency = (initialPaymentCurrency || creditCurrency || 'UZS').toUpperCase();
 
     if (creditType === 'cash') {
       if (!creditAmount) return;
       const totalAmount = Number(creditAmount);
-      if (initialPayAmount > totalAmount) {
+      const convertedDownPayment = convertDownPayment(initialPayAmount, initialPayCurrency, creditCurrency)
+      if (convertedDownPayment === null) {
+        notify('Xato', 'Valyuta kursi kiritilmagan. Kursni kiriting yoki bir xil valyutada kiriting.', 'error')
+        return
+      }
+      if (convertedDownPayment > totalAmount) {
         notify('Warning', "Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas", 'warning'); return;
       }
       const payload = {
@@ -197,8 +202,10 @@ export default function Clients() {
         credit_type: 'cash',
         amount: totalAmount,
         currency: creditCurrency,
-        bosh_toluv: initialPayAmount,
-        completed: (totalAmount - initialPayAmount) <= 0,
+        bosh_toluv: convertedDownPayment,
+        bosh_toluv_original: initialPayAmount,
+        bosh_toluv_currency: initialPayCurrency,
+        completed: (totalAmount - convertedDownPayment) <= 0,
         created_by: username,
         date: creditDate,
         note: creditNote,
@@ -219,7 +226,7 @@ export default function Clients() {
           down_payment: payload.bosh_toluv,
           remaining: (payload.amount || 0) - (payload.bosh_toluv || 0),
           credit_type: payload.credit_type || payload.type || 'cash',
-          detail: `Added cash credit for ${creditClient.name}: amount ${payload.amount} ${payload.currency || 'UZS'}`
+          detail: `Added cash credit for ${creditClient.name}: amount ${payload.amount} ${payload.currency || 'UZS'}${initialPayAmount > 0 ? `, down payment ${payload.bosh_toluv} ${payload.currency || 'UZS'}${initialPayCurrency !== payload.currency ? ` (${initialPayAmount} ${initialPayCurrency})` : ''}` : ''}`
         };
         await addCredit(payload, logData);
 
@@ -232,6 +239,11 @@ export default function Clients() {
         let productQty = Number(p.qty);
         let productUnitPrice = Number(p.sellPrice);
         let productCurrency = p.sellCurrency;
+        const convertedDownPayment = convertDownPayment(initialPayAmount, initialPayCurrency, productCurrency)
+        if (convertedDownPayment === null) {
+          notify('Xato', 'Valyuta kursi kiritilmagan. Kursni kiriting yoki bir xil valyutada kiriting.', 'error')
+          return
+        }
 
         if (p.isNewProduct) {
           if (creditSubtype === 'olingan') {
@@ -302,10 +314,12 @@ export default function Clients() {
           qty: productQty,
           unit_price: productUnitPrice,
           amount: (productQty || 0) * (productUnitPrice || 0),
-          bosh_toluv: initialPayAmount,
+          bosh_toluv: convertedDownPayment,
+          bosh_toluv_original: initialPayAmount,
+          bosh_toluv_currency: initialPayCurrency,
           currency: productCurrency,
           // bosh_toluv set above from initial payment
-          completed: false,
+          completed: ((productQty || 0) * (productUnitPrice || 0)) - convertedDownPayment <= 0,
           created_by: username,
           date: creditDate,
           note: creditNote,
@@ -326,10 +340,10 @@ export default function Clients() {
           currency: productCurrency || 'UZS',
           product_id: productId,
           client_name: creditClient.name,
-          down_payment: initialPayAmount || 0,
+          down_payment: convertedDownPayment || 0,
           remaining: (productQty || 0) * (productUnitPrice || 0),
           credit_type: 'product',
-          detail: `Added product credit for ${creditClient.name}: ${productQty} x ${productName} @ ${productUnitPrice} ${productCurrency || 'UZS'}`
+          detail: `Added product credit for ${creditClient.name}: ${productQty} x ${productName} @ ${productUnitPrice} ${productCurrency || 'UZS'}${initialPayAmount > 0 ? `, down payment ${convertedDownPayment} ${productCurrency || 'UZS'}${initialPayCurrency !== productCurrency ? ` (${initialPayAmount} ${initialPayCurrency})` : ''}` : ''}`
         };
         
         // ALSO create a SELL log for daily_sales so it appears in dashboard daily sales
@@ -364,9 +378,9 @@ export default function Clients() {
         if (initialPayAmount > 0 && created && created.id) {
           try {
             const amountVal = Number(payload.amount || 0)
-            const completedFlag = (amountVal - Number(initialPayAmount || 0)) <= 0
-            const updates = { bosh_toluv: Number(initialPayAmount || 0), completed: completedFlag }
-            const creditLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CREDIT_PAYMENT', kind: 'PAYMENT', product_name: `Payment for credit to ${creditClient.name}`, detail: `Initial payment of ${initialPayAmount} ${productCurrency} for credit to ${creditClient.name}`, amount: Number(initialPayAmount || 0), currency: productCurrency }
+            const completedFlag = (amountVal - Number(convertedDownPayment || 0)) <= 0
+            const updates = { bosh_toluv: Number(convertedDownPayment || 0), bosh_toluv_original: initialPayAmount, bosh_toluv_currency: initialPayCurrency, completed: completedFlag }
+            const creditLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CREDIT_PAYMENT', kind: 'PAYMENT', product_name: `Payment for credit to ${creditClient.name}`, detail: `Initial payment of ${initialPayAmount} ${initialPayCurrency} for credit to ${creditClient.name}`, amount: Number(convertedDownPayment || 0), currency: productCurrency }
             await updateCredit(created.id, updates, creditLog)
           } catch (e) {
             console.warn('Failed to apply initial payment to created product credit', e)
@@ -382,11 +396,11 @@ export default function Clients() {
           action: 'CREDIT_PAYMENT',
           kind: 'PAYMENT',
           product_name: `Payment for credit to ${creditClient.name}`,
-          detail: `Initial payment of ${initialPayAmount} ${creditCurrency} for credit to ${creditClient.name}`,
+          detail: `Initial payment of ${initialPayAmount} ${initialPayCurrency} for credit to ${creditClient.name}`,
           date: new Date().toISOString().slice(0, 10),
           time: new Date().toLocaleTimeString(),
           amount: initialPayAmount,
-          currency: creditCurrency,
+          currency: initialPayCurrency,
       };
       await insertLog(paymentLog);
     }
@@ -433,6 +447,7 @@ export default function Clients() {
                 setCreditSubtype('berilgan');
                 setCreditAmount('');
                 setInitialPayment('');
+                setInitialPaymentCurrency('UZS');
                 setCreditCurrency('UZS'); 
                 setProducts([]);
                 setLocation('warehouse');
@@ -541,21 +556,40 @@ export default function Clients() {
                 onChange={(val) => setCreditAmount(val)}
                 currency={creditCurrency}
               />
-              <CurrencyField
-                label={t('boshToluv')}
-                fullWidth
-                margin="dense"
-                value={initialPayment}
-                onChange={(val) => setInitialPayment(val)}
-                currency={creditCurrency}
-              />
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <CurrencyField
+                  label={t('boshToluv')}
+                  fullWidth
+                  margin="dense"
+                  value={initialPayment}
+                  onChange={(val) => setInitialPayment(val)}
+                  currency={initialPaymentCurrency}
+                />
+                <TextField
+                  select
+                  label={t('currency')}
+                  margin="dense"
+                  value={initialPaymentCurrency}
+                  onChange={(e) => setInitialPaymentCurrency(e.target.value)}
+                  sx={{ minWidth: 120 }}
+                >
+                  <MenuItem value="UZS">UZS</MenuItem>
+                  <MenuItem value="USD">USD</MenuItem>
+                </TextField>
+              </Box>
               <TextField
                 select
                 label={t('currency')}
                 fullWidth
                 margin="dense"
                 value={creditCurrency}
-                onChange={(e) => setCreditCurrency(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value
+                  if ((initialPaymentCurrency || 'UZS') === (creditCurrency || 'UZS')) {
+                    setInitialPaymentCurrency(next)
+                  }
+                  setCreditCurrency(next)
+                }}
               >
                 <MenuItem value="UZS">UZS</MenuItem>
                 <MenuItem value="USD">USD</MenuItem>
@@ -677,14 +711,27 @@ export default function Clients() {
                 </Grid>
               ))}
               <Button onClick={addProduct} variant="outlined" sx={{ mt: 1 }}>Mahsulot qo'shish</Button>
-              <CurrencyField
-                label={t('boshToluv')}
-                fullWidth
-                margin="dense"
-                value={initialPayment}
-                onChange={(val) => setInitialPayment(val)}
-                currency={creditCurrency}
-              />
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <CurrencyField
+                  label={t('boshToluv')}
+                  fullWidth
+                  margin="dense"
+                  value={initialPayment}
+                  onChange={(val) => setInitialPayment(val)}
+                  currency={initialPaymentCurrency}
+                />
+                <TextField
+                  select
+                  label={t('currency')}
+                  margin="dense"
+                  value={initialPaymentCurrency}
+                  onChange={(e) => setInitialPaymentCurrency(e.target.value)}
+                  sx={{ minWidth: 120 }}
+                >
+                  <MenuItem value="UZS">UZS</MenuItem>
+                  <MenuItem value="USD">USD</MenuItem>
+                </TextField>
+              </Box>
             </>
           )}
           <TextField

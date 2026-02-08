@@ -15,6 +15,12 @@ ADD COLUMN IF NOT EXISTS price_pack NUMERIC DEFAULT 0;
 ALTER TABLE products
 ADD COLUMN IF NOT EXISTS pack_qty INTEGER DEFAULT 0;
 
+ALTER TABLE products
+ADD COLUMN IF NOT EXISTS stone_thickness TEXT;
+
+ALTER TABLE products
+ADD COLUMN IF NOT EXISTS stone_size TEXT;
+
 -- Verify the products table structure
 -- Run this query to check if all columns are present:
 -- SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'products' ORDER BY ordinal_position;

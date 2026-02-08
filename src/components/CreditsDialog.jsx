@@ -10,18 +10,28 @@ import { useAuth } from '../hooks/useAuth'
 import { useLocale } from '../context/LocaleContext'
 import { useNotification } from '../context/NotificationContext'
 import CurrencyField from './CurrencyField'
-import { supabase } from '/supabase/supabaseClient'
 
 export default function CreditsDialog({ open, onClose, clientId, clientName }) {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const { state, updateCredit, deleteCredit } = useApp()
-  const { username } = useAuth()
+  const { username, confirmPassword } = useAuth()
   const { t } = useLocale()
   const { notify } = useNotification()
   const [deductState, setDeductState] = React.useState({ id: null, value: '' })
   const [filter, setFilter] = React.useState('active')
   const [deleteConfirm, setDeleteConfirm] = React.useState({ open: false, id: null, password: '', verifying: false })
+
+  const formatDownPayment = (credit) => {
+    const baseCurrency = credit?.currency || 'UZS'
+    const baseValue = Number(credit?.bosh_toluv || 0)
+    const originalValue = credit?.bosh_toluv_original
+    const originalCurrency = credit?.bosh_toluv_currency
+    if (originalValue !== undefined && originalValue !== null && originalCurrency && originalCurrency !== baseCurrency) {
+      return `${baseValue} ${baseCurrency} (${originalValue} ${originalCurrency})`
+    }
+    return `${baseValue} ${baseCurrency}`
+  }
 
   const activeCredits = (state.credits || [])
     .filter(c => (!c.completed || c.completed === false))
@@ -46,21 +56,8 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
     setDeleteConfirm(s => ({ ...s, verifying: true }))
 
     try {
-      // Parni tekshirish
-      const { data, error } = await supabase
-        .from('user_credentials')
-        .select('password_hash')
-        .eq('username', username)
-        .maybeSingle()
-
-      if (error || !data) {
-        notify('Xato', 'Foydalanuvchi topilmadi', 'error')
-        setDeleteConfirm(s => ({ ...s, verifying: false }))
-        return
-      }
-
-      // Parol tekshirish (hozirgi simple: to'g'ri parolmi)
-      if (data.password_hash !== deleteConfirm.password) {
+      const verify = await confirmPassword(deleteConfirm.password)
+      if (!verify || !verify.ok) {
         notify('Xato', 'Parol noto\'g\'ri! Nasiya o\'chirilmadi.', 'error')
         setDeleteConfirm(s => ({ ...s, verifying: false, password: '' }))
         return
@@ -217,7 +214,7 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
                     ? ((c.unit_price || c.price).toLocaleString() + ' ' + (c.currency || 'UZS'))
                     : '-'
                   const amountLabel = (c.amount || 0) + ' ' + (c.currency || 'UZS')
-                  const initialLabel = (c.bosh_toluv || 0) + ' ' + (c.currency || 'UZS')
+                  const initialLabel = formatDownPayment(c)
                   const remainingLabel = remaining + ' ' + (c.currency || 'UZS')
                   const createdAtLabel = c.created_at
                     ? new Date(c.created_at).toLocaleString('uz-UZ', {
@@ -334,7 +331,7 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
                           <TableCell align="right">{c.credit_type === 'product' && (c.qty || c.quantity) ? (c.qty || c.quantity) : '-'}</TableCell>
                           <TableCell align="right">{c.credit_type === 'product' && (c.unit_price || c.price) ? ((c.unit_price || c.price).toLocaleString() + ' ' + (c.currency || 'UZS')) : '-'}</TableCell>
                           <TableCell>{(c.amount || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
-                          <TableCell>{(c.bosh_toluv || 0) + ' ' + (c.currency || 'UZS')}</TableCell>
+                          <TableCell>{formatDownPayment(c)}</TableCell>
                           <TableCell>{remaining + ' ' + (c.currency || 'UZS')}</TableCell>
                           <TableCell>{createdAtLabel}</TableCell>
                           <TableCell>{createdByLabel}</TableCell>

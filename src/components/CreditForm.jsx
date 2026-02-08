@@ -1,22 +1,31 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, MenuItem, Box, Typography } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, MenuItem, Box, Typography, useTheme, useMediaQuery } from '@mui/material'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { v4 as uuidv4 } from 'uuid'
 import { useLocale } from '../context/LocaleContext'
+import { useNotification } from '../context/NotificationContext'
 import { formatMoney } from '../utils/format'
 import NumberField from './NumberField'
 import CurrencyField from './CurrencyField'
 
 export default function CreditForm({ open, onClose, onSubmit, initial }) {
-  const [form, setForm] = useState({ name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '' })
+  const [form, setForm] = useState({ name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '', bosh_toluv_original: '', bosh_toluv_currency: 'UZS' })
   const [isPayment, setIsPayment] = useState(false)
   const { rate: usdToUzs } = useExchangeRate()
   const { t } = useLocale()
+  const { notify } = useNotification()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   useEffect(() => {
-    const newForm = initial ? { ...initial } : { name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '' };
+    const newForm = initial ? { ...initial } : { name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '', bosh_toluv_original: '', bosh_toluv_currency: 'UZS' };
+    const fallbackCurrency = newForm.currency || 'UZS'
+    if (!newForm.bosh_toluv_currency) {
+      newForm.bosh_toluv_currency = fallbackCurrency
+    }
+    if (newForm.bosh_toluv_original === undefined || newForm.bosh_toluv_original === null) {
+      newForm.bosh_toluv_original = newForm.bosh_toluv || 0
+    }
     if (newForm.date && typeof newForm.date === 'string' && newForm.date.length > 10) {
       newForm.date = newForm.date.slice(0, 10);
     } else if (!newForm.date) {
@@ -27,10 +36,41 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
   }, [initial]);
 
   const handle = (k) => (evt) => setForm({ ...form, [k]: evt.target.value })
+  const handleCurrencyChange = (evt) => {
+    const nextCurrency = evt.target.value
+    setForm(prev => {
+      const next = { ...prev, currency: nextCurrency }
+      if (!prev.bosh_toluv_currency || prev.bosh_toluv_currency === prev.currency) {
+        next.bosh_toluv_currency = nextCurrency
+      }
+      return next
+    })
+  }
+
+  const convertDownPayment = (amount, fromCurrency, toCurrency) => {
+    const value = Number(amount || 0)
+    const from = (fromCurrency || 'UZS').toUpperCase()
+    const to = (toCurrency || 'UZS').toUpperCase()
+    if (from === to) return value
+    if (!usdToUzs || usdToUzs <= 0) return null
+    if (from === 'USD' && to === 'UZS') return Math.round(value * usdToUzs)
+    if (from === 'UZS' && to === 'USD') return Number((value / usdToUzs).toFixed(2))
+    return value
+  }
 
   const submit = () => {
     const totalAmount = isPayment ? form.amount : (Number(form.qty) || 0) * (Number(form.price) || 0);
     const payload = { id: initial?.id || uuidv4(), ...form, amount: totalAmount };
+    const downPaymentCurrency = (form.bosh_toluv_currency || form.currency || 'UZS').toUpperCase()
+    const downPaymentOriginal = Number(form.bosh_toluv_original || 0)
+    const downPaymentConverted = convertDownPayment(downPaymentOriginal, downPaymentCurrency, payload.currency)
+    if (downPaymentConverted === null) {
+      notify('Xato', 'Valyuta kursi kiritilmagan. Kursni kiriting yoki bir xil valyutada kiriting.', 'error')
+      return
+    }
+    payload.bosh_toluv = downPaymentConverted
+    payload.bosh_toluv_original = downPaymentOriginal
+    payload.bosh_toluv_currency = downPaymentCurrency
     
     // Ensure date is in YYYY-MM-DD format
     if (!payload.date) {
@@ -67,11 +107,13 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
 
   const handleClose = () => {
     setIsPayment(false);
-    setForm({ name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '' });
+    setForm({ name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '', bosh_toluv_original: '', bosh_toluv_currency: 'UZS' });
     onClose();
   }
 
   const remainingDisplay = initial ? (initial.amount - (initial.bosh_toluv || 0)) : 0
+  const initialDownPaymentCurrency = (initial?.bosh_toluv_currency || initial?.currency || 'UZS')
+  const initialDownPaymentOriginal = initial?.bosh_toluv_original ?? initial?.bosh_toluv ?? initial?.downPayment ?? 0
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth={isMobile} maxWidth="sm">
@@ -82,7 +124,13 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
         {initial && (
           <Box sx={{ mb: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}>
             <Typography variant="body2" color="textSecondary">{t('total_received')}: {formatMoney(initial.amount)} {initial.currency}</Typography>
-            {(initial.bosh_toluv || initial.downPayment) > 0 && <Typography variant="body2" color="textSecondary">{t('boshToluv')}: {formatMoney(initial.bosh_toluv || initial.downPayment)} {initial.currency}{(initial.down_payment_note) ? ` (${initial.down_payment_note})` : ''}</Typography>}
+            {(initial.bosh_toluv || initial.downPayment || initialDownPaymentOriginal) > 0 && (
+              <Typography variant="body2" color="textSecondary">
+                {t('boshToluv')}: {formatMoney(initial.bosh_toluv || 0)} {initial.currency || 'UZS'}
+                {initialDownPaymentCurrency && initialDownPaymentCurrency !== (initial.currency || 'UZS') ? ` (${formatMoney(initialDownPaymentOriginal)} ${initialDownPaymentCurrency})` : ''}
+                {(initial.down_payment_note) ? ` (${initial.down_payment_note})` : ''}
+              </Typography>
+            )}
             <Typography variant="body2" color="textSecondary">{t('paid')}: {formatMoney(initial.paid || 0)} {initial.currency}</Typography>
             <Typography variant="body1" sx={{ fontWeight: 'bold', mt: 0.5 }}>{t('remaining')}: {formatMoney(remainingDisplay)} {initial.currency}</Typography>
             {initial.note && <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>{t('note')}: {initial.note}</Typography>}
@@ -104,10 +152,23 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
             <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
             <Typography variant="body2" sx={{ mt: 1 }}>{t('total_amount')}: {formatMoney((Number(form.qty) || 1) * (Number(form.price) || 0))} {form.currency}</Typography>
             <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mt: 2 }}>
-              <CurrencyField label={t('boshToluv')} fullWidth margin="dense" value={form.bosh_toluv} onChange={(v) => setForm({ ...form, bosh_toluv: v })} currency={form.currency} />
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <CurrencyField label={t('boshToluv')} fullWidth margin="dense" value={form.bosh_toluv_original} onChange={(v) => setForm({ ...form, bosh_toluv_original: v })} currency={form.bosh_toluv_currency || form.currency} />
+                <TextField select label={t('currency')} margin="dense" value={form.bosh_toluv_currency || form.currency} onChange={(e) => setForm({ ...form, bosh_toluv_currency: e.target.value })} sx={{ minWidth: 120 }}>
+                  <MenuItem value="UZS">UZS</MenuItem>
+                  <MenuItem value="USD">USD</MenuItem>
+                </TextField>
+              </Box>
+              {form.bosh_toluv_currency && form.bosh_toluv_currency !== form.currency && Number(form.bosh_toluv_original || 0) > 0 && (
+                <Typography variant="caption" color={convertDownPayment(form.bosh_toluv_original, form.bosh_toluv_currency, form.currency) === null ? 'error' : 'text.secondary'}>
+                  {convertDownPayment(form.bosh_toluv_original, form.bosh_toluv_currency, form.currency) === null
+                    ? "Valyuta kursi kerak"
+                    : `Konvertatsiya: ${formatMoney(convertDownPayment(form.bosh_toluv_original, form.bosh_toluv_currency, form.currency))} ${form.currency}`}
+                </Typography>
+              )}
               <TextField label={t('down_payment_note')} fullWidth margin="dense" value={form.down_payment_note} onChange={handle('down_payment_note')} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
             </Box>
-            <TextField select label={t('currency')} fullWidth margin="dense" value={form.currency} onChange={handle('currency')} disabled={!!initial}>
+            <TextField select label={t('currency')} fullWidth margin="dense" value={form.currency} onChange={handleCurrencyChange} disabled={!!initial}>
               <MenuItem value="UZS">UZS</MenuItem>
               <MenuItem value="USD">USD</MenuItem>
             </TextField>

@@ -5,6 +5,7 @@ import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { formatMoney } from '../utils/format'
 import { normalizeCategory } from '../utils/productCategories'
+import { formatProductName } from '../utils/productDisplay'
 
 export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) {
   const [qty, setQty] = useState(1)
@@ -17,10 +18,11 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
   const packQty = Number(initial?.pack_qty || 0)
   const piecePriceDefault = Number(initial?.price_piece ?? initial?.price ?? 0)
   const packPriceDefault = Number(initial?.price_pack ?? 0)
+  const nameWithSize = initial ? formatProductName(initial) : ''
 
   useEffect(() => {
     if (initial) {
-      setPrice(piecePriceDefault || 0)
+      setPrice(piecePriceDefault > 0 ? piecePriceDefault : 0)
       setQty(1)
       setUnit('dona')
       setCurrency(initial?.currency || 'UZS')
@@ -30,9 +32,9 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
   useEffect(() => {
     if (!isElectrode) return
     if (unit === 'pachka') {
-      setPrice(packPriceDefault || 0)
+      if (packPriceDefault > 0) setPrice(packPriceDefault)
     } else {
-      setPrice(piecePriceDefault || 0)
+      if (piecePriceDefault > 0) setPrice(piecePriceDefault)
     }
   }, [unit, isElectrode, packPriceDefault, piecePriceDefault])
 
@@ -66,7 +68,7 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
       <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
       <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
-        <TextField label="Mahsulot" fullWidth margin="dense" size="small" value={initial?.name || ''} disabled />
+        <TextField label="Mahsulot" fullWidth margin="dense" size="small" value={nameWithSize} disabled />
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
           Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
         </Typography>

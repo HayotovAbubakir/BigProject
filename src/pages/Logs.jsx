@@ -241,7 +241,7 @@ function LogItem({ log }) {
 
 export default function Logs() {
   const { state, dispatch } = useApp();
-  const { user, hasPermission, verifyLocalPassword, isDeveloper } = useAuth();
+  const { user, confirmPassword, isDeveloper } = useAuth();
   const { t } = useLocale();
   const theme = useTheme();
   const today = new Date().toISOString().slice(0, 10);
@@ -250,7 +250,10 @@ export default function Logs() {
   const handleDeleteLogs = async () => {
     const pwd = prompt(t('enterAdminPassword'));
     if (pwd === null) return;
-    if (!isDeveloper && !verifyLocalPassword(user?.username, pwd)) return alert(t('incorrectPassword'));
+    if (!isDeveloper) {
+      const verify = await confirmPassword(pwd);
+      if (!verify || !verify.ok) return alert(t('incorrectPassword'));
+    }
     if (!confirm(`${t('confirmDeleteLogs')} (${filteredLogs.length})`)) return;
 
     dispatch({ type: 'DELETE_LOGS_FOR_DATE', payload: { date: selectedDate, user: user?.username } });

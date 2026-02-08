@@ -29,7 +29,8 @@ import { calculateInventoryTotal } from '../utils/currencyUtils';
 import { insertLog } from '../firebase/supabaseLogs';
 import { updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts';
 import { supabase } from '/supabase/supabaseClient';
-import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories } from '../utils/productCategories';
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory } from '../utils/productCategories';
+import { formatProductName } from '../utils/productDisplay';
 
 function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canAddProducts, canSell, canMove }) {
   const { t } = useLocale();
@@ -39,7 +40,9 @@ function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canA
     <Grid item xs={12} sm={6}>
       <Paper elevation={2} sx={{ p: { xs: 1, sm: 2 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, gap: 1, flexWrap: 'wrap' }}>
-          <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' }, flex: 1, wordBreak: 'break-word' }}>{product.name}</Typography>
+          <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' }, flex: 1, wordBreak: 'break-word' }}>
+            {formatProductName(product)}
+          </Typography>
           <Typography variant="h6" sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}>{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
         </Box>
         <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: 1 }}>{t('qty')}: {product.qty}</Typography>
@@ -59,6 +62,9 @@ export default function Warehouse() {
   const { state, dispatch, addWarehouseProduct, updateWarehouseProduct, deleteWarehouseProduct } = useApp();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [sizeFilter, setSizeFilter] = useState('');
+  const [stoneThicknessFilter, setStoneThicknessFilter] = useState('');
+  const [stoneSizeFilter, setStoneSizeFilter] = useState('');
   const [openForm, setOpenForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [moveItem, setMoveItem] = useState(null);
@@ -127,9 +133,28 @@ export default function Warehouse() {
     await updateWarehouseProduct(payload.id, { ...product, qty: newTotalQty }, logData);
   };
 
+  const isElectrodeFilter = normalizeCategory(categoryFilter) === 'elektrod'
+  const isStoneFilter = normalizeCategory(categoryFilter) === 'tosh'
+  const normalizedSizeFilter = sizeFilter.toLowerCase().trim()
+  const normalizedStoneThicknessFilter = stoneThicknessFilter.toLowerCase().trim()
+  const normalizedStoneSizeFilter = stoneSizeFilter.toLowerCase().trim()
   const filteredWarehouse = state.warehouse.filter(it => (!search || it.name.toLowerCase().includes(search.toLowerCase())) &&
-    (!categoryFilter || (it.category || '').toLowerCase().includes(categoryFilter.toLowerCase())));
+    (!categoryFilter || (it.category || '').toLowerCase().includes(categoryFilter.toLowerCase())) &&
+    (!isElectrodeFilter || !normalizedSizeFilter || (it.electrode_size || '').toString().toLowerCase().includes(normalizedSizeFilter)) &&
+    (!isStoneFilter || !normalizedStoneThicknessFilter || (it.stone_thickness || '').toString().toLowerCase().includes(normalizedStoneThicknessFilter)) &&
+    (!isStoneFilter || !normalizedStoneSizeFilter || (it.stone_size || '').toString().toLowerCase().includes(normalizedStoneSizeFilter)));
   const categories = mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES, state.warehouse.map(it => it.category));
+
+  React.useEffect(() => {
+    if (!isElectrodeFilter && sizeFilter) setSizeFilter('')
+  }, [isElectrodeFilter, sizeFilter])
+
+  React.useEffect(() => {
+    if (!isStoneFilter && (stoneThicknessFilter || stoneSizeFilter)) {
+      setStoneThicknessFilter('')
+      setStoneSizeFilter('')
+    }
+  }, [isStoneFilter, stoneThicknessFilter, stoneSizeFilter])
 
   return (
     <Box>
@@ -169,6 +194,33 @@ export default function Warehouse() {
             <MenuItem value="">Barcha kategoriyalar</MenuItem>
             {categories.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
           </Select>
+          {isElectrodeFilter && (
+            <TextField
+              size="small"
+              placeholder="Razmer"
+              value={sizeFilter}
+              onChange={(e) => setSizeFilter(e.target.value)}
+              sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 160 } }}
+            />
+          )}
+          {isStoneFilter && (
+            <TextField
+              size="small"
+              placeholder="Qalinlik"
+              value={stoneThicknessFilter}
+              onChange={(e) => setStoneThicknessFilter(e.target.value)}
+              sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 160 } }}
+            />
+          )}
+          {isStoneFilter && (
+            <TextField
+              size="small"
+              placeholder="Hajmi"
+              value={stoneSizeFilter}
+              onChange={(e) => setStoneSizeFilter(e.target.value)}
+              sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 160 } }}
+            />
+          )}
         </Box>
 
         {isMobile ? (
@@ -204,7 +256,7 @@ export default function Warehouse() {
               <TableBody>
                 {filteredWarehouse.map((it) => (
                   <TableRow key={it.id} hover>
-                    <TableCell>{it.name}</TableCell>
+                    <TableCell>{formatProductName(it)}</TableCell>
                     <TableCell align="center">{it.qty}</TableCell>
                     <TableCell align="right">
                       {formatForDisplay(it.price, it.currency)} {displayCurrency}

@@ -6,7 +6,6 @@ import { normalizeCategory } from '../utils/productCategories'
 export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
   const [qty, setQty] = useState(1)
   const [price, setPrice] = useState('')
-  const [pricePack, setPricePack] = useState('')
   const [error, setError] = useState('')
   const isElectrode = normalizeCategory(initial?.category) === 'elektrod'
 
@@ -15,11 +14,8 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
       setQty(1)
       
       const basePiece = Number(initial.price_piece ?? initial.price ?? 0)
-      const basePack = Number(initial.price_pack ?? 0)
       const pref = basePiece * 1.2
-      const prefPack = basePack ? basePack * 1.2 : 0
       setPrice(pref ? String(pref) : '')
-      setPricePack(prefPack ? String(prefPack) : '')
       setError('')
     }
   }, [initial, open])
@@ -27,20 +23,17 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
   const submit = () => {
     const nQty = Number(qty)
     const nPrice = Number(price)
-    const nPricePack = Number(pricePack)
     if (!initial) return
     if (nQty <= 0) return setError('Soni 0 dan katta bo\'lishi kerak')
     if (nQty > (initial.qty || 0)) return setError('Omborda yetarli miqdor yo\'q')
     if (nPrice <= 0) return setError('Narx 0 dan katta bo\'lishi kerak')
-    if (isElectrode && nPricePack <= 0) return setError('Pachka narxi 0 dan katta bo\'lishi kerak')
 
     const nextItem = { 
       ...initial, 
       qty: nQty, 
       date: new Date().toISOString().slice(0,10), 
       price: nPrice,
-      price_piece: nPrice,
-      price_pack: isElectrode ? nPricePack : initial?.price_pack
+      price_piece: nPrice
     }
     onSubmit({ id: initial.id, qty: nQty, item: nextItem })
     onClose()
@@ -53,9 +46,6 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
         <Box sx={{ mt: 1, display: 'grid', gap: 1.5 }}>
           <NumberField label="Soni" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth />
           <NumberField label={isElectrode ? "Do'kon narxi (dona)" : "Do'kon narxi"} value={price} onChange={(v) => setPrice(String(v || ''))} fullWidth />
-          {isElectrode && (
-            <NumberField label="Do'kon narxi (pachka)" value={pricePack} onChange={(v) => setPricePack(String(v || ''))} fullWidth />
-          )}
           {error && <FormHelperText error sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>{error}</FormHelperText>}
         </Box>
       </DialogContent>

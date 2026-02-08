@@ -21,7 +21,7 @@ function roundUsd(n) {
 export default function DailySalesByDate({ selectedDate: propDate, onDateChange }) {
   const { state } = useApp()
   const { dispatch } = useApp()
-  const { user, hasPermission, verifyLocalPassword, isDeveloper } = useAuth()
+  const { user, hasPermission, confirmPassword, isDeveloper } = useAuth()
   const { t } = useLocale()
   const today = new Date().toISOString().slice(0, 10)
   const [internalDate, setInternalDate] = useState(today)
@@ -82,9 +82,12 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
                     const pwd = window.prompt(t('enterAdminPassword') || 'Enter admin password to confirm deletion')
                     if (pwd === null) return
                     // developer bypasses local password check
-                    if (!isDeveloper && !(verifyLocalPassword && verifyLocalPassword(user?.username, pwd))) {
-                      window.alert(t('incorrectPassword') || 'Incorrect password')
-                      return
+                    if (!isDeveloper) {
+                      const verify = await confirmPassword(pwd)
+                      if (!verify || !verify.ok) {
+                        window.alert(t('incorrectPassword') || 'Incorrect password')
+                        return
+                      }
                     }
                     const count = salesForDate.length
                     if (!window.confirm((t('confirmDeleteSales') || 'Are you sure you want to delete all sales for this date?') + ` (${count} items)`)) return

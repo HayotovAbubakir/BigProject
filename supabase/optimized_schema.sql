@@ -58,6 +58,8 @@ CREATE TABLE public.products (
   price_pack NUMERIC DEFAULT 0,
   pack_qty INTEGER DEFAULT 0,
   electrode_size TEXT,
+  stone_thickness TEXT,
+  stone_size TEXT,
   currency TEXT CHECK (currency IN ('UZS','USD')) NOT NULL,
   location TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()
@@ -105,6 +107,8 @@ CREATE TABLE public.credits (
   qty INTEGER,
   unit_price NUMERIC,
   bosh_toluv NUMERIC DEFAULT 0,
+  bosh_toluv_original NUMERIC,
+  bosh_toluv_currency TEXT CHECK (bosh_toluv_currency IN ('UZS','USD')),
   -- server-side computed remaining (amount - bosh_toluv)
   remaining NUMERIC GENERATED ALWAYS AS (COALESCE(amount,0) - COALESCE(bosh_toluv,0)) STORED,
   completed BOOLEAN DEFAULT false,

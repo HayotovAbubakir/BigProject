@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { formatMoney, parseNumber } from '../utils/format';
 import CurrencyField from './CurrencyField';
+import NumberField from './NumberField';
 import { useLocale } from '../context/LocaleContext';
 
 const ProductCalculator = ({ isDarkMode }) => {
@@ -20,8 +21,8 @@ const ProductCalculator = ({ isDarkMode }) => {
   }, [exchangeRate]);
 
   const addProduct = () => {
-    if (productName && quantity && price) {
-      setProducts([...products, { name: productName, quantity: parseFloat(quantity), price: parseNumber(price) }]);
+    if (productName && quantity !== '' && price !== '') {
+      setProducts([...products, { name: productName, quantity: Number(quantity), price: parseNumber(price) }]);
       setProductName('');
       setQuantity('');
       setPrice('');
@@ -39,10 +40,9 @@ const ProductCalculator = ({ isDarkMode }) => {
     return total / exchangeRate;
   }, [total, currency, exchangeRate]);
 
-  const handleExchangeRateChange = (e) => {
-    const newRate = parseFloat(e.target.value);
-    if (!isNaN(newRate)) {
-      setExchangeRate(newRate);
+  const handleExchangeRateChange = (val) => {
+    if (val != null && !isNaN(val)) {
+      setExchangeRate(val);
     }
   }
 
@@ -54,11 +54,12 @@ const ProductCalculator = ({ isDarkMode }) => {
             <option value="UZS">UZS</option>
             <option value="USD">USD</option>
           </select>
-          <input
-            type="number"
+          <NumberField
             placeholder={t('exchangeRate')}
             value={exchangeRate}
             onChange={handleExchangeRateChange}
+            fullWidth
+            variant="outlined"
           />
           <input
             type="text"
@@ -66,11 +67,12 @@ const ProductCalculator = ({ isDarkMode }) => {
             value={productName}
             onChange={(e) => setProductName(e.target.value)}
           />
-          <input
-            type="number"
+          <NumberField
             placeholder={t('quantity')}
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
+            value={quantity === '' ? '' : Number(quantity)}
+            onChange={(val) => setQuantity(val == null ? '' : val)}
+            fullWidth
+            variant="outlined"
           />
           <CurrencyField
             label={t('price')}
