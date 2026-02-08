@@ -296,17 +296,21 @@ export default function Store() {
 
   const handleSell = async (payload) => {
     try {
-      const { id, qty, price, currency } = payload;
+      const { id, qty, price, currency, deduct_qty, unit, pack_qty } = payload;
       const item = state.store.find((s) => s.id === id);
       if (!item) {
         console.error("Item not found in store", id);
         return;
       }
 
+      const saleQty = Number(qty || 0);
+      const deductQty = Number(deduct_qty ?? qty ?? 0);
+      const saleUnit = unit || 'dona';
+      const packQty = Number(pack_qty ?? item?.pack_qty ?? 0);
       const parsedPrice = price
         ? parseNumber(price)
-        : parseNumber(item?.price || 0);
-      const amount = Number(qty) * parsedPrice;
+        : parseNumber(saleUnit === 'pachka' ? (item?.price_pack || 0) : (item?.price || 0));
+      const amount = saleQty * parsedPrice;
       const saleCurrency = currency || item?.currency || "UZS";
       const rateText =
         saleCurrency === "USD" && usdToUzs
@@ -332,12 +336,12 @@ export default function Store() {
         kind: "SELL",
         product_name: item?.name || id,
         product_id: id,
-        qty,
+        qty: saleQty,
         unit_price: parsedPrice,
         amount: amount,
         currency: saleCurrency,
         total_uzs: totalUzs,
-        detail: `Kim: ${username || "Admin"}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${item?.name || id}, Soni: ${qty}, Narx: ${parsedPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${rateText}`,
+        detail: `Kim: ${username || "Admin"}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${item?.name || id}, Soni: ${saleQty}, Narx: ${parsedPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${rateText}${saleUnit === 'pachka' ? `, Birlik: pachka, Pachka: ${saleQty}, Pachkada: ${packQty}, Donalar: ${deductQty}` : ', Birlik: dona'}`,
         source: "store",
       };
 
@@ -348,7 +352,7 @@ export default function Store() {
       console.log("[Store Sell] Log inserted");
 
       // 2. Update product quantity in Supabase
-      const newQty = Math.max(0, Number(item.qty) - Number(qty));
+      const newQty = Math.max(0, Number(item.qty) - Number(deductQty));
       const { error: qtyErr } = await supabase
         .from("products")
         .update({ qty: newQty })
@@ -365,7 +369,7 @@ export default function Store() {
       console.log("[Store Sell] Daily sales updated");
 
       // 5. Update frontend state
-      dispatch({ type: "SELL_STORE", payload: { id, qty }, log });
+      dispatch({ type: "SELL_STORE", payload: { id, qty: deductQty }, log });
       setSellItem(null);
 
       console.log("[Store Sell] Frontend state updated");

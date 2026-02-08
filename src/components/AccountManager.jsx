@@ -5,6 +5,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import { useLocale } from '../context/LocaleContext'
 import { useApp } from '../context/useApp'
 import { useAuth } from '../hooks/useAuth'
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory } from '../utils/productCategories'
 
 export default function AccountManager({ open, onClose }) {
   const { state, dispatch } = useApp()
@@ -15,6 +16,7 @@ export default function AccountManager({ open, onClose }) {
   const [newPassword, setNewPassword] = useState('')
   const [newAccountRestricted, setNewAccountRestricted] = useState(false)
   const [selected, setSelected] = useState(null) 
+  const [newCategory, setNewCategory] = useState('')
 
   // Reset form state when dialog opens
   React.useEffect(() => {
@@ -24,6 +26,7 @@ export default function AccountManager({ open, onClose }) {
       setNewUsername('')
       setNewPassword('')
       setNewAccountRestricted(false)
+      setNewCategory('')
     }
   }, [open])
 
@@ -35,6 +38,7 @@ export default function AccountManager({ open, onClose }) {
   const canManageAccounts = isCurrentDeveloper || isCurrentAdmin
 
   const accounts = state.accounts || []
+  const categoryFilters = mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES)
 
   const normalizeUsername = (value) => (value || '').toString().toLowerCase()
   const isDeveloperAccount = (accOrName) => {
@@ -172,6 +176,33 @@ export default function AccountManager({ open, onClose }) {
     })()
   }
 
+  const handleAddCategory = () => {
+    if (!canManageAccounts) {
+      window.alert("Bu bo'lim faqat admin va developerlar uchun")
+      return
+    }
+    const normalized = normalizeCategory(newCategory)
+    if (!normalized) return
+    if (categoryFilters.includes(normalized)) {
+      window.alert('Bunday filter mavjud')
+      return
+    }
+    const next = mergeCategories(categoryFilters, normalized)
+    dispatch({ type: 'SET_UI', payload: { productCategories: next } })
+    setNewCategory('')
+  }
+
+  const handleRemoveCategory = (category) => {
+    if (!canManageAccounts) return
+    const normalized = normalizeCategory(category)
+    if (DEFAULT_PRODUCT_CATEGORIES.includes(normalized)) {
+      window.alert('Asosiy filterlarni o‘chira olmaysiz')
+      return
+    }
+    const next = categoryFilters.filter(c => c !== normalized)
+    dispatch({ type: 'SET_UI', payload: { productCategories: next } })
+  }
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{t('accounts') + ' ' + t('settings') || 'Account sozlamalari'}</DialogTitle>
@@ -230,6 +261,38 @@ export default function AccountManager({ open, onClose }) {
             <Box sx={{ mt: 1 }}>
               <Button variant="outlined" onClick={() => setSelected(null)}>Yopish</Button>
             </Box>
+          </Box>
+        )}
+
+        {canManageAccounts && (
+          <Box sx={{ mt: 3 }}>
+            <Divider sx={{ mb: 2 }} />
+            <Typography sx={{ fontWeight: 700, mb: 1 }}>Filterlar (Kategoriyalar)</Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, mb: 1 }}>
+              <TextField
+                label="Yangi filter"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                size="small"
+              />
+              <Button variant="outlined" onClick={handleAddCategory}>Qo'shish</Button>
+            </Box>
+            <List dense>
+              {categoryFilters.map(cat => (
+                <ListItem key={cat} secondaryAction={(
+                  <IconButton
+                    edge="end"
+                    aria-label="delete"
+                    onClick={() => handleRemoveCategory(cat)}
+                    disabled={DEFAULT_PRODUCT_CATEGORIES.includes(cat)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                )}>
+                  <ListItemText primary={cat} secondary={DEFAULT_PRODUCT_CATEGORIES.includes(cat) ? 'Asosiy filter' : null} />
+                </ListItem>
+              ))}
+            </List>
           </Box>
         )}
       </DialogContent>

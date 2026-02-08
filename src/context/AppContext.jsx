@@ -9,6 +9,7 @@ import { getAllUserBalances } from '../firebase/supabaseAccounts'
 import { supabase } from '/supabase/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import { useNotification } from './NotificationContext';
+import { DEFAULT_PRODUCT_CATEGORIES, PRODUCT_CATEGORIES_STORAGE_KEY, loadStoredProductCategories, mergeCategories } from '../utils/productCategories'
 
 const lowStockJokes = [
   "{name} mahsuloti kam qoldi. Yetkazib berish vaqtini o'ylash kerak!",
@@ -37,6 +38,7 @@ const initialState = {
     dark: false,
     receiptRate: 13000,
     displayCurrency: localStorage.getItem('displayCurrency') || 'UZS',
+    productCategories: loadStoredProductCategories(),
   },
   drafts: {},
   clients: [],
@@ -350,6 +352,16 @@ export const AppProvider = ({ children }) => {
       mountedRef.current = false;
     };
   }, [username]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const merged = mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES)
+      localStorage.setItem(PRODUCT_CATEGORIES_STORAGE_KEY, JSON.stringify(merged))
+    } catch (_err) {
+      void _err
+    }
+  }, [state.ui?.productCategories])
 
   const [syncState, setSyncState] = React.useState('idle')
   

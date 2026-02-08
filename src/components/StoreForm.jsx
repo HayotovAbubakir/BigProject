@@ -7,11 +7,12 @@ import CurrencyModal from './CurrencyModal'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { v4 as uuidv4 } from 'uuid'
 import { toISODate } from '../utils/date'
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory } from '../utils/productCategories'
 
 export default function StoreForm({ open, onClose, onSubmit, initial }) {
   const { rate: usdToUzs } = useExchangeRate()
   const { state, dispatch } = useApp()
-  const [form, setForm] = useState({ name: '', qty: '', price: '', date: '', note: '', category: '', currency: 'UZS' })
+  const [form, setForm] = useState({ name: '', qty: '', price: '', price_piece: '', price_pack: '', pack_qty: '', electrode_size: '', date: '', note: '', category: '', currency: 'UZS' })
   const DRAFT_KEY_BASE = 'draft_store_'
   const getDraftKey = useCallback(() => `${DRAFT_KEY_BASE}${initial?.id || 'new'}`, [initial?.id])
 
@@ -32,8 +33,25 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
       }
     }
 
-    if (initial) setForm({ ...initial, date: toISODate(initial.date), currency: initial.currency || 'UZS', category: initial.category || '' })
-    else setForm({ name: '', qty: '', price: '', date: toISODate(), note: '', category: '', currency: 'UZS' })
+    if (initial) {
+      const normalizedCategory = normalizeCategory(initial.category || '')
+      const piecePrice = Number(initial.price_piece ?? initial.price ?? 0)
+      const packPrice = Number(initial.price_pack ?? 0)
+      const packQty = Number(initial.pack_qty ?? 0)
+      setForm({
+        ...initial,
+        date: toISODate(initial.date),
+        currency: initial.currency || 'UZS',
+        category: normalizedCategory,
+        price: Number(initial.price ?? piecePrice ?? 0),
+        price_piece: piecePrice || '',
+        price_pack: packPrice || '',
+        pack_qty: packQty || '',
+        electrode_size: initial.electrode_size || ''
+      })
+    } else {
+      setForm({ name: '', qty: '', price: '', price_piece: '', price_pack: '', pack_qty: '', electrode_size: '', date: toISODate(), note: '', category: '', currency: 'UZS' })
+    }
   }, [initial, open, getDraftKey, state?.drafts])
 
   
@@ -55,6 +73,13 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
   
 
   const handle = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const handleCategory = (e) => setForm(prev => ({ ...prev, category: normalizeCategory(e.target.value) }))
+
+  const categories = React.useMemo(() => (
+    mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES, initial?.category, form.category)
+  ), [state.ui?.productCategories, initial?.category, form.category])
+
+  const isElectrode = normalizeCategory(form.category) === 'elektrod'
 
   const submit = () => {
     // Validation
@@ -66,16 +91,55 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
       window.alert('Mahsulot sonini 0 dan katta qiling')
       return
     }
-    if (!form.price || Number(form.price) <= 0) {
-      window.alert('Mahsulot narxini 0 dan katta qiling')
-      return
+    if (isElectrode) {
+      if (!form.electrode_size || !form.electrode_size.toString().trim()) {
+        window.alert('Elektrod razmerini kiriting')
+        return
+      }
+      if (!form.pack_qty || Number(form.pack_qty) <= 0) {
+        window.alert('Pachkada dona sonini kiriting')
+        return
+      }
+      if (!form.price_piece || Number(form.price_piece) <= 0) {
+        window.alert('Dona narxini 0 dan katta qiling')
+        return
+      }
+      if (!form.price_pack || Number(form.price_pack) <= 0) {
+        window.alert('Pachka narxini 0 dan katta qiling')
+        return
+      }
+    } else {
+      if (!form.price || Number(form.price) <= 0) {
+        window.alert('Mahsulot narxini 0 dan katta qiling')
+        return
+      }
     }
     if (!form.date) {
       window.alert('Sana kiriting')
       return
     }
     
-    let payload = { id: initial?.id || uuidv4(), ...form, qty: Number(form.qty), price: Number(form.price), date: toISODate(form.date) }
+    const normalizedCategory = normalizeCategory(form.category)
+    let payload = { id: initial?.id || uuidv4(), ...form, category: normalizedCategory, qty: Number(form.qty), price: Number(form.price), date: toISODate(form.date) }
+    if (isElectrode) {
+      payload = {
+        ...payload,
+        price: Number(form.price_piece || 0),
+        price_piece: Number(form.price_piece || 0),
+        price_pack: Number(form.price_pack || 0),
+        pack_qty: Number(form.pack_qty || 0),
+        electrode_size: form.electrode_size ? form.electrode_size.toString().trim() : ''
+      }
+    } else {
+      payload = {
+        ...payload,
+        price: Number(form.price || 0),
+        price_piece: null,
+        price_pack: null,
+        pack_qty: null,
+        electrode_size: null
+      }
+    }
     try {
       if (payload.currency === 'USD' && usdToUzs) {
         payload = { ...payload, price_uzs: Number(payload.price) * Number(usdToUzs) }
@@ -112,15 +176,24 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
           <TextField label="Nomi" fullWidth margin="dense" size="small" value={form.name} onChange={handle('name')} InputProps={{ style: { fontSize: '0.875rem' } }} />
           <FormControl fullWidth margin="dense" size="small">
             <InputLabel>Kategoriya</InputLabel>
-            <Select value={form.category} onChange={handle('category')} label="Kategoriya">
+            <Select value={form.category} onChange={handleCategory} label="Kategoriya">
               <MenuItem value="">Tanlanmagan</MenuItem>
-              <MenuItem value="gaz balon">Gaz balon</MenuItem>
-              <MenuItem value="elektrod">Elektrod</MenuItem>
-              <MenuItem value="tosh">Tosh</MenuItem>
+              {categories.map(cat => (
+                <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+              ))}
             </Select>
           </FormControl>
-          <NumberField label="Soni" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: v === null ? '' : v }))} />
-          <CurrencyField label="Narxi" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
+          <NumberField label={isElectrode ? "Soni (dona)" : "Soni"} fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: v === null ? '' : v }))} />
+          {isElectrode ? (
+            <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
+              <TextField label="Elektrod razmeri" fullWidth margin="dense" size="small" value={form.electrode_size} onChange={handle('electrode_size')} />
+              <NumberField label="Pachkada dona" fullWidth margin="dense" value={form.pack_qty} onChange={(v) => setForm(prev => ({ ...prev, pack_qty: v === null ? '' : v }))} />
+              <CurrencyField label="Narxi (dona)" fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v }))} currency={form.currency} />
+              <CurrencyField label="Narxi (pachka)" fullWidth margin="dense" value={form.price_pack} onChange={(v) => setForm(prev => ({ ...prev, price_pack: v === null ? '' : v }))} currency={form.currency} />
+            </Box>
+          ) : (
+            <CurrencyField label="Narxi" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
+          )}
           <TextField label="Sana" fullWidth margin="dense" size="small" value={form.date} onChange={handle('date')} />
           <TextField label="Izoh" fullWidth margin="dense" size="small" value={form.note} onChange={handle('note')} InputProps={{ style: { fontSize: '0.875rem' } }} />
         </DialogContent>

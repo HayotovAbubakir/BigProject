@@ -4,7 +4,6 @@ import { parseNumber, formatMoney } from '../utils/format'
 
 export default function NumberField({ value, onChange, label, fullWidth = true, variant = 'outlined', size = 'medium', onBlur, onFocus, ...rest }) {
   const [display, setDisplay] = useState(value == null || value === '' ? '' : formatMoney(value))
-  const [cursorPosition, setCursorPosition] = useState(null)
 
   useEffect(() => {
     if (value === parseNumber(display)) {
@@ -15,14 +14,49 @@ export default function NumberField({ value, onChange, label, fullWidth = true, 
   }, [value, display])
 
   /**
+   * Format string with thousands separators while typing.
+   * Keeps decimal part user typed (no rounding) and preserves trailing separator.
+   */
+  const formatLive = (raw) => {
+    if (!raw) return ''
+    const cleaned = raw.replace(/[^\d.,]/g, '')
+    if (!cleaned) return ''
+
+    // last separator position (comma or dot) is treated as decimal point
+    const lastComma = cleaned.lastIndexOf(',')
+    const lastDot = cleaned.lastIndexOf('.')
+    const lastSep = Math.max(lastComma, lastDot)
+
+    const digitsOnly = cleaned.replace(/[^\d]/g, '')
+    if (digitsOnly === '') return ''
+
+    if (lastSep === -1) {
+      // no decimal, just format int with commas
+      return new Intl.NumberFormat('en-US').format(Number(digitsOnly))
+    }
+
+    const intPartRaw = cleaned.slice(0, lastSep).replace(/[^\d]/g, '')
+    const decimalPart = cleaned.slice(lastSep + 1).replace(/[^\d]/g, '')
+    const intFormatted = intPartRaw ? new Intl.NumberFormat('en-US').format(Number(intPartRaw)) : ''
+
+    // keep trailing dot if user just typed separator
+    if (lastSep === cleaned.length - 1) {
+      return `${intFormatted}.`
+    }
+
+    return `${intFormatted}.${decimalPart}`
+  }
+
+  /**
    * Handle input change with smart cursor position preservation
    * Maintains cursor position relative to actual numeric content
    */
   const handleChange = (e) => {
-    const raw = e.target.value.replace('.', ',');
-    setDisplay(raw);
+    const raw = e.target.value
+    const formatted = formatLive(raw)
+    setDisplay(formatted)
     if (onChange) {
-      onChange(parseNumber(raw));
+      onChange(parseNumber(formatted))
     }
   };
 

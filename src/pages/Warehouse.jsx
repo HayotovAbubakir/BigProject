@@ -238,8 +238,12 @@ export default function Warehouse() {
       }} />
       <WarehouseSellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={async (payload) => {
         try {
+          const saleQty = Number(payload.qty || 0)
+          const deductQty = Number(payload.deduct_qty ?? payload.qty ?? 0)
+          const saleUnit = payload.unit || 'dona'
+          const packQty = Number(payload.pack_qty ?? sellItem?.pack_qty ?? 0)
           const unitPrice = parseNumber(payload.price || 0);
-          const amount = Number(payload.qty) * unitPrice;
+          const amount = saleQty * unitPrice;
           const saleCurrency = payload.currency || sellItem?.currency || 'UZS';
           const sellRateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
           
@@ -261,12 +265,12 @@ export default function Warehouse() {
             kind: 'SELL', 
             product_name: sellItem?.name || '', 
             product_id: payload.id, 
-            qty: Number(payload.qty), 
+            qty: saleQty, 
             unit_price: unitPrice, 
             amount: amount, 
             currency: saleCurrency, 
             total_uzs: totalUzs,
-            detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${Number(payload.qty)}, Narx: ${unitPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${sellRateText}`,
+            detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${saleQty}, Narx: ${unitPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${sellRateText}${saleUnit === 'pachka' ? `, Birlik: pachka, Pachka: ${saleQty}, Pachkada: ${packQty}, Donalar: ${deductQty}` : ', Birlik: dona'}`,
             source: 'warehouse',
           };
 
@@ -277,7 +281,7 @@ export default function Warehouse() {
           console.log('[Warehouse Sell] Log inserted');
 
           // 2. Update product quantity in Supabase
-          const newQty = Math.max(0, Number(sellItem.qty) - Number(payload.qty));
+          const newQty = Math.max(0, Number(sellItem.qty) - Number(deductQty));
           const { error: qtyErr } = await supabase
             .from('products')
             .update({ qty: newQty })
@@ -294,7 +298,7 @@ export default function Warehouse() {
           console.log('[Warehouse Sell] Daily sales updated');
 
           // 5. Update frontend state
-          dispatch({ type: 'SELL_WAREHOUSE', payload: { id: payload.id, qty: payload.qty }, log });
+          dispatch({ type: 'SELL_WAREHOUSE', payload: { id: payload.id, qty: deductQty }, log });
           setSellItem(null);
 
           // Success notification

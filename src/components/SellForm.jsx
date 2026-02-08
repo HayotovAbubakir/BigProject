@@ -3,27 +3,53 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, 
 import NumberField from './NumberField'
 import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
+import { normalizeCategory } from '../utils/productCategories'
 
 export default function SellForm({ open, onClose, onSubmit, initial }) {
   const [qty, setQty] = useState(1)
   const [price, setPrice] = useState(initial?.price || '')
   const [currency, setCurrency] = useState(initial?.currency || 'UZS')
+  const [unit, setUnit] = useState('dona')
   
 
-  useEffect(() => { if (initial) { setQty(1); setPrice(initial?.price || '') } }, [initial, open])
+  const isElectrode = normalizeCategory(initial?.category) === 'elektrod'
+  const packQty = Number(initial?.pack_qty || 0)
+  const piecePriceDefault = Number(initial?.price_piece ?? initial?.price ?? 0)
+  const packPriceDefault = Number(initial?.price_pack ?? 0)
 
-  const available = Number(initial?.qty || 0)
+  useEffect(() => {
+    if (initial) {
+      setQty(1)
+      setUnit('dona')
+      setCurrency(initial?.currency || 'UZS')
+      setPrice(piecePriceDefault || '')
+    }
+  }, [initial, open, piecePriceDefault])
+
+  useEffect(() => {
+    if (!isElectrode) return
+    if (unit === 'pachka') {
+      setPrice(packPriceDefault || '')
+    } else {
+      setPrice(piecePriceDefault || '')
+    }
+  }, [unit, isElectrode, packPriceDefault, piecePriceDefault])
+
+  const availablePieces = Number(initial?.qty || 0)
+  const availablePacks = packQty > 0 ? Math.floor(availablePieces / packQty) : 0
+  const available = isElectrode && unit === 'pachka' ? availablePacks : availablePieces
   const parsedQty = Number(qty || 0)
   const parsedPrice = Number(price === '' ? (initial?.price || 0) : price)
-  const invalid = parsedQty <= 0 || parsedQty > available || parsedPrice <= 0
+  const invalid = parsedQty <= 0 || parsedQty > available || parsedPrice <= 0 || (unit === 'pachka' && packQty <= 0)
   const { rate: usdToUzs } = useExchangeRate()
   const total = parsedQty * parsedPrice
 
 
   const submit = () => {
     if (invalid) return
-  const usedRate = usdToUzs || null
-    const payload = { id: initial.id, qty: parsedQty, price: parsedPrice, currency }
+    const usedRate = usdToUzs || null
+    const deductQty = unit === 'pachka' ? parsedQty * packQty : parsedQty
+    const payload = { id: initial.id, qty: parsedQty, deduct_qty: deductQty, price: parsedPrice, currency, unit, pack_qty: packQty }
     if (currency === 'USD' && usedRate) {
       payload.price_uzs = Math.round(parsedPrice * usedRate)
       payload.total_uzs = Math.round(total * usedRate)
@@ -38,8 +64,36 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
       <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
       <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Mavjud: {available}</Typography>
-        <NumberField label="Soni" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth sx={{ mt: 1.5 }} size="small" error={parsedQty <= 0 || parsedQty > available} helperText={(parsedQty <= 0 ? 'Min 1' : (parsedQty > available ? 'Ko\'p' : ''))} />
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+          Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
+        </Typography>
+
+        {isElectrode && (
+          <FormControl fullWidth sx={{ mt: 1.5 }}>
+            <InputLabel id="sell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Birlik</InputLabel>
+            <Select
+              labelId="sell-unit-label"
+              value={unit}
+              label="Birlik"
+              onChange={(e) => setUnit(e.target.value)}
+              size="small"
+            >
+              <MenuItem value="dona">Dona</MenuItem>
+              <MenuItem value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>
+            </Select>
+          </FormControl>
+        )}
+
+        <NumberField
+          label={isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni'}
+          value={qty}
+          onChange={(v) => setQty(Number(v || 0))}
+          fullWidth
+          sx={{ mt: 1.5 }}
+          size="small"
+          error={parsedQty <= 0 || parsedQty > available}
+          helperText={(parsedQty <= 0 ? 'Min 1' : (parsedQty > available ? 'Ko\'p' : ''))}
+        />
 
         <FormControl fullWidth sx={{ mt: 1.5 }}>
           <InputLabel id="sell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Valyuta</InputLabel>
@@ -49,7 +103,16 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
           </Select>
         </FormControl>
 
-        <CurrencyField label="Narxi" value={price} onChange={(v) => setPrice(v)} fullWidth sx={{ mt: 1.5 }} error={parsedPrice <= 0} helperText={parsedPrice <= 0 ? 'Musbat' : ''} currency={currency} />
+        <CurrencyField
+          label={isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi'}
+          value={price}
+          onChange={(v) => setPrice(v)}
+          fullWidth
+          sx={{ mt: 1.5 }}
+          error={parsedPrice <= 0}
+          helperText={parsedPrice <= 0 ? 'Musbat' : ''}
+          currency={currency}
+        />
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>
