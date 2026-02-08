@@ -70,6 +70,11 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
           Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
         </Typography>
+        {isElectrode && packQty > 0 && (
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+            Pachkada: {packQty} dona
+          </Typography>
+        )}
         {isElectrode && (
           <FormControl fullWidth sx={{ mt: 1.5 }}>
             <InputLabel id="wsell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Birlik</InputLabel>

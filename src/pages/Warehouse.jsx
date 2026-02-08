@@ -29,6 +29,7 @@ import { calculateInventoryTotal } from '../utils/currencyUtils';
 import { insertLog } from '../firebase/supabaseLogs';
 import { updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts';
 import { supabase } from '/supabase/supabaseClient';
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories } from '../utils/productCategories';
 
 function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canAddProducts, canSell, canMove }) {
   const { t } = useLocale();
@@ -128,7 +129,7 @@ export default function Warehouse() {
 
   const filteredWarehouse = state.warehouse.filter(it => (!search || it.name.toLowerCase().includes(search.toLowerCase())) &&
     (!categoryFilter || (it.category || '').toLowerCase().includes(categoryFilter.toLowerCase())));
-  const categories = [...new Set(state.warehouse.map(it => it.category).filter(Boolean))];
+  const categories = mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES, state.warehouse.map(it => it.category));
 
   return (
     <Box>

@@ -54,6 +54,10 @@ CREATE TABLE public.products (
   name TEXT UNIQUE NOT NULL,
   qty INTEGER DEFAULT 0,
   price NUMERIC DEFAULT 0,
+  price_piece NUMERIC DEFAULT 0,
+  price_pack NUMERIC DEFAULT 0,
+  pack_qty INTEGER DEFAULT 0,
+  electrode_size TEXT,
   currency TEXT CHECK (currency IN ('UZS','USD')) NOT NULL,
   location TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()

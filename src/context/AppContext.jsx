@@ -523,13 +523,14 @@ export const AppProvider = ({ children }) => {
     }
   }, [dispatch, notify])
 
-  const sellStoreProduct = React.useCallback(async (item, { id, qty, price, currency }, logData) => {
+  const sellStoreProduct = React.useCallback(async (item, { id, qty, deduct_qty, price, currency }, logData) => {
     try {
-      const newQty = Number(item.qty) - Number(qty);
+      const effectiveQty = Number(deduct_qty ?? qty ?? 0);
+      const newQty = Number(item.qty) - effectiveQty;
       await dbUpdateProduct(id, { qty: newQty });
       let log = null
       try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (sell store), continuing', e) }
-      dispatch({ type: 'SELL_STORE', payload: { id, qty }, log });
+      dispatch({ type: 'SELL_STORE', payload: { id, qty: effectiveQty }, log });
     } catch (err) {
       const message = `Failed to sell store product: ${err.message}`;
       notify('Error', message, 'error')

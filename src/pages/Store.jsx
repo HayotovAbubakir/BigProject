@@ -48,6 +48,7 @@ import SalesHistory from "../components/SalesHistory";
 import ConfirmDialog from "../components/ConfirmDialog";
 import WholesaleSale from "../components/WholesaleSale";
 import { calculateInventoryTotal } from "../utils/currencyUtils";
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories } from "../utils/productCategories";
 
 function ProductCard({
   product,
@@ -384,7 +385,7 @@ export default function Store() {
             (!categoryFilter || (it.category || '').toLowerCase().includes(categoryFilter.toLowerCase())),
   );
 
-  const categories = [...new Set(state.store.map(it => it.category).filter(Boolean))];
+  const categories = mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES, state.store.map(it => it.category));
 
   return (
     <Box>

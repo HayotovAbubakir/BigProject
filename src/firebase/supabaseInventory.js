@@ -37,10 +37,26 @@ export const insertProduct = async (product) => {
       qty: Number(product.qty || 0),
       price: product.price !== undefined ? Number(product.price) : null,
       currency: product.currency || 'UZS',
-      location: product.location || null,
-      date: product.date || null,
-      note: product.note || null,
-      category: product.category || null,
+    }
+
+    // Add optional fields that may or may not exist in the schema
+    if (product.price_piece !== undefined && product.price_piece !== null) {
+      safe.price_piece = Number(product.price_piece)
+    }
+    if (product.price_pack !== undefined && product.price_pack !== null) {
+      safe.price_pack = Number(product.price_pack)
+    }
+    if (product.pack_qty !== undefined && product.pack_qty !== null) {
+      safe.pack_qty = Number(product.pack_qty)
+    }
+    if (product.electrode_size) {
+      safe.electrode_size = product.electrode_size.toString().trim()
+    }
+    if (product.location) {
+      safe.location = product.location
+    }
+    if (product.category) {
+      safe.category = product.category
     }
 
     console.log('supabase.insertProduct ->', safe)
@@ -80,6 +96,13 @@ export const updateProduct = async (id, updates) => {
     if (typeof safeUpdates.name === 'string') safeUpdates.name = safeUpdates.name.trim();
     if (safeUpdates.qty !== undefined) safeUpdates.qty = Number(safeUpdates.qty || 0);
     if (safeUpdates.price !== undefined) safeUpdates.price = Number(safeUpdates.price);
+    if (safeUpdates.price_piece !== undefined) safeUpdates.price_piece = safeUpdates.price_piece === null ? null : Number(safeUpdates.price_piece);
+    if (safeUpdates.price_pack !== undefined) safeUpdates.price_pack = safeUpdates.price_pack === null ? null : Number(safeUpdates.price_pack);
+    if (safeUpdates.pack_qty !== undefined) safeUpdates.pack_qty = safeUpdates.pack_qty === null ? null : Number(safeUpdates.pack_qty);
+    if (safeUpdates.electrode_size !== undefined) {
+      const size = (safeUpdates.electrode_size || '').toString().trim();
+      safeUpdates.electrode_size = size ? size : null;
+    }
     if (safeUpdates.category !== undefined) {
       const cat = (safeUpdates.category || '').toString().trim();
       safeUpdates.category = cat ? cat : null;

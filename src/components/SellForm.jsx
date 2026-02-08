@@ -39,7 +39,8 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
   const availablePacks = packQty > 0 ? Math.floor(availablePieces / packQty) : 0
   const available = isElectrode && unit === 'pachka' ? availablePacks : availablePieces
   const parsedQty = Number(qty || 0)
-  const parsedPrice = Number(price === '' ? (initial?.price || 0) : price)
+  const fallbackPrice = unit === 'pachka' ? packPriceDefault : piecePriceDefault
+  const parsedPrice = Number(price === '' ? (fallbackPrice || 0) : price)
   const invalid = parsedQty <= 0 || parsedQty > available || parsedPrice <= 0 || (unit === 'pachka' && packQty <= 0)
   const { rate: usdToUzs } = useExchangeRate()
   const total = parsedQty * parsedPrice
@@ -67,6 +68,11 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
           Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
         </Typography>
+        {isElectrode && packQty > 0 && (
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+            Pachkada: {packQty} dona
+          </Typography>
+        )}
 
         {isElectrode && (
           <FormControl fullWidth sx={{ mt: 1.5 }}>
