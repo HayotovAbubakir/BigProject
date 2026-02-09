@@ -9,7 +9,7 @@ import { getAllUserBalances } from '../firebase/supabaseAccounts'
 import { supabase } from '/supabase/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import { useNotification } from './NotificationContext';
-import { DEFAULT_PRODUCT_CATEGORIES, PRODUCT_CATEGORIES_STORAGE_KEY, loadStoredProductCategories, mergeCategories } from '../utils/productCategories'
+import { DEFAULT_PRODUCT_CATEGORIES, PRODUCT_CATEGORIES_STORAGE_KEY, loadStoredProductCategories, mergeCategories, isMeterCategory } from '../utils/productCategories'
 
 const lowStockJokes = [
   "{name} mahsuloti kam qoldi. Yetkazib berish vaqtini o'ylash kerak!",
@@ -83,9 +83,35 @@ function reducer(state, action) {
     case 'ADD_WAREHOUSE':
       return { ...state, warehouse: [...state.warehouse, action.payload], logs: [...state.logs, action.log] }
     case 'MOVE_TO_STORE': {
-      
+      const isMeter = isMeterCategory(action.payload?.item?.category)
+      if (isMeter) {
+        const packQty = Number(action.payload?.pack_qty ?? action.payload?.item?.pack_qty ?? 0)
+        const meterDelta = Number(action.payload?.meter_qty ?? action.payload?.meter ?? 0)
+        const nextWarehouse = state.warehouse.map((it) => {
+          if (it.id !== action.payload.id) return it
+          const baseMeter = Number(it.meter_qty ?? (Number(it.qty || 0) * packQty))
+          const newMeter = Math.max(0, baseMeter - meterDelta)
+          const newQty = packQty > 0 ? Math.ceil(newMeter / packQty) : Math.max(0, Number(it.qty || 0) - Number(action.payload.qty || 0))
+          return { ...it, meter_qty: newMeter, qty: newQty }
+        })
+        const filteredWh = nextWarehouse.filter(w => isMeterCategory(w.category) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
+
+        const existingStore = state.store.find(s => s.id === action.payload.item?.id)
+        let newStore
+        if (existingStore) {
+          const baseMeter = Number(existingStore.meter_qty ?? (Number(existingStore.qty || 0) * packQty))
+          const mergedMeter = baseMeter + meterDelta
+          const mergedQty = packQty > 0 ? Math.ceil(mergedMeter / packQty) : Number(existingStore.qty || 0) + Number(action.payload.qty || 0)
+          newStore = state.store.map(s => s.id === existingStore.id ? { ...s, meter_qty: mergedMeter, qty: mergedQty } : s)
+        } else {
+          const newQty = packQty > 0 ? Math.ceil(meterDelta / packQty) : Number(action.payload.qty || 0)
+          const itemToAdd = { ...action.payload.item, meter_qty: meterDelta, qty: newQty }
+          newStore = [...state.store, itemToAdd]
+        }
+        return { ...state, warehouse: filteredWh, store: newStore, logs: [...state.logs, action.log] }
+      }
+
       const whUpdated = state.warehouse.map((it) => (it.id === action.payload.id ? { ...it, qty: Number(it.qty) - Number(action.payload.qty) } : it))
-      
       const filteredWh = whUpdated.filter(w => Number(w.qty) > 0)
 
       const moveQty = Number(action.payload.qty)
@@ -101,9 +127,18 @@ function reducer(state, action) {
       return { ...state, warehouse: filteredWh, store: newStore, logs: [...state.logs, action.log] }
     }
     case 'SELL_STORE': {
-      
-      const sold = state.store.map((it) => (it.id === action.payload.id ? { ...it, qty: Number(it.qty) - Number(action.payload.qty) } : it))
-      const filteredStore = sold.filter(s => Number(s.qty) > 0)
+      const sold = state.store.map((it) => {
+        if (it.id !== action.payload.id) return it
+        if (isMeterCategory(it.category) && action.payload.meter_qty != null) {
+          const packQty = Number(it.pack_qty || 0)
+          const baseMeter = Number(it.meter_qty ?? (Number(it.qty || 0) * packQty))
+          const newMeter = Math.max(0, baseMeter - Number(action.payload.meter_qty))
+          const newQty = packQty > 0 ? Math.ceil(newMeter / packQty) : Math.max(0, Number(it.qty || 0) - Number(action.payload.qty || 0))
+          return { ...it, meter_qty: newMeter, qty: newQty }
+        }
+        return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
+      })
+      const filteredStore = sold.filter(s => isMeterCategory(s.category) ? Number(s.meter_qty || 0) > 0 : Number(s.qty) > 0)
       // update account balances (credit the selling account) when a sale happens
       try {
         const log = action.log || {}
@@ -130,9 +165,18 @@ function reducer(state, action) {
       }
     }
     case 'SELL_WAREHOUSE': {
-      
-      const soldWh = state.warehouse.map((it) => (it.id === action.payload.id ? { ...it, qty: Number(it.qty) - Number(action.payload.qty) } : it))
-      const filteredWh = soldWh.filter(w => Number(w.qty) > 0)
+      const soldWh = state.warehouse.map((it) => {
+        if (it.id !== action.payload.id) return it
+        if (isMeterCategory(it.category) && action.payload.meter_qty != null) {
+          const packQty = Number(it.pack_qty || 0)
+          const baseMeter = Number(it.meter_qty ?? (Number(it.qty || 0) * packQty))
+          const newMeter = Math.max(0, baseMeter - Number(action.payload.meter_qty))
+          const newQty = packQty > 0 ? Math.ceil(newMeter / packQty) : Math.max(0, Number(it.qty || 0) - Number(action.payload.qty || 0))
+          return { ...it, meter_qty: newMeter, qty: newQty }
+        }
+        return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
+      })
+      const filteredWh = soldWh.filter(w => isMeterCategory(w.category) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
       // also credit the selling account (if present) for warehouse sales
       try {
         const log = action.log || {}
@@ -673,7 +717,12 @@ export const AppProvider = ({ children }) => {
       // Collect current low-stock and overdue IDs
       const lowStockIds = []
       ;[...(state.store || []), ...(state.warehouse || [])].forEach(p => {
-        if (p && Number(p.qty || 0) <= 2) lowStockIds.push(p.id)
+        if (!p) return
+        const isMeter = isMeterCategory(p.category)
+        const meterQty = Number(p.meter_qty ?? (Number(p.pack_qty || 0) * Number(p.qty || 0)))
+        const qtyValue = isMeter ? meterQty : Number(p.qty || 0)
+        const threshold = isMeter ? 5 : 2
+        if (qtyValue <= threshold) lowStockIds.push(p.id)
       })
 
       const overdueIds = []
@@ -695,7 +744,11 @@ export const AppProvider = ({ children }) => {
       // Low stock notifications (only new ones) - 3 different notification types
       ;[...(state.store || []), ...(state.warehouse || [])].forEach(p => {
         if (!p) return
-        if (Number(p.qty || 0) <= 2 && !notifiedItems.current.has(p.id)) {
+        const isMeter = isMeterCategory(p.category)
+        const meterQty = Number(p.meter_qty ?? (Number(p.pack_qty || 0) * Number(p.qty || 0)))
+        const qtyValue = isMeter ? meterQty : Number(p.qty || 0)
+        const threshold = isMeter ? 5 : 2
+        if (qtyValue <= threshold && !notifiedItems.current.has(p.id)) {
           const randomJoke = lowStockJokes[Math.floor(Math.random() * lowStockJokes.length)];
           
           // Rotate through 3 different notification types

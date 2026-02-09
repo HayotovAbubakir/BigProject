@@ -7,12 +7,12 @@ import CurrencyModal from './CurrencyModal'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { v4 as uuidv4 } from 'uuid'
 import { toISODate } from '../utils/date'
-import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory } from '../utils/productCategories'
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory, isMeterCategory } from '../utils/productCategories'
 
 export default function StoreForm({ open, onClose, onSubmit, initial }) {
   const { rate: usdToUzs } = useExchangeRate()
   const { state, dispatch } = useApp()
-  const [form, setForm] = useState({ name: '', qty: '', price: '', price_piece: '', price_pack: '', pack_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', date: '', note: '', category: '', currency: 'UZS' })
+  const [form, setForm] = useState({ name: '', qty: '', price: '', price_piece: '', price_pack: '', pack_qty: '', meter_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', date: '', note: '', category: '', currency: 'UZS' })
   const DRAFT_KEY_BASE = 'draft_store_'
   const getDraftKey = useCallback(() => `${DRAFT_KEY_BASE}${initial?.id || 'new'}`, [initial?.id])
 
@@ -38,6 +38,7 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
       const piecePrice = Number(initial.price_piece ?? initial.price ?? 0)
       const packPrice = Number(initial.price_pack ?? 0)
       const packQty = Number(initial.pack_qty ?? 0)
+      const meterQty = initial.meter_qty ?? (packQty > 0 ? Number(initial.qty || 0) * packQty : 0)
       setForm({
         ...initial,
         date: toISODate(initial.date),
@@ -47,12 +48,13 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
         price_piece: piecePrice || '',
         price_pack: packPrice || '',
         pack_qty: packQty || '',
+        meter_qty: meterQty || '',
         electrode_size: initial.electrode_size || '',
         stone_thickness: initial.stone_thickness || '',
         stone_size: initial.stone_size || ''
       })
     } else {
-      setForm({ name: '', qty: '', price: '', price_piece: '', price_pack: '', pack_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', date: toISODate(), note: '', category: '', currency: 'UZS' })
+      setForm({ name: '', qty: '', price: '', price_piece: '', price_pack: '', pack_qty: '', meter_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', date: toISODate(), note: '', category: '', currency: 'UZS' })
     }
   }, [initial, open, getDraftKey, state?.drafts])
 
@@ -83,6 +85,27 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
 
   const isElectrode = normalizeCategory(form.category) === 'elektrod'
   const isStone = normalizeCategory(form.category) === 'tosh'
+  const isMeter = isMeterCategory(form.category)
+
+  const handleQtyChange = (v) => {
+    const nextQty = v === null ? '' : v
+    setForm(prev => {
+      if (!isMeter) return { ...prev, qty: nextQty }
+      const pack = Number(prev.pack_qty || 0)
+      const nextMeter = nextQty !== '' && pack > 0 ? Number(nextQty) * pack : ''
+      return { ...prev, qty: nextQty, meter_qty: nextMeter }
+    })
+  }
+
+  const handlePackQtyChange = (v) => {
+    const nextPack = v === null ? '' : v
+    setForm(prev => {
+      if (!isMeter) return { ...prev, pack_qty: nextPack }
+      const qty = Number(prev.qty || 0)
+      const nextMeter = qty > 0 && nextPack !== '' ? qty * Number(nextPack) : ''
+      return { ...prev, pack_qty: nextPack, meter_qty: nextMeter }
+    })
+  }
 
   const submit = () => {
     // Validation
@@ -94,12 +117,20 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
       window.alert('Mahsulot sonini 0 dan katta qiling')
       return
     }
+    if (isMeter && (!form.pack_qty || Number(form.pack_qty) <= 0)) {
+      window.alert('Metrni 0 dan katta kiriting')
+      return
+    }
     if (isElectrode && (!form.electrode_size || !form.electrode_size.toString().trim())) {
       window.alert('Elektrod razmerini kiriting')
       return
     }
     if (!form.price || Number(form.price) <= 0) {
       window.alert('Mahsulot narxini 0 dan katta qiling')
+      return
+    }
+    if (isMeter && (!form.price_piece || Number(form.price_piece) <= 0)) {
+      window.alert('Dona narxini 0 dan katta kiriting')
       return
     }
     if (!form.date) {
@@ -124,6 +155,22 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
         stone_thickness: form.stone_thickness ? form.stone_thickness.toString().trim() : '',
         stone_size: form.stone_size ? form.stone_size.toString().trim() : '',
         electrode_size: null
+      }
+    } else if (isMeter) {
+      const packValue = Number(form.pack_qty || 0)
+      const meterValue = form.meter_qty !== '' ? Number(form.meter_qty || 0) : (Number(form.qty || 0) * packValue)
+      const qtyValue = meterValue && packValue > 0 ? Math.ceil(meterValue / packValue) : Number(form.qty || 0)
+      payload = {
+        ...payload,
+        price: Number(form.price || 0),
+        price_piece: Number(form.price_piece || 0),
+        pack_qty: Number(form.pack_qty || 0),
+        meter_qty: meterValue,
+        qty: qtyValue,
+        price_pack: null,
+        electrode_size: null,
+        stone_thickness: null,
+        stone_size: null
       }
     } else {
       payload = {
@@ -180,7 +227,16 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
               ))}
             </Select>
           </FormControl>
-          <NumberField label={isElectrode ? "Soni (dona)" : "Soni"} fullWidth margin="dense" value={form.qty} onChange={(v) => setForm(prev => ({ ...prev, qty: v === null ? '' : v }))} />
+          <NumberField label={isElectrode ? "Soni (dona)" : "Soni"} fullWidth margin="dense" value={form.qty} onChange={handleQtyChange} />
+          {isMeter && (
+            <NumberField
+              label="Metr (1 dona)"
+              fullWidth
+              margin="dense"
+              value={form.pack_qty}
+              onChange={handlePackQtyChange}
+            />
+          )}
           {isElectrode && (
             <TextField label="Elektrod razmeri" fullWidth margin="dense" size="small" value={form.electrode_size} onChange={handle('electrode_size')} />
           )}
@@ -190,7 +246,10 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
               <TextField label="Hajmi" fullWidth margin="dense" size="small" value={form.stone_size} onChange={handle('stone_size')} />
             </Box>
           )}
-          <CurrencyField label="Narxi" fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
+          <CurrencyField label={isMeter ? "Narxi (1 metr)" : "Narxi"} fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
+          {isMeter && (
+            <CurrencyField label="Narxi (1 dona)" fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v }))} currency={form.currency} />
+          )}
           <TextField label="Sana" fullWidth margin="dense" size="small" value={form.date} onChange={handle('date')} />
           <TextField label="Izoh" fullWidth margin="dense" size="small" value={form.note} onChange={handle('note')} InputProps={{ style: { fontSize: '0.875rem' } }} />
         </DialogContent>
@@ -205,4 +264,3 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
   )
 }
   
-

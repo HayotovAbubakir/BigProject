@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment, TextField } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, TextField } from '@mui/material'
 import NumberField from './NumberField'
 import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { formatMoney } from '../utils/format'
-import { normalizeCategory } from '../utils/productCategories'
+import { normalizeCategory, isMeterCategory } from '../utils/productCategories'
 import { formatProductName } from '../utils/productDisplay'
 
 export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) {
@@ -12,46 +12,68 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
   const [price, setPrice] = useState(initial?.price ? Number(initial.price) : 0)
   const [currency, setCurrency] = useState(initial?.currency || 'UZS')
   const [unit, setUnit] = useState('dona')
+  const [meterQty, setMeterQty] = useState('')
   
 
   const isElectrode = normalizeCategory(initial?.category) === 'elektrod'
+  const isMeter = isMeterCategory(initial?.category)
   const packQty = Number(initial?.pack_qty || 0)
+  const meterPriceDefault = Number(initial?.price ?? 0)
   const piecePriceDefault = Number(initial?.price_piece ?? initial?.price ?? 0)
   const packPriceDefault = Number(initial?.price_pack ?? 0)
+  const meterAvailable = isMeter ? Number(initial?.meter_qty ?? (Number(initial?.qty || 0) * packQty)) : 0
+  const meterAvailableDona = isMeter && packQty > 0 ? Math.floor(meterAvailable / packQty) : 0
   const nameWithSize = initial ? formatProductName(initial) : ''
 
   useEffect(() => {
     if (initial) {
-      setPrice(piecePriceDefault > 0 ? piecePriceDefault : 0)
+      setPrice(isMeter ? (meterPriceDefault > 0 ? meterPriceDefault : 0) : (piecePriceDefault > 0 ? piecePriceDefault : 0))
       setQty(1)
-      setUnit('dona')
+      setUnit(isMeter ? 'metr' : 'dona')
       setCurrency(initial?.currency || 'UZS')
+      setMeterQty('')
     }
-  }, [initial, open, piecePriceDefault])
+  }, [initial, open, piecePriceDefault, meterPriceDefault, isMeter])
 
   useEffect(() => {
-    if (!isElectrode) return
-    if (unit === 'pachka') {
-      if (packPriceDefault > 0) setPrice(packPriceDefault)
-    } else {
-      if (piecePriceDefault > 0) setPrice(piecePriceDefault)
+    if (isElectrode) {
+      if (unit === 'pachka') {
+        if (packPriceDefault > 0) setPrice(packPriceDefault)
+      } else {
+        if (piecePriceDefault > 0) setPrice(piecePriceDefault)
+      }
+      return
     }
-  }, [unit, isElectrode, packPriceDefault, piecePriceDefault])
+    if (isMeter) {
+      if (unit === 'metr') {
+        if (meterPriceDefault > 0) setPrice(meterPriceDefault)
+      } else if (piecePriceDefault > 0) {
+        setPrice(piecePriceDefault)
+      }
+    }
+  }, [unit, isElectrode, isMeter, packPriceDefault, piecePriceDefault, meterPriceDefault])
 
   const availablePieces = Number(initial?.qty || 0)
   const availablePacks = packQty > 0 ? Math.floor(availablePieces / packQty) : 0
-  const available = isElectrode && unit === 'pachka' ? availablePacks : availablePieces
-  const parsedQty = Number(qty || 0)
+  const available = isMeter
+    ? (unit === 'metr' ? meterAvailable : meterAvailableDona)
+    : (isElectrode && unit === 'pachka' ? availablePacks : availablePieces)
+  const inputQty = isMeter && unit === 'metr' ? Number(meterQty || 0) : Number(qty || 0)
   const parsedPrice = Number(price || 0)
-  const invalid = parsedQty <= 0 || parsedQty > available || parsedPrice <= 0 || (unit === 'pachka' && packQty <= 0)
+  const qtyError = inputQty <= 0 || inputQty > available || ((unit === 'pachka' || (isMeter && unit === 'dona')) && packQty <= 0)
+  const invalid = qtyError || parsedPrice <= 0
   const { rate: usdToUzs } = useExchangeRate()
+  const totalValue = inputQty * parsedPrice
 
   const submit = () => {
     if (invalid) return
-    const total = parsedQty * parsedPrice
+    const total = totalValue
     const usedRate = usdToUzs || null
-    const deductQty = unit === 'pachka' ? parsedQty * packQty : parsedQty
-    const payload = { id: initial.id, qty: parsedQty, deduct_qty: deductQty, price: parsedPrice, currency, unit, pack_qty: packQty }
+    const meterSold = isMeter ? (unit === 'dona' ? inputQty * packQty : inputQty) : 0
+    const deductQty = isMeter
+      ? (unit === 'dona' ? inputQty : (packQty > 0 ? Math.ceil(meterSold / packQty) : 0))
+      : (unit === 'pachka' ? inputQty * packQty : inputQty)
+    const payload = { id: initial.id, qty: inputQty, deduct_qty: deductQty, price: parsedPrice, currency, unit, pack_qty: packQty, meter_qty: meterSold }
     if (currency === 'USD' && usedRate) {
       payload.price_uzs = Math.round(parsedPrice * usedRate)
       payload.total_uzs = Math.round(total * usedRate)
@@ -69,15 +91,28 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
       <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
       <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
         <TextField label="Mahsulot" fullWidth margin="dense" size="small" value={nameWithSize} disabled />
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-          Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
-        </Typography>
+        {isMeter ? (
+          <>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+              Mavjud: {meterAvailable} m ({meterAvailableDona} dona)
+            </Typography>
+            {packQty > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+                1 dona: {packQty} m
+              </Typography>
+            )}
+          </>
+        ) : (
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+            Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
+          </Typography>
+        )}
         {isElectrode && packQty > 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
             Pachkada: {packQty} dona
           </Typography>
         )}
-        {isElectrode && (
+        {(isElectrode || isMeter) && (
           <FormControl fullWidth sx={{ mt: 1.5 }}>
             <InputLabel id="wsell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Birlik</InputLabel>
             <Select
@@ -87,19 +122,34 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
               onChange={(e) => setUnit(e.target.value)}
               size="small"
             >
-              <MenuItem value="dona">Dona</MenuItem>
-              <MenuItem value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>
+              {isMeter ? (
+                <>
+                  <MenuItem value="metr">Metr</MenuItem>
+                  <MenuItem value="dona">Dona</MenuItem>
+                </>
+              ) : (
+                <>
+                  <MenuItem value="dona">Dona</MenuItem>
+                  <MenuItem value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>
+                </>
+              )}
             </Select>
           </FormControl>
         )}
         <NumberField
-          label={isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni'}
+          label={isMeter ? (unit === 'metr' ? 'Metr' : 'Soni (dona)') : (isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni')}
           fullWidth
           margin="dense"
-          value={qty}
-          onChange={(v) => setQty(Number(v || 0))}
-          error={invalid}
-          helperText={invalid ? (parsedQty <= 0 ? 'Min 1 kiriting' : 'Ko\'p kiritdingiz') : ''}
+          value={isMeter && unit === 'metr' ? meterQty : qty}
+          onChange={(v) => {
+            if (isMeter && unit === 'metr') {
+              setMeterQty(v === null ? '' : v)
+            } else {
+              setQty(Number(v || 0))
+            }
+          }}
+          error={qtyError}
+          helperText={qtyError ? (inputQty <= 0 ? 'Min 1 kiriting' : 'Ko\'p kiritdingiz') : ''}
         />
         <FormControl fullWidth sx={{ mt: 1.5 }}>
           <InputLabel id="wsell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Valyuta</InputLabel>
@@ -110,7 +160,7 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
         </FormControl>
 
         <CurrencyField
-          label={isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi (bir dona)'}
+          label={isMeter ? (unit === 'metr' ? 'Narxi (1 metr)' : 'Narxi (1 dona)') : (isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi (bir dona)')}
           fullWidth
           margin="dense"
           value={price}
@@ -120,11 +170,11 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
 
         {currency === 'USD' ? (
           <Box sx={{ mt: 1 }}>
-            <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', md: '0.875rem' } }}>Jami: {parsedQty * Number(price || 0)} USD</Typography>
-            {usdToUzs ? <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>≈ {formatMoney(Math.round(parsedQty * Number(price || 0) * usdToUzs))} UZS</Typography> : <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Kurs yo\'q</Typography>}
+            <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', md: '0.875rem' } }}>Jami: {totalValue} USD</Typography>
+            {usdToUzs ? <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>≈ {formatMoney(Math.round(totalValue * usdToUzs))} UZS</Typography> : <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Kurs yo\'q</Typography>}
           </Box>
         ) : (
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Jami: {formatMoney(parsedQty * Number(price || 0))} UZS</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Jami: {formatMoney(totalValue)} UZS</Typography>
         )}
       </DialogContent>
       <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>

@@ -9,6 +9,7 @@ import useExchangeRate from '../hooks/useExchangeRate'
 import { useLocale } from '../context/LocaleContext'
 import { formatMoney } from '../utils/format'
 import { formatProductName } from '../utils/productDisplay'
+import { isMeterCategory } from '../utils/productCategories'
 import jsPDF from 'jspdf'
 import { insertLog } from '../firebase/supabaseLogs'
 
@@ -27,39 +28,87 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     setItems(pool.map(p => {
       const baseName = p.name || p.title || '—'
       const displayName = formatProductName(p) || baseName
-      return { id: p.id, name: baseName, displayName, available: Number(p.qty || 0), qty: 0, unitPrice: Number(p.price || 0), currency: p.currency || 'UZS' }
+      const isMeter = isMeterCategory(p.category)
+      const packQty = Number(p.pack_qty || 0)
+      const meterQty = isMeter ? Number(p.meter_qty ?? (Number(p.qty || 0) * packQty)) : 0
+      return {
+        id: p.id,
+        name: baseName,
+        displayName,
+        available: Number(p.qty || 0),
+        qty: 0,
+        unit: isMeter ? 'metr' : 'dona',
+        unitPrice: Number(p.price || 0),
+        priceMeter: Number(p.price || 0),
+        pricePiece: Number(p.price_piece || 0),
+        currency: p.currency || 'UZS',
+        isMeter,
+        packQty,
+        meterQty
+      }
     }))
   }, [selectedSource, state.store, state.warehouse])
 
   const updateQty = (id, qty) => setItems(it => it.map(i => i.id === id ? { ...i, qty: Number(qty) } : i))
   const updatePrice = (id, price) => setItems(it => it.map(i => i.id === id ? { ...i, unitPrice: Number(price) } : i))
+  const updateUnit = (id, unit) => setItems(it => it.map(i => {
+    if (i.id !== id) return i
+    if (!i.isMeter) return { ...i, unit }
+    const nextUnitPrice = unit === 'metr'
+      ? (i.priceMeter || i.unitPrice)
+      : (i.pricePiece || i.unitPrice)
+    return { ...i, unit, unitPrice: nextUnitPrice }
+  }))
+
+  const getAvailable = (line) => {
+    if (!line.isMeter) return Number(line.available || 0)
+    if (line.unit === 'metr') return Number(line.meterQty || 0)
+    return line.packQty > 0 ? Math.floor(Number(line.meterQty || 0) / line.packQty) : 0
+  }
 
   const usedRate = usdToUzs || null
 
   const lines = items.filter(i => i.qty > 0)
   
   const subtotalUsd = lines.reduce((s, l) => {
-    if (l.currency === 'USD') return s + l.qty * l.unitPrice
+    const lineTotal = l.qty * l.unitPrice
+    if (l.currency === 'USD') return s + lineTotal
     
-    if (usedRate && usedRate > 0) return s + (l.qty * l.unitPrice) / usedRate
+    if (usedRate && usedRate > 0) return s + (lineTotal) / usedRate
     return s
   }, 0)
   
   const subtotalUsdRounded = Math.round(subtotalUsd * 100) / 100
   
-  const subtotalUzs = lines.reduce((s, l) => s + ((l.currency === 'USD') ? Math.round(l.qty * l.unitPrice * (usedRate || 0)) : Math.round(l.qty * l.unitPrice)), 0)
+  const subtotalUzs = lines.reduce((s, l) => {
+    const lineTotal = l.qty * l.unitPrice
+    return s + ((l.currency === 'USD') ? Math.round(lineTotal * (usedRate || 0)) : Math.round(lineTotal))
+  }, 0)
 
-  const canCheckout = lines.length > 0 && lines.every(l => l.qty > 0 && l.qty <= l.available)
+  const canCheckout = lines.length > 0 && lines.every(l => {
+    const available = getAvailable(l)
+    if (l.isMeter && l.unit === 'dona' && l.packQty <= 0) return false
+    return l.qty > 0 && l.qty <= available
+  })
 
   const handleConfirm = async () => {
     if (!canCheckout) return
     
     const ts = Date.now()
     lines.forEach(async l => {
-      const payload = { id: l.id, qty: l.qty }
-        const rateText = (l.currency === 'USD' && usedRate) ? `, ${t('rate_text', { rate: Math.round(usedRate) })}` : '';
+      const saleUnit = l.isMeter ? (l.unit || 'metr') : 'dona'
+      const meterSold = l.isMeter ? (saleUnit === 'dona' ? l.qty * l.packQty : l.qty) : 0
+      const payload = l.isMeter ? { id: l.id, qty: l.qty, meter_qty: meterSold } : { id: l.id, qty: l.qty }
+      const rateText = (l.currency === 'USD' && usedRate) ? `, ${t('rate_text', { rate: Math.round(usedRate) })}` : '';
       const nameForLog = l.displayName || l.name
-      const log = { id: uuidv4(), ts, date: new Date(ts).toISOString().slice(0,10), time: new Date(ts).toLocaleTimeString(), user_name: user?.username || 'Admin', action: 'wholesale_sale', kind: 'SELL', product_name: nameForLog, qty: l.qty, unit_price: l.unitPrice, amount: l.qty * l.unitPrice, currency: l.currency, total_uzs: l.currency === 'USD' ? Math.round((l.qty * l.unitPrice) * (usedRate || 1)) : Math.round(l.qty * l.unitPrice), detail: `Kim: ${user?.username || 'Admin'}, Vaqt: ${new Date(ts).toLocaleTimeString()}, Harakat: Optom sotuv, Mahsulot: ${nameForLog}, Soni: ${l.qty}, Narx: ${l.unitPrice} ${l.currency || 'UZS'}, Jami: ${l.qty * l.unitPrice} ${l.currency || 'UZS'}${rateText}` }
+      const lineTotal = l.qty * l.unitPrice
+      const priceLabel = l.isMeter
+        ? (saleUnit === 'dona' ? `Narx (1 dona): ${l.unitPrice} ${l.currency || 'UZS'}` : `Narx (1 metr): ${l.unitPrice} ${l.currency || 'UZS'}`)
+        : `Narx: ${l.unitPrice} ${l.currency || 'UZS'}`
+      const meterLabel = l.isMeter ? `, Metr: ${meterSold} m` : ''
+      const unitLabel = l.isMeter ? `, Birlik: ${saleUnit}` : ''
+      const qtyForLog = l.isMeter ? meterSold : l.qty
+      const log = { id: uuidv4(), ts, date: new Date(ts).toISOString().slice(0,10), time: new Date(ts).toLocaleTimeString(), user_name: user?.username || 'Admin', action: 'wholesale_sale', kind: 'SELL', product_name: nameForLog, qty: qtyForLog, unit_price: l.unitPrice, amount: lineTotal, currency: l.currency, total_uzs: l.currency === 'USD' ? Math.round(lineTotal * (usedRate || 1)) : Math.round(lineTotal), detail: `Kim: ${user?.username || 'Admin'}, Vaqt: ${new Date(ts).toLocaleTimeString()}, Harakat: Optom sotuv, Mahsulot: ${nameForLog}, Soni: ${l.qty}${meterLabel}${unitLabel}, ${priceLabel}, Jami: ${lineTotal} ${l.currency || 'UZS'}${rateText}` }
       
       if (selectedSource === 'warehouse') {
         dispatch({ type: 'SELL_WAREHOUSE', payload, log })
@@ -91,7 +140,12 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
         yPos += 12
         lines.forEach(l => {
           const lineName = l.displayName || l.name
-          const lineText = `${lineName} x ${l.qty} = ${l.currency === 'USD' ? (l.qty * l.unitPrice) + ' $' : formatMoney(l.qty * l.unitPrice) + ' UZS'}`
+          const saleUnit = l.isMeter ? (l.unit || 'metr') : 'dona'
+          const meterSold = l.isMeter ? (saleUnit === 'dona' ? l.qty * l.packQty : l.qty) : 0
+          const lineTotal = l.qty * l.unitPrice
+          const unitText = l.isMeter ? (saleUnit === 'metr' ? ' m' : ' dona') : ''
+          const meterText = l.isMeter && saleUnit === 'dona' ? ` (${meterSold} m)` : ''
+          const lineText = `${lineName} x ${l.qty}${unitText}${meterText} = ${l.currency === 'USD' ? (lineTotal) + ' $' : formatMoney(lineTotal) + ' UZS'}`
           doc.text(lineText, x + pad, yPos)
           yPos += 12
         })
@@ -137,10 +191,46 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
             <Grid item xs={12} sm={6} md={4} key={it.id}>
               <Box sx={{ border: '1px solid rgba(0,0,0,0.06)', p: 1, borderRadius: 1 }}>
                 <Typography sx={{ fontWeight: 600 }}>{it.displayName || it.name}</Typography>
-                <Typography variant="caption">Mavjud: {it.available}</Typography>
-                <NumberField label="Soni" value={it.qty} onChange={(v) => updateQty(it.id, Number(v || 0))} fullWidth sx={{ mt: 1 }} />
-                <CurrencyField label="Narxi" value={it.unitPrice} onChange={(v) => updatePrice(it.id, v)} fullWidth sx={{ mt: 1 }} currency={it.currency} />
-                <Typography variant="body2" sx={{ mt: 1 }}>{it.currency === 'USD' ? `Jami: ${it.qty * it.unitPrice} $` : `Jami: ${formatMoney(it.qty * it.unitPrice)} UZS`}</Typography>
+                <Typography variant="caption">
+                  {it.isMeter
+                    ? `Mavjud: ${Number(it.meterQty || 0)} m / ${it.packQty > 0 ? Math.floor(Number(it.meterQty || 0) / it.packQty) : 0} dona`
+                    : `Mavjud: ${it.available}`}
+                </Typography>
+                {it.isMeter && (
+                  <FormControl fullWidth sx={{ mt: 1 }}>
+                    <InputLabel id={`wh-unit-${it.id}`}>Birlik</InputLabel>
+                    <Select
+                      labelId={`wh-unit-${it.id}`}
+                      value={it.unit}
+                      label="Birlik"
+                      onChange={(e) => updateUnit(it.id, e.target.value)}
+                      size="small"
+                    >
+                      <MenuItem value="metr">Metr</MenuItem>
+                      <MenuItem value="dona">Dona</MenuItem>
+                    </Select>
+                  </FormControl>
+                )}
+                <NumberField
+                  label={it.isMeter ? (it.unit === 'metr' ? 'Metr' : 'Soni (dona)') : 'Soni'}
+                  value={it.qty}
+                  onChange={(v) => updateQty(it.id, Number(v || 0))}
+                  fullWidth
+                  sx={{ mt: 1 }}
+                />
+                <CurrencyField
+                  label={it.isMeter ? (it.unit === 'metr' ? 'Narxi (1 metr)' : 'Narxi (1 dona)') : 'Narxi'}
+                  value={it.unitPrice}
+                  onChange={(v) => updatePrice(it.id, v)}
+                  fullWidth
+                  sx={{ mt: 1 }}
+                  currency={it.currency}
+                />
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  {it.currency === 'USD'
+                    ? `Jami: ${it.qty * it.unitPrice} $`
+                    : `Jami: ${formatMoney(it.qty * it.unitPrice)} UZS`}
+                </Typography>
               </Box>
             </Grid>
           ))}

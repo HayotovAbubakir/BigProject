@@ -29,12 +29,16 @@ import { calculateInventoryTotal } from '../utils/currencyUtils';
 import { insertLog } from '../firebase/supabaseLogs';
 import { updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts';
 import { supabase } from '/supabase/supabaseClient';
-import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory } from '../utils/productCategories';
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory, isMeterCategory } from '../utils/productCategories';
 import { formatProductName } from '../utils/productDisplay';
 
 function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canAddProducts, canSell, canMove }) {
   const { t } = useLocale();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
+  const isMeter = isMeterCategory(product?.category)
+  const packQty = Number(product?.pack_qty || 0)
+  const meterQty = isMeter ? Number(product?.meter_qty ?? (Number(product?.qty || 0) * packQty)) : 0
+  const derivedQty = isMeter ? (packQty > 0 ? Math.ceil(meterQty / packQty) : Number(product?.qty || 0)) : Number(product?.qty || 0)
 
   return (
     <Grid item xs={12} sm={6}>
@@ -45,7 +49,14 @@ function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canA
           </Typography>
           <Typography variant="h6" sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}>{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: 1 }}>{t('qty')}: {product.qty}</Typography>
+        {isMeter ? (
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>Mavjud: {meterQty} m</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>Dona: {derivedQty}</Typography>
+          </Box>
+        ) : (
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: 1 }}>{t('qty')}: {product.qty}</Typography>
+        )}
         <Box sx={{ mt: 'auto', display: 'flex', justifyContent: 'flex-end', gap: 0.5, flexWrap: 'wrap-reverse' }}>
           <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={!canAddProducts} size="small"><EditIcon fontSize="small" /></IconButton></Tooltip>
           <Tooltip title={t('delete')}><IconButton onClick={onDelete} disabled={!canAddProducts} color="error" size="small"><DeleteIcon fontSize="small" /></IconButton></Tooltip>
@@ -90,20 +101,46 @@ export default function Warehouse() {
   }, [state.warehouse, displayCurrency, usdToUzs]);
 
   const handleAdd = async (payload) => {
-    const amount = Number(payload.qty) * parseNumber(payload.price || 0);
-    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_added'), kind: 'ADD', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.price || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}, Jami: ${amount} ${payload.currency || 'UZS'}` };
+    const isMeter = isMeterCategory(payload.category);
+    const packQty = Number(payload.pack_qty || 0);
+    const meterQty = isMeter ? Number(payload.meter_qty ?? (Number(payload.qty || 0) * packQty)) : 0;
+    const unitPrice = parseNumber(payload.price || 0);
+    const piecePrice = parseNumber(payload.price_piece || 0);
+    const amount = isMeter ? (meterQty * unitPrice) : (Number(payload.qty) * unitPrice);
+    const priceLabel = isMeter ? `Narx (1 metr): ${unitPrice} ${payload.currency || 'UZS'}` : `Narx: ${unitPrice} ${payload.currency || 'UZS'}`;
+    const pieceLabel = isMeter ? `, Narx (1 dona): ${piecePrice} ${payload.currency || 'UZS'}` : '';
+    const meterLabel = isMeter ? `, Metr: ${meterQty} m` : '';
+    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_added'), kind: 'ADD', product_name: payload.name, qty: Number(payload.qty), unit_price: unitPrice, currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}${meterLabel}, ${priceLabel}${pieceLabel}, Jami: ${amount} ${payload.currency || 'UZS'}` };
     await addWarehouseProduct(payload, logData);
   };
 
   const handleEdit = async (payload) => {
-    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_updated'), kind: 'EDIT', product_name: payload.name, qty: Number(payload.qty), unit_price: parseNumber(payload.price || 0), currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti tahrirlandi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}, Jami: ${Number(payload.qty) * parseNumber(payload.price || 0)} ${payload.currency || 'UZS'}` };
+    const isMeter = isMeterCategory(payload.category);
+    const packQty = Number(payload.pack_qty || 0);
+    const meterQty = isMeter ? Number(payload.meter_qty ?? (Number(payload.qty || 0) * packQty)) : 0;
+    const unitPrice = parseNumber(payload.price || 0);
+    const piecePrice = parseNumber(payload.price_piece || 0);
+    const amount = isMeter ? (meterQty * unitPrice) : (Number(payload.qty) * unitPrice);
+    const priceLabel = isMeter ? `Narx (1 metr): ${unitPrice} ${payload.currency || 'UZS'}` : `Narx: ${unitPrice} ${payload.currency || 'UZS'}`;
+    const pieceLabel = isMeter ? `, Narx (1 dona): ${piecePrice} ${payload.currency || 'UZS'}` : '';
+    const meterLabel = isMeter ? `, Metr: ${meterQty} m` : '';
+    const logData = { id: uuidv4(), date: payload.date || new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_updated'), kind: 'EDIT', product_name: payload.name, qty: Number(payload.qty), unit_price: unitPrice, currency: payload.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti tahrirlandi, Mahsulot: ${payload.name}, Soni: ${Number(payload.qty)}${meterLabel}, ${priceLabel}${pieceLabel}, Jami: ${amount} ${payload.currency || 'UZS'}` };
     await updateWarehouseProduct(payload.id, payload, logData);
   };
 
   const handleRemove = async (id) => {
     const product = state.warehouse.find(p => p.id === id);
     const productName = product ? product.name : id;
-    const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_deleted'), kind: 'DELETE', product_name: productName, qty: Number(product.qty), unit_price: parseNumber(product.price || 0), currency: product.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti o'chirildi, Mahsulot: ${productName}, Soni: ${Number(product.qty)}, Narx: ${parseNumber(product.price || 0)} ${product.currency || 'UZS'}, Jami: ${Number(product.qty) * parseNumber(product.price || 0)} ${product.currency || 'UZS'}` };
+    const isMeter = isMeterCategory(product?.category);
+    const packQty = Number(product?.pack_qty || 0);
+    const meterQty = isMeter ? Number(product?.meter_qty ?? (Number(product?.qty || 0) * packQty)) : 0;
+    const unitPrice = parseNumber(product?.price || 0);
+    const piecePrice = parseNumber(product?.price_piece || 0);
+    const amount = isMeter ? (meterQty * unitPrice) : (Number(product?.qty || 0) * unitPrice);
+    const priceLabel = isMeter ? `Narx (1 metr): ${unitPrice} ${product?.currency || 'UZS'}` : `Narx: ${unitPrice} ${product?.currency || 'UZS'}`;
+    const pieceLabel = isMeter ? `, Narx (1 dona): ${piecePrice} ${product?.currency || 'UZS'}` : '';
+    const meterLabel = isMeter ? `, Metr: ${meterQty} m` : '';
+    const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username || 'Admin', action: t('product_deleted'), kind: 'DELETE', product_name: productName, qty: Number(product?.qty || 0), unit_price: unitPrice, currency: product?.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombor mahsuloti o'chirildi, Mahsulot: ${productName}, Soni: ${Number(product?.qty || 0)}${meterLabel}, ${priceLabel}${pieceLabel}, Jami: ${amount} ${product?.currency || 'UZS'}` };
     await deleteWarehouseProduct(id, logData);
   };
 
@@ -112,9 +149,18 @@ export default function Warehouse() {
     if (!product) return;
     
     const addedQty = Number(payload.qty);
-    const newTotalQty = Number(product.qty) + addedQty;
     const unitPrice = parseNumber(product.price || 0);
-    const amount = addedQty * unitPrice;
+    const piecePrice = parseNumber(product.price_piece || 0);
+    const isMeter = isMeterCategory(product?.category);
+    const packQty = Number(product?.pack_qty || 0);
+    const baseMeter = Number(product?.meter_qty ?? (Number(product?.qty || 0) * packQty));
+    const meterDelta = isMeter ? Number(payload.meter_delta ?? (payload.unit === 'dona' ? addedQty * packQty : addedQty)) : 0;
+    const newMeterQty = isMeter ? Math.max(0, baseMeter + meterDelta) : baseMeter;
+    const newTotalQty = isMeter ? (packQty > 0 ? Math.ceil(newMeterQty / packQty) : Number(product.qty || 0)) : (Number(product.qty) + addedQty);
+    const amount = isMeter ? (meterDelta * unitPrice) : (addedQty * unitPrice);
+    const priceLabel = isMeter ? `Narx (1 metr): ${unitPrice} ${product.currency || 'UZS'}` : `Narx: ${unitPrice} ${product.currency || 'UZS'}`;
+    const pieceLabel = isMeter ? `, Narx (1 dona): ${piecePrice} ${product.currency || 'UZS'}` : '';
+    const meterLabel = isMeter ? `, Metr: ${meterDelta} m` : '';
     
     const logData = { 
       id: uuidv4(), 
@@ -127,10 +173,10 @@ export default function Warehouse() {
       qty: addedQty, 
       unit_price: unitPrice, 
       currency: product.currency || 'UZS', 
-      detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${product.name}, Soni: ${addedQty}, Narx: ${unitPrice} ${product.currency || 'UZS'}, Jami: ${amount} ${product.currency || 'UZS'}` 
+      detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Omborga mahsulot qo'shildi, Mahsulot: ${product.name}, Soni: ${addedQty}${meterLabel}, ${priceLabel}${pieceLabel}, Jami: ${amount} ${product.currency || 'UZS'}` 
     };
     
-    await updateWarehouseProduct(payload.id, { ...product, qty: newTotalQty }, logData);
+    await updateWarehouseProduct(payload.id, { ...product, qty: newTotalQty, meter_qty: isMeter ? newMeterQty : product?.meter_qty }, logData);
   };
 
   const isElectrodeFilter = normalizeCategory(categoryFilter) === 'elektrod'
@@ -257,7 +303,11 @@ export default function Warehouse() {
                 {filteredWarehouse.map((it) => (
                   <TableRow key={it.id} hover>
                     <TableCell>{formatProductName(it)}</TableCell>
-                    <TableCell align="center">{it.qty}</TableCell>
+                    <TableCell align="center">
+                      {isMeterCategory(it?.category)
+                        ? `${Number(it?.meter_qty ?? (Number(it?.qty || 0) * Number(it?.pack_qty || 0)))} m / ${Number(it?.pack_qty || 0) > 0 ? Math.ceil(Number(it?.meter_qty ?? (Number(it?.qty || 0) * Number(it?.pack_qty || 0))) / Number(it?.pack_qty || 0)) : Number(it?.qty || 0)} dona`
+                        : it.qty}
+                    </TableCell>
                     <TableCell align="right">
                       {formatForDisplay(it.price, it.currency)} {displayCurrency}
                     </TableCell>
@@ -282,22 +332,45 @@ export default function Warehouse() {
       <AddQuantityForm open={!!addQtyItem} initial={addQtyItem} onClose={() => setAddQtyItem(null)} onSubmit={(payload) => { handleAddQuantity(payload); setAddQtyItem(null) }} source="warehouse" />
       <MoveToStoreForm open={!!moveItem} initial={moveItem} onClose={() => setMoveItem(null)} onSubmit={(payload) => {
         const itemPrice = parseNumber(payload.item.price || 0);
-        const amount = Number(payload.qty) * itemPrice;
-            const moveRateText = (payload.item.currency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
-        const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Ombordan do'konga o'tkazish", kind: 'MOVE', productName: payload.item.name, productId: payload.item.id, qty: Number(payload.qty), unitPrice: parseNumber(payload.item.price || 0), total: amount, currency: payload.item.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan do'konga o'tkazish, Mahsulot: ${payload.item.name}, Soni: ${Number(payload.qty)}, Narx: ${parseNumber(payload.item.price || 0)} ${payload.item.currency || 'UZS'}, Jami: ${amount} ${payload.item.currency || 'UZS'}${moveRateText}` };
+        const piecePrice = parseNumber(payload.item.price_piece || 0);
+        const isMeter = isMeterCategory(payload.item?.category);
+        const packQty = Number(payload.item?.pack_qty || 0);
+        const meterDelta = isMeter ? Number(payload.meter_qty ?? 0) : 0;
+        const amount = isMeter ? (meterDelta * itemPrice) : (Number(payload.qty) * itemPrice);
+        const moveRateText = (payload.item.currency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
+        const priceLabel = isMeter ? `Narx (1 metr): ${itemPrice} ${payload.item.currency || 'UZS'}` : `Narx: ${itemPrice} ${payload.item.currency || 'UZS'}`;
+        const pieceLabel = isMeter ? `, Narx (1 dona): ${piecePrice} ${payload.item.currency || 'UZS'}` : '';
+        const meterLabel = isMeter ? `, Metr: ${meterDelta} m` : '';
+        const unitLabel = isMeter ? `, Birlik: ${payload.unit || 'metr'}` : '';
+        const log = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user: username || 'Admin', action: "Ombordan do'konga o'tkazish", kind: 'MOVE', productName: payload.item.name, productId: payload.item.id, qty: Number(payload.qty), unitPrice: itemPrice, total: amount, currency: payload.item.currency || 'UZS', detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan do'konga o'tkazish, Mahsulot: ${payload.item.name}, Soni: ${Number(payload.qty)}${meterLabel}${unitLabel}, ${priceLabel}${pieceLabel}, Jami: ${amount} ${payload.item.currency || 'UZS'}${moveRateText}` };
           if (payload.item.currency === 'USD' && usdToUzs) log.total_uzs = Math.round(amount * usdToUzs);
           else log.total_uzs = Math.round(amount);
         dispatch({ type: 'MOVE_TO_STORE', payload, log });
       }} />
       <WarehouseSellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={async (payload) => {
         try {
-          const saleQty = Number(payload.qty || 0)
+          const saleInputQty = Number(payload.qty || 0)
           const deductQty = Number(payload.deduct_qty ?? payload.qty ?? 0)
-          const saleUnit = payload.unit || 'dona'
+          const isMeter = isMeterCategory(sellItem?.category);
           const packQty = Number(payload.pack_qty ?? sellItem?.pack_qty ?? 0)
-          const unitPrice = parseNumber(payload.price || 0);
-          const amount = saleQty * unitPrice;
+          const saleUnit = payload.unit || (isMeter ? 'metr' : 'dona')
+          let unitPrice = parseNumber(payload.price || 0);
+          if (!unitPrice) {
+            if (isMeter && saleUnit === 'dona') unitPrice = parseNumber(sellItem?.price_piece || 0)
+            else unitPrice = parseNumber(sellItem?.price || 0)
+          }
+          const meterSold = isMeter ? Number(payload.meter_qty ?? (saleUnit === 'dona' ? saleInputQty * packQty : saleInputQty)) : 0
+          const amount = isMeter
+            ? (saleUnit === 'dona' ? saleInputQty * unitPrice : meterSold * unitPrice)
+            : (saleInputQty * unitPrice)
+          const displayQty = saleInputQty
+          const qtyForLog = isMeter ? meterSold : saleInputQty
           const saleCurrency = payload.currency || sellItem?.currency || 'UZS';
+          const priceLabel = isMeter
+            ? (saleUnit === 'dona' ? `Narx (1 dona): ${unitPrice} ${saleCurrency}` : `Narx (1 metr): ${unitPrice} ${saleCurrency}`)
+            : `Narx: ${unitPrice} ${saleCurrency}`;
+          const meterLabel = isMeter ? `, Metr: ${meterSold} m` : '';
+          const unitLabel = isMeter ? `, Birlik: ${saleUnit}` : '';
           const sellRateText = (saleCurrency === 'USD' && usdToUzs) ? `, ${t('rate_text', { rate: Math.round(usdToUzs) })}` : '';
           
           // Calculate UZS amounts for accounting
@@ -318,12 +391,12 @@ export default function Warehouse() {
             kind: 'SELL', 
             product_name: sellItem?.name || '', 
             product_id: payload.id, 
-            qty: saleQty, 
+            qty: qtyForLog, 
             unit_price: unitPrice, 
             amount: amount, 
             currency: saleCurrency, 
             total_uzs: totalUzs,
-            detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${saleQty}, Narx: ${unitPrice} ${saleCurrency}, Jami: ${amount} ${saleCurrency}${sellRateText}${saleUnit === 'pachka' ? `, Birlik: pachka, Pachka: ${saleQty}, Pachkada: ${packQty}, Donalar: ${deductQty}` : ', Birlik: dona'}`,
+            detail: `Kim: ${username || 'Admin'}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Ombordan mahsulot sotildi, Mahsulot: ${sellItem?.name || ''}, Soni: ${displayQty}${meterLabel}${unitLabel}, ${priceLabel}, Jami: ${amount} ${saleCurrency}${sellRateText}${!isMeter ? (saleUnit === 'pachka' ? `, Birlik: pachka, Pachka: ${displayQty}, Pachkada: ${packQty}, Donalar: ${deductQty}` : ', Birlik: dona') : ''}`,
             source: 'warehouse',
           };
 
@@ -334,10 +407,16 @@ export default function Warehouse() {
           console.log('[Warehouse Sell] Log inserted');
 
           // 2. Update product quantity in Supabase
-          const newQty = Math.max(0, Number(sellItem.qty) - Number(deductQty));
+          let newQty = Math.max(0, Number(sellItem.qty) - Number(deductQty));
+          let newMeterQty = null
+          if (isMeter) {
+            const baseMeter = Number(sellItem?.meter_qty ?? (Number(sellItem?.qty || 0) * packQty))
+            newMeterQty = Math.max(0, baseMeter - meterSold)
+            newQty = packQty > 0 ? Math.ceil(newMeterQty / packQty) : newQty
+          }
           const { error: qtyErr } = await supabase
             .from('products')
-            .update({ qty: newQty })
+            .update(isMeter ? { qty: newQty, meter_qty: newMeterQty } : { qty: newQty })
             .eq('id', payload.id);
           if (qtyErr) throw new Error(`Qty update failed: ${qtyErr.message}`);
           console.log('[Warehouse Sell] Product qty updated:', newQty);
@@ -351,7 +430,7 @@ export default function Warehouse() {
           console.log('[Warehouse Sell] Daily sales updated');
 
           // 5. Update frontend state
-          dispatch({ type: 'SELL_WAREHOUSE', payload: { id: payload.id, qty: deductQty }, log });
+          dispatch({ type: 'SELL_WAREHOUSE', payload: { id: payload.id, qty: isMeter ? displayQty : deductQty, meter_qty: isMeter ? meterSold : null }, log });
           setSellItem(null);
 
           // Success notification

@@ -12,6 +12,7 @@ import {
   Chip
 } from '@mui/material';
 import { AutoAwesome, Inventory2, LocalFireDepartment, NewReleases } from '@mui/icons-material';
+import { isMeterCategory } from '../utils/productCategories';
 
 const getPoem = () => {
   const poems = [
@@ -35,8 +36,16 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
       const pB = priority(b);
       if (pA !== pB) return pA - pB;
       if (a.type === 'low_stock' && b.type === 'low_stock') {
-        const aQty = Number(a?.item?.qty ?? Number.POSITIVE_INFINITY);
-        const bQty = Number(b?.item?.qty ?? Number.POSITIVE_INFINITY);
+        const aItem = a?.item;
+        const bItem = b?.item;
+        const aIsMeter = isMeterCategory(aItem?.category);
+        const bIsMeter = isMeterCategory(bItem?.category);
+        const aQty = aIsMeter
+          ? Number(aItem?.meter_qty ?? (Number(aItem?.pack_qty || 0) * Number(aItem?.qty || 0)))
+          : Number(aItem?.qty ?? Number.POSITIVE_INFINITY);
+        const bQty = bIsMeter
+          ? Number(bItem?.meter_qty ?? (Number(bItem?.pack_qty || 0) * Number(bItem?.qty || 0)))
+          : Number(bItem?.qty ?? Number.POSITIVE_INFINITY);
         return aQty - bQty;
       }
       return 0;
@@ -283,7 +292,10 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
                       </Typography>
                       {n.item?.qty != null && !isOverdue && (
                         <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.6)', display: 'block', mt: 0.5 }}>
-                          Qolgan miqdor: {n.item.qty}
+                          {isMeterCategory(n.item?.category)
+                            ? `Qolgan metr: ${Number(n.item?.meter_qty ?? (Number(n.item?.pack_qty || 0) * Number(n.item?.qty || 0)))} m`
+                            : `Qolgan miqdor: ${n.item.qty}`
+                          }
                         </Typography>
                       )}
                       {n.item?.remaining != null && isOverdue && (

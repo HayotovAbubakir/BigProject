@@ -29,6 +29,7 @@ import CurrencyConverter from './CurrencyConverter';
 import AccountManager from './AccountManager';
 import Notifications from './Notifications';
 import MfaSetupDialog from './MfaSetupDialog';
+import ContactDialog from './ContactDialog';
 
 const navItems = [
   { to: '/', key: 'dashboard', icon: <DashboardIcon /> },
@@ -40,7 +41,7 @@ const navItems = [
   { to: '/calculator', key: 'calculator', icon: <CalculateIcon /> },
 ];
 
-function UserMenu({ user, onLogout, onManageAccount, onSecurity }) {
+function UserMenu({ user, onLogout, onManageAccount, onSecurity, onContact }) {
   const { t } = useLocale();
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -58,7 +59,10 @@ function UserMenu({ user, onLogout, onManageAccount, onSecurity }) {
         </IconButton>
       </Tooltip>
       <Menu anchorEl={anchorEl} open={open} onClose={handleClose}>
-        <MenuItem onClick={() => { handleClose(); onManageAccount(); }}>{user?.username || t('account') || ''}</MenuItem>
+      <MenuItem onClick={() => { handleClose(); onManageAccount(); }}>{user?.username || t('account') || ''}</MenuItem>
+      <MenuItem onClick={() => { handleClose(); onContact(); }}>
+        <ListItemText>Contact</ListItemText>
+      </MenuItem>
         <MenuItem onClick={() => { handleClose(); onSecurity(); }}>
           <ListItemText>Security</ListItemText>
         </MenuItem>
@@ -109,6 +113,7 @@ export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
   const [mfaOpen, setMfaOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -186,6 +191,7 @@ export default function Layout({ children }) {
             onLogout={logout}
             onManageAccount={handleManageAccount}
             onSecurity={() => setMfaOpen(true)}
+            onContact={() => setContactOpen(true)}
           />
         </Toolbar>
       </AppBar>
@@ -225,7 +231,14 @@ export default function Layout({ children }) {
       </Box>
       <AccountManager open={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
       <MfaSetupDialog open={mfaOpen} onClose={() => setMfaOpen(false)} />
+      <ContactDialog open={contactOpen} onClose={() => setContactOpen(false)} />
       
+      <Box component="footer" sx={{ position: 'fixed', bottom: 12, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+        <Box sx={{ bgcolor: 'background.paper', color: 'text.secondary', px: 2, py: 0.5, borderRadius: 4, boxShadow: 2, pointerEvents: 'auto' }}>
+          by Khayotov Abubakir
+        </Box>
+      </Box>
+
     </Box>
   );
 }

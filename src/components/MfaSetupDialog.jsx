@@ -3,30 +3,32 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, 
 import { useAuth } from '../hooks/useAuth'
 
 export default function MfaSetupDialog({ open, onClose }) {
-  const { listMfaFactors, enrollMfa, challengeMfa, verifyMfa } = useAuth()
+  const { listMfaFactors, enrollMfa, challengeMfa, verifyMfa, session } = useAuth()
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
   const [status, setStatus] = React.useState('idle')
   const [qrCode, setQrCode] = React.useState('')
   const [secret, setSecret] = React.useState('')
   const [factorId, setFactorId] = React.useState('')
-  const [challengeId, setChallengeId] = React.useState('')
   const [code, setCode] = React.useState('')
   const [enabled, setEnabled] = React.useState(false)
 
   React.useEffect(() => {
-    if (!open) return
+    if (!open || !session) return
     let mounted = true
     setError('')
     setStatus('idle')
     setQrCode('')
     setSecret('')
     setFactorId('')
-    setChallengeId('')
-    setCode('')
 
     ;(async () => {
       setLoading(true)
+      if (!session) {
+        setError('Auth session missing!')
+        setLoading(false)
+        return
+      }
       const res = await listMfaFactors()
       if (!mounted) return
       if (!res.ok) {
@@ -41,11 +43,16 @@ export default function MfaSetupDialog({ open, onClose }) {
     })()
 
     return () => { mounted = false }
-  }, [open, listMfaFactors])
+  }, [open, session, listMfaFactors])
 
   const startEnroll = async () => {
     setError('')
     setLoading(true)
+    if (!session) {
+      setError('Auth session missing!')
+      setLoading(false)
+      return
+    }
     const res = await enrollMfa()
     setLoading(false)
     if (!res.ok) {
@@ -66,6 +73,11 @@ export default function MfaSetupDialog({ open, onClose }) {
       return
     }
     setLoading(true)
+    if (!session) {
+      setError('Auth session missing!')
+      setLoading(false)
+      return
+    }
     const challenge = await challengeMfa(factorId)
     if (!challenge.ok) {
       setLoading(false)
@@ -73,7 +85,6 @@ export default function MfaSetupDialog({ open, onClose }) {
       return
     }
     const challengeIdLocal = challenge.data?.id
-    setChallengeId(challengeIdLocal)
 
     const verify = await verifyMfa(factorId, challengeIdLocal, code)
     setLoading(false)

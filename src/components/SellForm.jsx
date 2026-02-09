@@ -1,56 +1,82 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, InputAdornment } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
 import NumberField from './NumberField'
 import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
-import { normalizeCategory } from '../utils/productCategories'
+import { normalizeCategory, isMeterCategory } from '../utils/productCategories'
 
 export default function SellForm({ open, onClose, onSubmit, initial }) {
   const [qty, setQty] = useState(1)
   const [price, setPrice] = useState(initial?.price || '')
   const [currency, setCurrency] = useState(initial?.currency || 'UZS')
   const [unit, setUnit] = useState('dona')
+  const [meterQty, setMeterQty] = useState('')
   
 
   const isElectrode = normalizeCategory(initial?.category) === 'elektrod'
+  const isMeter = isMeterCategory(initial?.category)
   const packQty = Number(initial?.pack_qty || 0)
+  const meterPriceDefault = Number(initial?.price ?? 0)
   const piecePriceDefault = Number(initial?.price_piece ?? initial?.price ?? 0)
   const packPriceDefault = Number(initial?.price_pack ?? 0)
+  const meterAvailable = isMeter ? Number(initial?.meter_qty ?? (Number(initial?.qty || 0) * packQty)) : 0
+  const meterAvailableDona = isMeter && packQty > 0 ? Math.floor(meterAvailable / packQty) : 0
 
   useEffect(() => {
     if (initial) {
       setQty(1)
-      setUnit('dona')
+      setUnit(isMeter ? 'metr' : 'dona')
       setCurrency(initial?.currency || 'UZS')
-      setPrice(piecePriceDefault > 0 ? piecePriceDefault : '')
+      if (isMeter) {
+        setPrice(meterPriceDefault > 0 ? meterPriceDefault : '')
+      } else {
+        setPrice(piecePriceDefault > 0 ? piecePriceDefault : '')
+      }
+      setMeterQty('')
     }
-  }, [initial, open, piecePriceDefault])
+  }, [initial, open, piecePriceDefault, meterPriceDefault, isMeter])
 
   useEffect(() => {
-    if (!isElectrode) return
-    if (unit === 'pachka') {
-      if (packPriceDefault > 0) setPrice(packPriceDefault)
-    } else {
-      if (piecePriceDefault > 0) setPrice(piecePriceDefault)
+    if (isElectrode) {
+      if (unit === 'pachka') {
+        if (packPriceDefault > 0) setPrice(packPriceDefault)
+      } else {
+        if (piecePriceDefault > 0) setPrice(piecePriceDefault)
+      }
+      return
     }
-  }, [unit, isElectrode, packPriceDefault, piecePriceDefault])
+    if (isMeter) {
+      if (unit === 'metr') {
+        if (meterPriceDefault > 0) setPrice(meterPriceDefault)
+      } else if (piecePriceDefault > 0) {
+        setPrice(piecePriceDefault)
+      }
+    }
+  }, [unit, isElectrode, isMeter, packPriceDefault, piecePriceDefault, meterPriceDefault])
 
   const availablePieces = Number(initial?.qty || 0)
   const availablePacks = packQty > 0 ? Math.floor(availablePieces / packQty) : 0
-  const available = isElectrode && unit === 'pachka' ? availablePacks : availablePieces
-  const parsedQty = Number(qty || 0)
-  const fallbackPrice = unit === 'pachka' ? packPriceDefault : piecePriceDefault
+  const available = isMeter
+    ? (unit === 'metr' ? meterAvailable : meterAvailableDona)
+    : (isElectrode && unit === 'pachka' ? availablePacks : availablePieces)
+  const inputQty = isMeter && unit === 'metr' ? Number(meterQty || 0) : Number(qty || 0)
+  const fallbackPrice = isElectrode
+    ? (unit === 'pachka' ? packPriceDefault : piecePriceDefault)
+    : (isMeter ? (unit === 'metr' ? meterPriceDefault : piecePriceDefault) : piecePriceDefault)
   const parsedPrice = Number(price === '' ? (fallbackPrice || 0) : price)
-  const invalid = parsedQty <= 0 || parsedQty > available || parsedPrice <= 0 || (unit === 'pachka' && packQty <= 0)
+  const invalid = inputQty <= 0 || inputQty > available || parsedPrice <= 0 || ((unit === 'pachka' || (isMeter && unit === 'dona')) && packQty <= 0)
   const { rate: usdToUzs } = useExchangeRate()
-  const total = parsedQty * parsedPrice
+  const total = inputQty * parsedPrice
 
 
   const submit = () => {
     if (invalid) return
     const usedRate = usdToUzs || null
-    const deductQty = unit === 'pachka' ? parsedQty * packQty : parsedQty
-    const payload = { id: initial.id, qty: parsedQty, deduct_qty: deductQty, price: parsedPrice, currency, unit, pack_qty: packQty }
+    const meterSold = isMeter ? (unit === 'dona' ? inputQty * packQty : inputQty) : 0
+    const deductQty = isMeter
+      ? (unit === 'dona' ? inputQty : (packQty > 0 ? Math.ceil(meterSold / packQty) : 0))
+      : (unit === 'pachka' ? inputQty * packQty : inputQty)
+    const payload = { id: initial.id, qty: inputQty, deduct_qty: deductQty, price: parsedPrice, currency, unit, pack_qty: packQty, meter_qty: meterSold }
     if (currency === 'USD' && usedRate) {
       payload.price_uzs = Math.round(parsedPrice * usedRate)
       payload.total_uzs = Math.round(total * usedRate)
@@ -65,16 +91,29 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
       <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
       <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-          Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
-        </Typography>
+        {isMeter ? (
+          <>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+              Mavjud: {meterAvailable} m ({meterAvailableDona} dona)
+            </Typography>
+            {packQty > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+                1 dona: {packQty} m
+              </Typography>
+            )}
+          </>
+        ) : (
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+            Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
+          </Typography>
+        )}
         {isElectrode && packQty > 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
             Pachkada: {packQty} dona
           </Typography>
         )}
 
-        {isElectrode && (
+        {(isElectrode || isMeter) && (
           <FormControl fullWidth sx={{ mt: 1.5 }}>
             <InputLabel id="sell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Birlik</InputLabel>
             <Select
@@ -84,21 +123,36 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
               onChange={(e) => setUnit(e.target.value)}
               size="small"
             >
-              <MenuItem value="dona">Dona</MenuItem>
-              <MenuItem value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>
+              {isMeter ? (
+                <>
+                  <MenuItem value="metr">Metr</MenuItem>
+                  <MenuItem value="dona">Dona</MenuItem>
+                </>
+              ) : (
+                <>
+                  <MenuItem value="dona">Dona</MenuItem>
+                  <MenuItem value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>
+                </>
+              )}
             </Select>
           </FormControl>
         )}
 
         <NumberField
-          label={isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni'}
-          value={qty}
-          onChange={(v) => setQty(Number(v || 0))}
+          label={isMeter ? (unit === 'metr' ? 'Metr' : 'Soni (dona)') : (isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni')}
+          value={isMeter && unit === 'metr' ? meterQty : qty}
+          onChange={(v) => {
+            if (isMeter && unit === 'metr') {
+              setMeterQty(v === null ? '' : v)
+            } else {
+              setQty(Number(v || 0))
+            }
+          }}
           fullWidth
           sx={{ mt: 1.5 }}
           size="small"
-          error={parsedQty <= 0 || parsedQty > available}
-          helperText={(parsedQty <= 0 ? 'Min 1' : (parsedQty > available ? 'Ko\'p' : ''))}
+          error={inputQty <= 0 || inputQty > available}
+          helperText={(inputQty <= 0 ? 'Min 1' : (inputQty > available ? 'Ko\'p' : ''))}
         />
 
         <FormControl fullWidth sx={{ mt: 1.5 }}>
@@ -110,7 +164,7 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
         </FormControl>
 
         <CurrencyField
-          label={isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi'}
+          label={isMeter ? (unit === 'metr' ? 'Narxi (1 metr)' : 'Narxi (1 dona)') : (isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi')}
           value={price}
           onChange={(v) => setPrice(v)}
           fullWidth

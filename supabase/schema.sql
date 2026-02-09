@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS products (
   price_piece NUMERIC DEFAULT 0,
   price_pack NUMERIC DEFAULT 0,
   pack_qty INTEGER DEFAULT 0,
+  meter_qty NUMERIC DEFAULT 0,
   electrode_size TEXT,
   stone_thickness TEXT,
   stone_size TEXT,

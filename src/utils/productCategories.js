@@ -1,4 +1,5 @@
-export const DEFAULT_PRODUCT_CATEGORIES = ['gaz balon', 'elektrod', 'tosh']
+export const METER_CATEGORY = 'metrlab sotiladigan mahsulotlar'
+export const DEFAULT_PRODUCT_CATEGORIES = ['gaz balon', 'elektrod', 'tosh', METER_CATEGORY]
 export const PRODUCT_CATEGORIES_STORAGE_KEY = 'productCategories'
 
 export const normalizeCategory = (value) => {
@@ -9,6 +10,8 @@ export const normalizeCategory = (value) => {
     .toLowerCase()
     .replace(/\s+/g, ' ')
 }
+
+export const isMeterCategory = (value) => normalizeCategory(value) === METER_CATEGORY
 
 export const mergeCategories = (...lists) => {
   const merged = new Set()

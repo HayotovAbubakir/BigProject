@@ -1,3 +1,5 @@
+import { isMeterCategory } from './productCategories'
+
 export function formatProductName(product) {
   if (!product) return ''
   const base = (product.name || '').toString()
@@ -12,6 +14,11 @@ export function formatProductName(product) {
 
   const stoneSize = (product.stone_size || '').toString().trim()
   if (stoneSize) parts.push(`Hajm: ${stoneSize}`)
+
+  if (isMeterCategory(product.category)) {
+    const meterValue = Number(product.pack_qty || 0)
+    if (meterValue > 0) parts.push(`Metr: ${meterValue} m`)
+  }
 
   return parts.length ? `${base} (${parts.join(', ')})` : base
 }

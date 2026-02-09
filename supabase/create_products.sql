@@ -12,6 +12,7 @@ create table if not exists public.products (
   price_piece numeric default 0,
   price_pack numeric default 0,
   pack_qty integer default 0,
+  meter_qty numeric default 0,
   electrode_size text,
   stone_thickness text,
   stone_size text,

@@ -1,3 +1,5 @@
+import { isMeterCategory } from './productCategories'
+
 /**
  * Centralized Currency Utilities
  * 
@@ -160,10 +162,21 @@ export function calculateInDisplayCurrency(items, displayCurrency, usdToUzs, ope
 export function calculateInventoryTotal(warehouse, store, displayCurrency, usdToUzs) {
   const allProducts = [...(warehouse || []), ...(store || [])];
   
-  const items = allProducts.map(p => ({
-    amount: (Number(p.qty || 0) * Number(p.price || 0)),
-    currency: p.currency || 'UZS'
-  }));
+  const items = allProducts.map(p => {
+    const qty = Number(p.qty || 0)
+    const price = Number(p.price || 0)
+    if (isMeterCategory(p?.category)) {
+      const meterQty = Number(p.meter_qty ?? (Number(p.pack_qty || 0) * qty))
+      return {
+        amount: meterQty * price,
+        currency: p.currency || 'UZS'
+      }
+    }
+    return {
+      amount: qty * price,
+      currency: p.currency || 'UZS'
+    }
+  });
   
   const totals = calculateMixedCurrencyTotal(items, usdToUzs);
   const totalInDisplay = convertFromBaseUzs(totals.totalUzs, displayCurrency, usdToUzs);

@@ -49,6 +49,9 @@ export const insertProduct = async (product) => {
     if (product.pack_qty !== undefined && product.pack_qty !== null) {
       safe.pack_qty = Number(product.pack_qty)
     }
+    if (product.meter_qty !== undefined && product.meter_qty !== null) {
+      safe.meter_qty = Number(product.meter_qty)
+    }
     if (product.electrode_size) {
       safe.electrode_size = product.electrode_size.toString().trim()
     }
@@ -105,6 +108,7 @@ export const updateProduct = async (id, updates) => {
     if (safeUpdates.price_piece !== undefined) safeUpdates.price_piece = safeUpdates.price_piece === null ? null : Number(safeUpdates.price_piece);
     if (safeUpdates.price_pack !== undefined) safeUpdates.price_pack = safeUpdates.price_pack === null ? null : Number(safeUpdates.price_pack);
     if (safeUpdates.pack_qty !== undefined) safeUpdates.pack_qty = safeUpdates.pack_qty === null ? null : Number(safeUpdates.pack_qty);
+    if (safeUpdates.meter_qty !== undefined) safeUpdates.meter_qty = safeUpdates.meter_qty === null ? null : Number(safeUpdates.meter_qty);
     if (safeUpdates.electrode_size !== undefined) {
       const size = (safeUpdates.electrode_size || '').toString().trim();
       safeUpdates.electrode_size = size ? size : null;

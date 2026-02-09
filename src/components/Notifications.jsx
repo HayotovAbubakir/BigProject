@@ -4,6 +4,7 @@ import { IconButton, Badge, Tooltip } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import NotificationsModal from './NotificationsModal';
 import { useApp } from '../context/useApp';
+import { isMeterCategory } from '../utils/productCategories';
 
 const jokes = [
     "Savdo yaxshi bo'lsa, kayfiyat ham a'lo bo'ladi!",
@@ -23,13 +24,16 @@ const Notifications = () => {
         const lowStock = [];
         const overdueCredits = [];
 
-        // Low stock: qty < 5
+        // Low stock: qty < 5 (or meter_qty < 5m for meter category)
         state.warehouse?.forEach(p => {
-            if (p.qty < 5) {
+            const isMeter = isMeterCategory(p?.category);
+            const meterQty = Number(p?.meter_qty ?? (Number(p?.pack_qty || 0) * Number(p?.qty || 0)));
+            const qtyValue = isMeter ? meterQty : Number(p?.qty || 0);
+            if (qtyValue < 5) {
                 const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
                 lowStock.push({
                     type: 'low_stock',
-                    message: `${p.name} kam qoldi (${p.qty} ta)!`,
+                    message: `${p.name} kam qoldi (${isMeter ? `${qtyValue} m` : `${qtyValue} ta`})!`,
                     joke: randomJoke,
                     item: p
                 });
@@ -37,11 +41,14 @@ const Notifications = () => {
         });
 
         state.store?.forEach(p => {
-            if (p.qty < 5) {
+            const isMeter = isMeterCategory(p?.category);
+            const meterQty = Number(p?.meter_qty ?? (Number(p?.pack_qty || 0) * Number(p?.qty || 0)));
+            const qtyValue = isMeter ? meterQty : Number(p?.qty || 0);
+            if (qtyValue < 5) {
                 const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
                 lowStock.push({
                     type: 'low_stock',
-                    message: `${p.name} do'konda kam qoldi (${p.qty} ta)!`,
+                    message: `${p.name} do'konda kam qoldi (${isMeter ? `${qtyValue} m` : `${qtyValue} ta`})!`,
                     joke: randomJoke,
                     item: p
                 });
