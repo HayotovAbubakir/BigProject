@@ -11,7 +11,7 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
   const [pricePiece, setPricePiece] = useState('')
   const [error, setError] = useState('')
   const isElectrode = normalizeCategory(initial?.category) === 'elektrod'
-  const isMeter = isMeterCategory(initial?.category)
+  const isMeter = isMeterCategory(initial)
   const packQty = Number(initial?.pack_qty || 0)
   const availableMeter = isMeter ? Number(initial?.meter_qty ?? (Number(initial?.qty || 0) * packQty)) : 0
   const availableDona = isMeter && packQty > 0 ? Math.floor(availableMeter / packQty) : 0
@@ -74,7 +74,7 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
       <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>O'tkazish</DialogTitle>
-      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
+      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word', overflowX: 'visible' }}>
         <Box sx={{ mt: 1, display: 'grid', gap: 1.5 }}>
           {isMeter && (
             <>
@@ -93,6 +93,15 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
                   value={unit}
                   label="Birlik"
                   onChange={(e) => setUnit(e.target.value)}
+                  size="small"
+                  MenuProps={{
+                    disablePortal: true,
+                    getContentAnchorEl: null,
+                    anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                    transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    PaperProps: { sx: { maxWidth: '100%', boxSizing: 'border-box' } },
+                    disableScrollLock: true
+                  }}
                 >
                   <MenuItem value="metr">Metr</MenuItem>
                   <MenuItem value="dona">Dona</MenuItem>

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Typography, Button, Table, TableHead, TableRow, TableCell, TableBody,
-  TableContainer, Box, Grid, TextField, Paper, IconButton, Tooltip, Select, MenuItem, useTheme, useMediaQuery
+  TableContainer, Box, Grid, TextField, Paper, IconButton, Tooltip, Select, MenuItem, useTheme, useMediaQuery, Autocomplete
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -35,10 +35,11 @@ import { formatProductName } from '../utils/productDisplay';
 function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canAddProducts, canSell, canMove }) {
   const { t } = useLocale();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
-  const isMeter = isMeterCategory(product?.category)
+  const isMeter = isMeterCategory(product)
   const packQty = Number(product?.pack_qty || 0)
   const meterQty = isMeter ? Number(product?.meter_qty ?? (Number(product?.qty || 0) * packQty)) : 0
-  const derivedQty = isMeter ? (packQty > 0 ? Math.ceil(meterQty / packQty) : Number(product?.qty || 0)) : Number(product?.qty || 0)
+  const fullPacks = isMeter && packQty > 0 ? Math.floor(meterQty / packQty) : Number(product?.qty || 0)
+  const openMeters = isMeter && packQty > 0 ? meterQty % packQty : 0
 
   return (
     <Grid item xs={12} sm={6}>
@@ -47,12 +48,27 @@ function ProductCard({ product, onEdit, onDelete, onSell, onMove, onAddQty, canA
           <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' }, flex: 1, wordBreak: 'break-word' }}>
             {formatProductName(product)}
           </Typography>
-          <Typography variant="h6" sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}>{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
+          {isMeter ? (
+            <Box sx={{ textAlign: 'right' }}>
+              <Typography variant="h6" sx={{ fontSize: { xs: '0.85rem', sm: '1.1rem' }, whiteSpace: 'nowrap' }}>
+                {formatForDisplay(product.price, product.currency)} {displayCurrency} / m
+              </Typography>
+              {product?.price_piece !== undefined && product?.price_piece !== null && (
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem' } }}>
+                  1 dona: {formatForDisplay(product.price_piece, product.currency)} {displayCurrency}
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            <Typography variant="h6" sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' }, whiteSpace: 'nowrap' }}>{formatForDisplay(product.price, product.currency)} {displayCurrency}</Typography>
+          )}
         </Box>
         {isMeter ? (
           <Box sx={{ mb: 1 }}>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>Mavjud: {meterQty} m</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>Dona: {derivedQty}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+              Butun: {fullPacks} dona{openMeters > 0 ? ` | Ochiq: ${openMeters} m` : ''}
+            </Typography>
           </Box>
         ) : (
           <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: 1 }}>{t('qty')}: {product.qty}</Typography>
@@ -101,7 +117,7 @@ export default function Warehouse() {
   }, [state.warehouse, displayCurrency, usdToUzs]);
 
   const handleAdd = async (payload) => {
-    const isMeter = isMeterCategory(payload.category);
+    const isMeter = isMeterCategory(payload);
     const packQty = Number(payload.pack_qty || 0);
     const meterQty = isMeter ? Number(payload.meter_qty ?? (Number(payload.qty || 0) * packQty)) : 0;
     const unitPrice = parseNumber(payload.price || 0);
@@ -115,7 +131,7 @@ export default function Warehouse() {
   };
 
   const handleEdit = async (payload) => {
-    const isMeter = isMeterCategory(payload.category);
+    const isMeter = isMeterCategory(payload);
     const packQty = Number(payload.pack_qty || 0);
     const meterQty = isMeter ? Number(payload.meter_qty ?? (Number(payload.qty || 0) * packQty)) : 0;
     const unitPrice = parseNumber(payload.price || 0);
@@ -131,7 +147,7 @@ export default function Warehouse() {
   const handleRemove = async (id) => {
     const product = state.warehouse.find(p => p.id === id);
     const productName = product ? product.name : id;
-    const isMeter = isMeterCategory(product?.category);
+    const isMeter = isMeterCategory(product);
     const packQty = Number(product?.pack_qty || 0);
     const meterQty = isMeter ? Number(product?.meter_qty ?? (Number(product?.qty || 0) * packQty)) : 0;
     const unitPrice = parseNumber(product?.price || 0);
@@ -151,7 +167,7 @@ export default function Warehouse() {
     const addedQty = Number(payload.qty);
     const unitPrice = parseNumber(product.price || 0);
     const piecePrice = parseNumber(product.price_piece || 0);
-    const isMeter = isMeterCategory(product?.category);
+    const isMeter = isMeterCategory(product);
     const packQty = Number(product?.pack_qty || 0);
     const baseMeter = Number(product?.meter_qty ?? (Number(product?.qty || 0) * packQty));
     const meterDelta = isMeter ? Number(payload.meter_delta ?? (payload.unit === 'dona' ? addedQty * packQty : addedQty)) : 0;
@@ -230,16 +246,23 @@ export default function Warehouse() {
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditItem(null); setOpenForm(true); }} disabled={!canAddProducts} sx={{ whiteSpace: 'nowrap', flex: { xs: 1, md: 'unset' } }}>{t('add_product')}</Button>
           <Button variant="outlined" startIcon={<StoreIcon />} onClick={() => setOpenWholesale(true)} disabled={!canWholesale} sx={{ whiteSpace: 'nowrap', flex: { xs: 1, md: 'unset' } }}>{t('wholesale_sale')}</Button>
           <TextField size="small" placeholder={t('search_item') || 'Search...'} value={search} onChange={(e) => setSearch(e.target.value)} sx={{ ml: { xs: 0, md: 'auto' }, flex: { xs: 1, md: 'unset' } }} />
-          <Select
+          <Autocomplete
             size="small"
+            freeSolo
+            options={categories}
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            displayEmpty
-            sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 120 } }}
-          >
-            <MenuItem value="">Barcha kategoriyalar</MenuItem>
-            {categories.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
-          </Select>
+            onChange={(_e, v) => setCategoryFilter(v || '')}
+            onInputChange={(_e, v) => setCategoryFilter(v || '')}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Kategoriya"
+                placeholder="Kategoriya"
+                InputLabelProps={{ shrink: true }}
+              />
+            )}
+            sx={{ mt: { xs: 1, md: 0 }, ml: { xs: 0, md: 1 }, minWidth: { xs: '100%', md: 220 }, flex: { xs: 1, md: 'unset' } }}
+          />
           {isElectrodeFilter && (
             <TextField
               size="small"
@@ -304,12 +327,21 @@ export default function Warehouse() {
                   <TableRow key={it.id} hover>
                     <TableCell>{formatProductName(it)}</TableCell>
                     <TableCell align="center">
-                      {isMeterCategory(it?.category)
+                      {isMeterCategory(it)
                         ? `${Number(it?.meter_qty ?? (Number(it?.qty || 0) * Number(it?.pack_qty || 0)))} m / ${Number(it?.pack_qty || 0) > 0 ? Math.ceil(Number(it?.meter_qty ?? (Number(it?.qty || 0) * Number(it?.pack_qty || 0))) / Number(it?.pack_qty || 0)) : Number(it?.qty || 0)} dona`
                         : it.qty}
                     </TableCell>
                     <TableCell align="right">
-                      {formatForDisplay(it.price, it.currency)} {displayCurrency}
+                      {isMeterCategory(it) ? (
+                        <Box sx={{ textAlign: 'right' }}>
+                          <Typography sx={{ fontSize: { xs: '0.9rem', sm: '0.95rem' } }}>{formatForDisplay(it.price, it.currency)} {displayCurrency} / m</Typography>
+                          {it?.price_piece !== undefined && it?.price_piece !== null && (
+                            <Typography variant="caption" color="text.secondary">1 dona: {formatForDisplay(it.price_piece || 0, it.currency)} {displayCurrency}</Typography>
+                          )}
+                        </Box>
+                      ) : (
+                        <>{formatForDisplay(it.price, it.currency)} {displayCurrency}</>
+                      )}
                     </TableCell>
                     <TableCell>{it.date}</TableCell>
                     <TableCell>{it.note}</TableCell>
@@ -333,7 +365,7 @@ export default function Warehouse() {
       <MoveToStoreForm open={!!moveItem} initial={moveItem} onClose={() => setMoveItem(null)} onSubmit={(payload) => {
         const itemPrice = parseNumber(payload.item.price || 0);
         const piecePrice = parseNumber(payload.item.price_piece || 0);
-        const isMeter = isMeterCategory(payload.item?.category);
+        const isMeter = isMeterCategory(payload.item);
         const packQty = Number(payload.item?.pack_qty || 0);
         const meterDelta = isMeter ? Number(payload.meter_qty ?? 0) : 0;
         const amount = isMeter ? (meterDelta * itemPrice) : (Number(payload.qty) * itemPrice);
@@ -350,8 +382,7 @@ export default function Warehouse() {
       <WarehouseSellForm open={!!sellItem} initial={sellItem} onClose={() => setSellItem(null)} onSubmit={async (payload) => {
         try {
           const saleInputQty = Number(payload.qty || 0)
-          const deductQty = Number(payload.deduct_qty ?? payload.qty ?? 0)
-          const isMeter = isMeterCategory(sellItem?.category);
+          const isMeter = isMeterCategory(sellItem);
           const packQty = Number(payload.pack_qty ?? sellItem?.pack_qty ?? 0)
           const saleUnit = payload.unit || (isMeter ? 'metr' : 'dona')
           let unitPrice = parseNumber(payload.price || 0);
@@ -359,7 +390,14 @@ export default function Warehouse() {
             if (isMeter && saleUnit === 'dona') unitPrice = parseNumber(sellItem?.price_piece || 0)
             else unitPrice = parseNumber(sellItem?.price || 0)
           }
-          const meterSold = isMeter ? Number(payload.meter_qty ?? (saleUnit === 'dona' ? saleInputQty * packQty : saleInputQty)) : 0
+          const baseMeter = isMeter ? Number(sellItem?.meter_qty ?? (Number(sellItem?.qty || 0) * packQty)) : 0
+          const meterSoldRaw = isMeter ? Number(payload.meter_qty ?? (saleUnit === 'dona' ? saleInputQty * packQty : saleInputQty)) : 0
+          const meterSold = isMeter ? Math.min(baseMeter, meterSoldRaw) : 0
+          const deductQty = isMeter
+            ? (saleUnit === 'dona'
+                ? saleInputQty
+                : (packQty > 0 ? Math.ceil(meterSold / Math.max(1, packQty)) : 0))
+            : Number(payload.deduct_qty ?? saleInputQty ?? 0)
           const amount = isMeter
             ? (saleUnit === 'dona' ? saleInputQty * unitPrice : meterSold * unitPrice)
             : (saleInputQty * unitPrice)
@@ -412,7 +450,7 @@ export default function Warehouse() {
           if (isMeter) {
             const baseMeter = Number(sellItem?.meter_qty ?? (Number(sellItem?.qty || 0) * packQty))
             newMeterQty = Math.max(0, baseMeter - meterSold)
-            newQty = packQty > 0 ? Math.ceil(newMeterQty / packQty) : newQty
+            newQty = packQty > 0 ? Math.ceil(newMeterQty / Math.max(1, packQty)) : newQty
           }
           const { error: qtyErr } = await supabase
             .from('products')

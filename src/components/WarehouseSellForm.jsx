@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, TextField } from '@mui/material'
+﻿import React, { useState, useEffect } from 'react'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, FormControl, InputLabel, Select, MenuItem, TextField, Stack } from '@mui/material'
 import NumberField from './NumberField'
 import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
@@ -14,15 +14,15 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
   const [unit, setUnit] = useState('dona')
   const [meterQty, setMeterQty] = useState('')
   
-
   const isElectrode = normalizeCategory(initial?.category) === 'elektrod'
-  const isMeter = isMeterCategory(initial?.category)
+  const isMeter = isMeterCategory(initial)
   const packQty = Number(initial?.pack_qty || 0)
   const meterPriceDefault = Number(initial?.price ?? 0)
   const piecePriceDefault = Number(initial?.price_piece ?? initial?.price ?? 0)
   const packPriceDefault = Number(initial?.price_pack ?? 0)
   const meterAvailable = isMeter ? Number(initial?.meter_qty ?? (Number(initial?.qty || 0) * packQty)) : 0
-  const meterAvailableDona = isMeter && packQty > 0 ? Math.floor(meterAvailable / packQty) : 0
+  const fullPacksAvailable = isMeter && packQty > 0 ? Math.floor(meterAvailable / packQty) : 0
+  const openMetersAvailable = isMeter ? meterAvailable - (fullPacksAvailable * packQty) : 0
   const nameWithSize = initial ? formatProductName(initial) : ''
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
   const availablePieces = Number(initial?.qty || 0)
   const availablePacks = packQty > 0 ? Math.floor(availablePieces / packQty) : 0
   const available = isMeter
-    ? (unit === 'metr' ? meterAvailable : meterAvailableDona)
+    ? (unit === 'metr' ? meterAvailable : fullPacksAvailable)
     : (isElectrode && unit === 'pachka' ? availablePacks : availablePieces)
   const inputQty = isMeter && unit === 'metr' ? Number(meterQty || 0) : Number(qty || 0)
   const parsedPrice = Number(price || 0)
@@ -84,98 +84,116 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
     onClose()
   }
 
-  
-
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh', overflow: 'hidden' } }}>
       <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
-      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word' }}>
-        <TextField label="Mahsulot" fullWidth margin="dense" size="small" value={nameWithSize} disabled />
-        {isMeter ? (
-          <>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-              Mavjud: {meterAvailable} m ({meterAvailableDona} dona)
-            </Typography>
-            {packQty > 0 && (
+      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowY: 'auto', overflowX: 'hidden' }}>
+        <Stack spacing={2}>
+          <TextField label="Mahsulot" fullWidth margin="dense" size="small" value={nameWithSize} disabled />
+          {isMeter ? (
+            <>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-                1 dona: {packQty} m
+                Mavjud: {meterAvailable} m
               </Typography>
-            )}
-          </>
-        ) : (
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-            Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
-          </Typography>
-        )}
-        {isElectrode && packQty > 0 && (
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-            Pachkada: {packQty} dona
-          </Typography>
-        )}
-        {(isElectrode || isMeter) && (
-          <FormControl fullWidth sx={{ mt: 1.5 }}>
-            <InputLabel id="wsell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Birlik</InputLabel>
-            <Select
-              labelId="wsell-unit-label"
-              value={unit}
-              label="Birlik"
-              onChange={(e) => setUnit(e.target.value)}
-              size="small"
-            >
-              {isMeter ? (
-                <>
-                  <MenuItem value="metr">Metr</MenuItem>
-                  <MenuItem value="dona">Dona</MenuItem>
-                </>
-              ) : (
-                <>
-                  <MenuItem value="dona">Dona</MenuItem>
-                  <MenuItem value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>
-                </>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+                Butun: {fullPacksAvailable} dona{openMetersAvailable > 0 ? ` | Ochiq: ${openMetersAvailable} m` : ''}
+              </Typography>
+              {packQty > 0 && (
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+                  1 dona: {packQty} m
+                </Typography>
               )}
+            </>
+          ) : (
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+              Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
+            </Typography>
+          )}
+          {isElectrode && packQty > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
+              Pachkada: {packQty} dona
+            </Typography>
+          )}
+
+          {(isElectrode || isMeter) && (
+            <FormControl fullWidth>
+              <InputLabel id="wsell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Birlik</InputLabel>
+              <Select
+                labelId="wsell-unit-label"
+                value={unit}
+                label="Birlik"
+                onChange={(e) => setUnit(e.target.value)}
+                size="small"
+                MenuProps={{
+                  disableScrollLock: true
+                }}
+              >
+                {isMeter
+                  ? [
+                      <MenuItem key="metr" value="metr">Metr</MenuItem>,
+                      <MenuItem key="dona" value="dona">Dona</MenuItem>,
+                    ]
+                  : [
+                      <MenuItem key="dona" value="dona">Dona</MenuItem>,
+                      <MenuItem key="pachka" value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>,
+                    ]}
+              </Select>
+            </FormControl>
+          )}
+
+          <NumberField
+            label={isMeter ? (unit === 'metr' ? 'Metr' : 'Soni (dona)') : (isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni (bir dona)')}
+            fullWidth
+            margin="dense"
+            value={isMeter && unit === 'metr' ? meterQty : qty}
+            onChange={(v) => {
+              if (isMeter && unit === 'metr') {
+                setMeterQty(v === null ? '' : v)
+              } else {
+                setQty(Number(v || 0))
+              }
+            }}
+            error={qtyError}
+            helperText={qtyError ? (inputQty <= 0 ? 'Min 1 kiriting' : 'Ko\'p kiritdingiz') : ''}
+          />
+
+          <FormControl fullWidth>
+            <InputLabel id="wsell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Valyuta</InputLabel>
+            <Select labelId="wsell-currency-label" value={currency} label="Valyuta" onChange={(e) => setCurrency(e.target.value)} size="small">
+              <MenuItem value="UZS">UZS</MenuItem>
+              <MenuItem value="USD">USD</MenuItem>
             </Select>
           </FormControl>
-        )}
-        <NumberField
-          label={isMeter ? (unit === 'metr' ? 'Metr' : 'Soni (dona)') : (isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni')}
-          fullWidth
-          margin="dense"
-          value={isMeter && unit === 'metr' ? meterQty : qty}
-          onChange={(v) => {
-            if (isMeter && unit === 'metr') {
-              setMeterQty(v === null ? '' : v)
-            } else {
-              setQty(Number(v || 0))
-            }
-          }}
-          error={qtyError}
-          helperText={qtyError ? (inputQty <= 0 ? 'Min 1 kiriting' : 'Ko\'p kiritdingiz') : ''}
-        />
-        <FormControl fullWidth sx={{ mt: 1.5 }}>
-          <InputLabel id="wsell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Valyuta</InputLabel>
-          <Select labelId="wsell-currency-label" value={currency} label="Valyuta" onChange={(e) => setCurrency(e.target.value)} size="small">
-            <MenuItem value="UZS">UZS</MenuItem>
-            <MenuItem value="USD">USD</MenuItem>
-          </Select>
-        </FormControl>
 
-        <CurrencyField
-          label={isMeter ? (unit === 'metr' ? 'Narxi (1 metr)' : 'Narxi (1 dona)') : (isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi (bir dona)')}
-          fullWidth
-          margin="dense"
-          value={price}
-          onChange={(v) => setPrice(v)}
-          currency={currency}
-        />
+          {isMeter && (
+            <Box sx={{ display: 'flex', gap: 2, rowGap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.72rem', md: '0.8rem' } }}>
+                Narx (1 metr): {formatMoney(meterPriceDefault || 0)} {currency}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.72rem', md: '0.8rem' } }}>
+                1 dona: {formatMoney(piecePriceDefault || 0)} {currency}
+              </Typography>
+            </Box>
+          )}
 
-        {currency === 'USD' ? (
-          <Box sx={{ mt: 1 }}>
-            <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', md: '0.875rem' } }}>Jami: {totalValue} USD</Typography>
-            {usdToUzs ? <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>≈ {formatMoney(Math.round(totalValue * usdToUzs))} UZS</Typography> : <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Kurs yo\'q</Typography>}
-          </Box>
-        ) : (
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Jami: {formatMoney(totalValue)} UZS</Typography>
-        )}
+          <CurrencyField
+            label={isMeter ? (unit === 'metr' ? 'Narxi (1 metr)' : 'Narxi (1 dona)') : (isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi (bir dona)')}
+            fullWidth
+            margin="dense"
+            value={price}
+            onChange={(v) => setPrice(v)}
+            currency={currency}
+          />
+
+          {currency === 'USD' ? (
+            <Box>
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', md: '0.875rem' } }}>Jami: {totalValue} USD</Typography>
+              {usdToUzs ? <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>≈ {formatMoney(Math.round(totalValue * usdToUzs))} UZS</Typography> : <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Kurs yo'q</Typography>}
+            </Box>
+          ) : (
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Jami: {formatMoney(totalValue)} UZS</Typography>
+          )}
+        </Stack>
       </DialogContent>
       <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>
         <Button onClick={onClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Bekor</Button>

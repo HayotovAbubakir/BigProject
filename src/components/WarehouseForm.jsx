@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../context/useApp'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, TextField, Select, MenuItem, FormControl, InputLabel } from '@mui/material'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, TextField, Autocomplete } from '@mui/material'
 import NumberField from './NumberField'
 import CurrencyField from './CurrencyField'
 import CurrencyModal from './CurrencyModal'
@@ -76,7 +76,7 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
   }, [form, open, getDraftKey, dispatch, state?.drafts])
 
   const handle = (k) => (evt) => setForm(prev => ({ ...prev, [k]: evt.target.value }))
-  const handleCategory = (evt) => setForm(prev => ({ ...prev, category: normalizeCategory(evt.target.value) }))
+  const handleCategory = (value) => setForm(prev => ({ ...prev, category: normalizeCategory(value) }))
 
   const categories = React.useMemo(() => (
     mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES, initial?.category, form.category)
@@ -124,6 +124,14 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
       window.alert('Elektrod razmerini kiriting')
       return
     }
+    if (isElectrode && (!form.price_piece || Number(form.price_piece) <= 0)) {
+      window.alert('Dona narxini 0 dan katta kiriting')
+      return
+    }
+    if (isElectrode && (!form.price_pack || Number(form.price_pack) <= 0)) {
+      window.alert('Pachka narxini 0 dan katta kiriting')
+      return
+    }
     if (!form.price || Number(form.price) <= 0) {
       window.alert('Mahsulot narxini 0 dan katta qiling')
       return
@@ -140,9 +148,13 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
     const normalizedCategory = normalizeCategory(form.category)
     let payload = { id: initial?.id || uuidv4(), ...form, category: normalizedCategory, date: toISODate(form.date) }
     if (isElectrode) {
+      const pieceValue = Number(form.price_piece || form.price || 0)
       payload = {
         ...payload,
-        price: Number(form.price || 0),
+        price: pieceValue,
+        price_piece: pieceValue,
+        price_pack: Number(form.price_pack || 0),
+        pack_qty: null,
         electrode_size: form.electrode_size ? form.electrode_size.toString().trim() : '',
         stone_thickness: null,
         stone_size: null
@@ -196,21 +208,22 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
       <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>{initial ? 'Tahrirlash' : "Qo'shish"}</DialogTitle>
-      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word', pt: { xs: 1, md: 1.5 } }}>
+      <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word', pt: { xs: 1, md: 1.5 }, overflowX: 'visible' }}>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
           <Button variant="outlined" size="small" onClick={() => setCurrencyOpen(true)} sx={{ fontSize: { xs: '0.7rem', md: '0.875rem' }, p: { xs: '4px 8px', md: '6px 12px' } }}>{form.currency || 'UZS'}</Button>
         </Box>
         <TextField label="Nomi" fullWidth margin="dense" size="small" value={form.name} onChange={handle('name')} InputProps={{ style: { fontSize: '0.875rem' } }} />
-        <FormControl fullWidth margin="dense" size="small">
-          <InputLabel>Kategoriya</InputLabel>
-          <Select value={form.category} onChange={handleCategory} label="Kategoriya">
-            <MenuItem value="">Tanlanmagan</MenuItem>
-            {categories.map(cat => (
-              <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <NumberField label={isElectrode ? "Soni (dona)" : "Soni"} fullWidth margin="dense" value={form.qty} onChange={handleQtyChange} />
+        <Autocomplete
+          freeSolo
+          fullWidth
+          options={categories}
+          value={form.category}
+          onChange={(_e, v) => handleCategory(v || '')}
+          onInputChange={(_e, v) => handleCategory(v || '')}
+          renderInput={(params) => <TextField {...params} label="Kategoriya" margin="dense" size="small" />}
+          sx={{ mt: 0.5 }}
+        />
+        <NumberField label={isElectrode ? "Soni (pachka)" : "Soni"} fullWidth margin="dense" value={form.qty} onChange={handleQtyChange} />
         {isMeter && (
           <NumberField
             label="Metr (1 dona)"
@@ -223,15 +236,25 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
         {isElectrode && (
           <TextField label="Elektrod razmeri" fullWidth margin="dense" size="small" value={form.electrode_size} onChange={handle('electrode_size')} />
         )}
+        {isElectrode && (
+          <>
+            <CurrencyField label="Narxi (1 pachka)" fullWidth margin="dense" value={form.price_pack} onChange={(v) => setForm(prev => ({ ...prev, price_pack: v === null ? '' : v }))} currency={form.currency} />
+            <CurrencyField label="Narxi (1 dona)" fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v, price: v === null ? '' : v }))} currency={form.currency} />
+          </>
+        )}
         {isStone && (
           <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
             <TextField label="Qalinlik razmeri" fullWidth margin="dense" size="small" value={form.stone_thickness} onChange={handle('stone_thickness')} />
             <TextField label="Hajmi" fullWidth margin="dense" size="small" value={form.stone_size} onChange={handle('stone_size')} />
           </Box>
         )}
-        <CurrencyField label={isMeter ? "Narxi (1 metr)" : "Narxi"} fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
-        {isMeter && (
-          <CurrencyField label="Narxi (1 dona)" fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v }))} currency={form.currency} />
+        {!isElectrode && (
+          <>
+            <CurrencyField label={isMeter ? "Narxi (1 metr)" : "Narxi"} fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
+            {isMeter && (
+              <CurrencyField label="Narxi (1 dona)" fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v }))} currency={form.currency} />
+            )}
+          </>
         )}
         <TextField label="Sana" type="date" fullWidth margin="dense" size="small" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
       </DialogContent>

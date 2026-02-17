@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Box, Typography, Button, Grid, Paper, IconButton, Tooltip, TextField,
@@ -20,6 +20,8 @@ import CreditsDialog from '../components/CreditsDialog';
 import CurrencyField from '../components/CurrencyField';
 import NumberField from '../components/NumberField';
 import { insertLog } from '../firebase/supabaseLogs';
+import { formatProductName } from '../utils/productDisplay';
+import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory, isMeterCategory } from '../utils/productCategories';
 // Note: The credit management dialogs and logic are complex and are kept as is to avoid breaking functionality.
 // Only the main client list UI is redesigned.
 
@@ -100,6 +102,7 @@ export default function Clients() {
   const [creditAmount, setCreditAmount] = useState('');
   const [creditCurrency, setCreditCurrency] = useState('UZS');
   const [products, setProducts] = useState([]);
+  const categories = useMemo(() => mergeCategories(state.ui?.productCategories || [], DEFAULT_PRODUCT_CATEGORIES, (state.store||[]).map(p=>p.category), (state.warehouse||[]).map(p=>p.category)), [state.ui?.productCategories, state.store, state.warehouse]);
   const [location, setLocation] = useState('warehouse');
   const [creditDate, setCreditDate] = useState(new Date().toISOString().slice(0,10));
   const [creditNote, setCreditNote] = useState('');
@@ -164,9 +167,25 @@ export default function Clients() {
     }
   };
 
-  const addProduct = () => setProducts([...products, { name: '', qty: '', receivePrice: '', receiveCurrency: 'UZS', sellPrice: '', sellCurrency: 'UZS', isNewProduct: false }]);
+  const addProduct = () => setProducts([...products, { name: '', qty: '', receivePrice: '', receiveCurrency: 'UZS', sellPrice: '', sellCurrency: 'UZS', isNewProduct: false, category: '', pack_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', price_piece: '', price_pack: '' }]);
   const updateProduct = (index, field, value) => setProducts(products.map((p, i) => i === index ? { ...p, [field]: value } : p));
   const removeProduct = (index) => setProducts(products.filter((_, i) => i !== index));
+
+  const isProductFilled = (p) => {
+    if (!p.name || !p.qty || !p.sellPrice) return false;
+    if (p.isNewProduct) {
+      const cat = normalizeCategory(p.category);
+      if (!cat) return false;
+      if (cat === 'elektrod') {
+        return !!p.electrode_size && Number(p.price_pack) > 0 && Number(p.price_piece) > 0;
+      }
+      if (isMeterCategory(cat)) {
+        return Number(p.pack_qty) > 0 && Number(p.price_piece || p.sellPrice) > 0;
+      }
+      // stones optional fields
+    }
+    return true;
+  };
 
   const convertDownPayment = (amount, fromCurrency, toCurrency) => {
     const value = Number(amount || 0)
@@ -231,13 +250,13 @@ export default function Clients() {
         await addCredit(payload, logData);
 
     } else { // product
-      if (products.length === 0 || products.some(p => !p.name || !p.qty || !p.sellPrice)) return;
+      if (products.length === 0 || products.some(p => !isProductFilled(p))) return;
 
       for (const p of products) {
         let productId;
         let productName = p.name;
         let productQty = Number(p.qty);
-        let productUnitPrice = Number(p.sellPrice);
+        let productUnitPrice = Number(p.sellPrice || p.price_piece || p.price_pack);
         let productCurrency = p.sellCurrency;
         const convertedDownPayment = convertDownPayment(initialPayAmount, initialPayCurrency, productCurrency)
         if (convertedDownPayment === null) {
@@ -249,11 +268,22 @@ export default function Clients() {
           if (creditSubtype === 'olingan') {
             // New product being received as credit
             const newProductId = uuidv4();
+            const cat = normalizeCategory(p.category);
+            const isMeter = isMeterCategory(cat);
+            const isElectrode = cat === 'elektrod';
             const productPayload = {
               id: newProductId,
               name: productName,
               qty: productQty,
-              price: Number(p.receivePrice),
+              price: Number(p.receivePrice || p.price_piece || p.sellPrice || 0),
+              price_piece: isElectrode ? Number(p.price_piece || p.receivePrice || 0) : (isMeter ? Number(p.price_piece || p.sellPrice || 0) : null),
+              price_pack: isElectrode ? Number(p.price_pack || 0) : null,
+              pack_qty: isMeter ? Number(p.pack_qty || 0) : null,
+              meter_qty: isMeter ? Number(productQty * Number(p.pack_qty || 0)) : null,
+              category: cat,
+              electrode_size: isElectrode ? (p.electrode_size || '') : null,
+              stone_thickness: cat === 'tosh' ? (p.stone_thickness || '') : null,
+              stone_size: cat === 'tosh' ? (p.stone_size || '') : null,
               currency: p.receiveCurrency
             };
             const logData = { id: uuidv4(), user_name: username, action: 'PRODUCT_ADD', detail: `Added new product ${productName} via credit from client ${creditClient.name}` };
@@ -609,107 +639,171 @@ export default function Clients() {
                 <MenuItem value="store">{t('store')}</MenuItem>
               </TextField>
               <Typography variant="subtitle1" sx={{ mt: 2 }}>Mahsulotlar</Typography>
-              {products.map((p, index) => (
-                <Grid container spacing={1} key={index} sx={{ mb: 2, alignItems: 'center' }}>
-                  <Grid item xs={12} sm={4}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {p.isNewProduct ? (
-                        <TextField
-                          label={t('productName')}
-                          fullWidth
-                          margin="dense"
-                          value={p.name}
-                          onChange={(e) => updateProduct(index, 'name', e.target.value)}
+              {products.map((p, index) => {
+                const pool = location === 'warehouse' ? state.warehouse : state.store;
+                const selected = pool.find(item => item.name === p.name);
+                const derivedCategory = p.category || selected?.category;
+                const isMeter = isMeterCategory(derivedCategory);
+                const isElectrode = normalizeCategory(derivedCategory) === 'elektrod';
+                const isStone = normalizeCategory(derivedCategory) === 'tosh';
+                return (
+                  <Grid container spacing={1} key={index} sx={{ mb: 2, alignItems: 'center' }}>
+                    <Grid item xs={12} sm={4}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {p.isNewProduct ? (
+                          <TextField
+                            label={t('productName')}
+                            fullWidth
+                            margin="dense"
+                            value={p.name}
+                            onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                          />
+                        ) : (
+                          <TextField
+                            select
+                            label={t('selectProduct')}
+                            fullWidth
+                            margin="dense"
+                            value={p.name}
+                            onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                          >
+                            <MenuItem value="">-- {t('selectProduct')} --</MenuItem>
+                            {pool.map(item => (
+                              <MenuItem key={item.id} value={item.name}>
+                                {formatProductName(item) || item.name} (Mavjud: {isMeterCategory(item) ? `${item.meter_qty ?? (item.qty * (item.pack_qty||0))} m` : item.qty})
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        )}
+                        <Checkbox
+                          checked={p.isNewProduct || false}
+                          onChange={(e) => updateProduct(index, 'isNewProduct', e.target.checked)}
+                          inputProps={{ 'aria-label': 'Yangi mahsulot' }}
                         />
-                      ) : (
-                        <TextField
-                          select
-                          label={t('selectProduct')}
-                          fullWidth
-                          margin="dense"
-                          value={p.name}
-                          onChange={(e) => updateProduct(index, 'name', e.target.value)}
-                        >
-                          <MenuItem value="">-- {t('selectProduct')} --</MenuItem>
-                          {(location === 'warehouse' ? state.warehouse : state.store).map(item => (
-                            <MenuItem key={item.id} value={item.name}>{item.name} (Mavjud: {item.qty})</MenuItem>
-                          ))}
-                        </TextField>
+                      </Box>
+                      {!p.isNewProduct && selected && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          {`Kategoriya: ${selected.category || '-'} | ${formatProductName(selected)}`}
+                        </Typography>
                       )}
-                      <Checkbox
-                        checked={p.isNewProduct || false}
-                        onChange={(e) => updateProduct(index, 'isNewProduct', e.target.checked)}
-                        inputProps={{ 'aria-label': 'Yangi mahsulot' }}
+                    </Grid>
+                    <Grid item xs={6} sm={2}>
+                      <NumberField
+                        label={isElectrode ? 'Soni (pachka)' : t('miqdor')}
+                        fullWidth
+                        margin="dense"
+                        value={p.qty}
+                        onChange={(val) => updateProduct(index, 'qty', val)}
                       />
-
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6} sm={2}>
-                    <NumberField
-                      label={t('miqdor')}
-                      fullWidth
-                      margin="dense"
-                      value={p.qty}
-                      onChange={(val) => updateProduct(index, 'qty', val)}
-                    />
-                  </Grid>
-                  {creditSubtype === 'olingan' && (
-                    <>
+                    </Grid>
+                    {p.isNewProduct && (
+                      <>
+                        <Grid item xs={6} sm={2}>
+                          <TextField
+                            select
+                            label="Kategoriya"
+                            fullWidth
+                            margin="dense"
+                            value={p.category}
+                            onChange={(e) => updateProduct(index, 'category', normalizeCategory(e.target.value))}
+                          >
+                            <MenuItem value="">Tanlang</MenuItem>
+                            {categories.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
+                          </TextField>
+                        </Grid>
+                        {isElectrode && (
+                          <>
+                            <Grid item xs={6} sm={2}>
+                              <TextField label="Razmer" fullWidth margin="dense" value={p.electrode_size} onChange={(e) => updateProduct(index, 'electrode_size', e.target.value)} />
+                            </Grid>
+                            <Grid item xs={6} sm={2}>
+                              <CurrencyField label="Narxi (pachka)" fullWidth margin="dense" value={p.price_pack} onChange={(val) => updateProduct(index, 'price_pack', val)} currency={p.sellCurrency || 'UZS'} />
+                            </Grid>
+                            <Grid item xs={6} sm={2}>
+                              <CurrencyField label="Narxi (dona)" fullWidth margin="dense" value={p.price_piece} onChange={(val) => updateProduct(index, 'price_piece', val)} currency={p.sellCurrency || 'UZS'} />
+                            </Grid>
+                            <Grid item xs={6} sm={2}>
+                              <CurrencyField label="Narxi (metr)" fullWidth margin="dense" value={p.sellPrice} onChange={(val) => updateProduct(index, 'sellPrice', val)} currency={p.sellCurrency || 'UZS'} />
+                            </Grid>
+                          </>
+                        )}
+                        {isMeter && (
+                          <Grid item xs={6} sm={2}>
+                            <NumberField label="Metr (1 dona)" fullWidth margin="dense" value={p.pack_qty} onChange={(val) => updateProduct(index, 'pack_qty', val)} />
+                          </Grid>
+                        )}
+                        {isStone && (
+                          <>
+                            <Grid item xs={6} sm={2}>
+                              <TextField label="Qalinlik" fullWidth margin="dense" value={p.stone_thickness} onChange={(e) => updateProduct(index, 'stone_thickness', e.target.value)} />
+                            </Grid>
+                            <Grid item xs={6} sm={2}>
+                              <TextField label="Hajmi" fullWidth margin="dense" value={p.stone_size} onChange={(e) => updateProduct(index, 'stone_size', e.target.value)} />
+                            </Grid>
+                          </>
+                        )}
+                      </>
+                    )}
+                    {creditSubtype === 'olingan' && (
+                      <>
+                        <Grid item xs={6} sm={2}>
+                          <CurrencyField
+                            label="Olingan narx"
+                            fullWidth
+                            margin="dense"
+                            value={p.receivePrice}
+                            onChange={(val) => updateProduct(index, 'receivePrice', val)}
+                            currency={p.receiveCurrency || 'UZS'}
+                          />
+                        </Grid>
+                        <Grid item xs={6} sm={1}>
+                          <TextField
+                            select
+                            label={t('currency')}
+                            fullWidth
+                            margin="dense"
+                            value={p.receiveCurrency}
+                            onChange={(e) => updateProduct(index, 'receiveCurrency', e.target.value)}
+                          >
+                            <MenuItem value="UZS">UZS</MenuItem>
+                            <MenuItem value="USD">USD</MenuItem>
+                          </TextField>
+                        </Grid>
+                      </>
+                    )}
+                    {!isElectrode && (
                       <Grid item xs={6} sm={2}>
                         <CurrencyField
-                          label="Olingan narx"
+                          label={creditSubtype === 'olingan' ? "Aytilgan narx" : t('price')}
                           fullWidth
                           margin="dense"
-                          value={p.receivePrice}
-                          onChange={(val) => updateProduct(index, 'receivePrice', val)}
-                          currency={p.receiveCurrency || 'UZS'}
+                          value={p.sellPrice}
+                          onChange={(val) => updateProduct(index, 'sellPrice', val)}
+                          currency={p.sellCurrency || 'UZS'}
                         />
                       </Grid>
-                      <Grid item xs={6} sm={1}>
-                        <TextField
-                          select
-                          label={t('currency')}
-                          fullWidth
-                          margin="dense"
-                          value={p.receiveCurrency}
-                          onChange={(e) => updateProduct(index, 'receiveCurrency', e.target.value)}
-                        >
-                          <MenuItem value="UZS">UZS</MenuItem>
-                          <MenuItem value="USD">USD</MenuItem>
-                        </TextField>
-                      </Grid>
-                    </>
-                  )}
-                  <Grid item xs={6} sm={2}>
-                    <CurrencyField
-                      label={creditSubtype === 'olingan' ? "Aytilgan narx" : t('price')}
-                      fullWidth
-                      margin="dense"
-                      value={p.sellPrice}
-                      onChange={(val) => updateProduct(index, 'sellPrice', val)}
-                      currency={p.sellCurrency || 'UZS'}
-                    />
+                    )}
+                    <Grid item xs={6} sm={1}>
+                      <TextField
+                        select
+                        label={t('currency')}
+                        fullWidth
+                        margin="dense"
+                        value={p.sellCurrency}
+                        onChange={(e) => updateProduct(index, 'sellCurrency', e.target.value)}
+                      >
+                        <MenuItem value="UZS">UZS</MenuItem>
+                        <MenuItem value="USD">USD</MenuItem>
+                      </TextField>
+                    </Grid>
+                    <Grid item xs={12} sm={1}>
+                      <IconButton onClick={() => removeProduct(index)} color="error" sx={{ mt: 1 }}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </Grid>
                   </Grid>
-                  <Grid item xs={6} sm={1}>
-                    <TextField
-                      select
-                      label={t('currency')}
-                      fullWidth
-                      margin="dense"
-                      value={p.sellCurrency}
-                      onChange={(e) => updateProduct(index, 'sellCurrency', e.target.value)}
-                    >
-                      <MenuItem value="UZS">UZS</MenuItem>
-                      <MenuItem value="USD">USD</MenuItem>
-                    </TextField>
-                  </Grid>
-                  <Grid item xs={12} sm={1}>
-                    <IconButton onClick={() => removeProduct(index)} color="error" sx={{ mt: 1 }}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </Grid>
-                </Grid>
-              ))}
+                );
+              })}
               <Button onClick={addProduct} variant="outlined" sx={{ mt: 1 }}>Mahsulot qo'shish</Button>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <CurrencyField
@@ -755,7 +849,7 @@ export default function Clients() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreditOpen(false)}>{t('cancel')}</Button>
-          <Button onClick={handleAddCredit} variant="contained" disabled={creditType === 'cash' ? !creditAmount : products.length === 0 || products.some(p => !p.name || !p.qty || (p.isNewProduct && creditSubtype === 'olingan' ? !p.receivePrice : !p.sellPrice))}>{t('add')}</Button>
+          <Button onClick={handleAddCredit} variant="contained" disabled={creditType === 'cash' ? !creditAmount : products.length === 0 || products.some(p => !isProductFilled(p) || (p.isNewProduct && creditSubtype === 'olingan' && !p.receivePrice))}>{t('add')}</Button>
         </DialogActions>
       </Dialog>
 

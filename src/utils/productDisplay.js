@@ -15,7 +15,7 @@ export function formatProductName(product) {
   const stoneSize = (product.stone_size || '').toString().trim()
   if (stoneSize) parts.push(`Hajm: ${stoneSize}`)
 
-  if (isMeterCategory(product.category)) {
+  if (isMeterCategory(product)) {
     const meterValue = Number(product.pack_qty || 0)
     if (meterValue > 0) parts.push(`Metr: ${meterValue} m`)
   }

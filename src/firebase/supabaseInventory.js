@@ -70,25 +70,53 @@ export const insertProduct = async (product) => {
 
     console.log('supabase.insertProduct ->', safe)
 
-    const { data, error } = await supabase
-      .from('products')
-      .insert(safe)
-      .select('*')
-      .single()
+    // primary insert attempt
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .insert(safe)
+        .select('*')
+        .single()
 
-    if (error) {
-      // Supabase error object may include status, code, details
+      if (error) {
+        throw error
+      }
+
+      console.log('supabase.insertProduct success ->', data)
+      return data
+    } catch (err) {
+      // If the remote DB does not have `meter_qty` (schema mismatch / stale PostgREST cache),
+      // retry once without that optional column so the app remains usable until the DB is migrated.
+      const message = (err?.message || err?.details || '').toString()
+      const isMeterMissing = /meter_qty/.test(message) && /schema cache|Could not find/i.test(message)
+
+      if (isMeterMissing && Object.prototype.hasOwnProperty.call(safe, 'meter_qty')) {
+        console.warn('insertProduct: detected missing `meter_qty` in DB schema — retrying without it')
+        const { meter_qty, ...withoutMeter } = safe
+        const { data: data2, error: error2 } = await supabase
+          .from('products')
+          .insert(withoutMeter)
+          .select('*')
+          .single()
+
+        if (error2) {
+          console.error('insertProduct retry (without meter_qty) failed:', error2)
+          throw error2
+        }
+
+        console.log('supabase.insertProduct success (without meter_qty) ->', data2)
+        return data2
+      }
+
+      // otherwise rethrow original error so caller sees the real failure
       console.error('insertProduct supabase error:', {
-        message: error.message,
-        status: error.status,
-        code: error.code,
-        details: error.details
+        message: err.message,
+        status: err.status,
+        code: err.code,
+        details: err.details
       })
-      throw error
+      throw err
     }
-
-    console.log('supabase.insertProduct success ->', data)
-    return data
   } catch (err) {
     // Network or validation errors will surface here
     console.error('insertProduct error (full):', err)

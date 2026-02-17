@@ -4,6 +4,12 @@ export const PRODUCT_CATEGORIES_STORAGE_KEY = 'productCategories'
 
 export const normalizeCategory = (value) => {
   if (!value) return ''
+  // Allow passing objects such as full product records or option objects
+  if (typeof value === 'object') {
+    const candidate = value.category ?? value.label ?? value.name ?? value.value
+    if (!candidate) return ''
+    value = candidate
+  }
   return value
     .toString()
     .trim()
@@ -11,7 +17,21 @@ export const normalizeCategory = (value) => {
     .replace(/\s+/g, ' ')
 }
 
-export const isMeterCategory = (value) => normalizeCategory(value) === METER_CATEGORY
+// Also accepts a full product object and infers meter items from pack_qty / meter_qty
+export const isMeterCategory = (value) => {
+  if (!value) return false
+
+  if (typeof value === 'object') {
+    const packQty = Number(value.pack_qty ?? 0)
+    const meterQty = Number(value.meter_qty ?? 0)
+    if (packQty > 0 || meterQty > 0) return true
+    return isMeterCategory(value.category ?? value.label ?? value.name ?? value.value)
+  }
+
+  const normalized = normalizeCategory(value)
+  const normalizedMeter = normalizeCategory(METER_CATEGORY)
+  return normalized === normalizedMeter || normalized.includes('metr')
+}
 
 export const mergeCategories = (...lists) => {
   const merged = new Set()

@@ -21,7 +21,7 @@ export default function AddQuantityForm({ open, onClose, onSubmit, initial, sour
     if (!initial) return
     if (nQty <= 0) return setError('Qiymat 0 dan katta bo\'lishi kerak')
 
-    const isMeter = isMeterCategory(initial?.category)
+    const isMeter = isMeterCategory(initial)
     if (isMeter) {
       const packQty = Number(initial?.pack_qty || 0)
       if (unit === 'dona' && packQty <= 0) return setError('Metr qiymati topilmadi')
@@ -39,7 +39,7 @@ export default function AddQuantityForm({ open, onClose, onSubmit, initial, sour
   }
 
   const sourceTitle = source === 'warehouse' ? 'Omborga qo\'sh.' : 'Do\'konga qo\'sh.'
-  const isMeter = isMeterCategory(initial?.category)
+  const isMeter = isMeterCategory(initial)
   const packQty = Number(initial?.pack_qty || 0)
   const baseMeter = Number(initial?.meter_qty ?? (Number(initial?.qty || 0) * packQty))
   const meterDelta = isMeter ? (unit === 'dona' ? Number(qty || 0) * packQty : Number(qty || 0)) : 0
@@ -64,7 +64,21 @@ export default function AddQuantityForm({ open, onClose, onSubmit, initial, sour
             {isMeter && (
               <FormControl fullWidth size="small" sx={{ mb: 1 }}>
                 <InputLabel id="add-unit-label">Birlik</InputLabel>
-                <Select labelId="add-unit-label" value={unit} label="Birlik" onChange={(e) => setUnit(e.target.value)}>
+                <Select
+                  labelId="add-unit-label"
+                  value={unit}
+                  label="Birlik"
+                  onChange={(e) => setUnit(e.target.value)}
+                  size="small"
+                  MenuProps={{
+                    disablePortal: true,
+                    getContentAnchorEl: null,
+                    anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                    transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    PaperProps: { sx: { maxWidth: '100%', boxSizing: 'border-box' } },
+                    disableScrollLock: true
+                  }}
+                >
                   <MenuItem value="metr">Metr</MenuItem>
                   <MenuItem value="dona">Dona</MenuItem>
                 </Select>

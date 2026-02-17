@@ -26,7 +26,7 @@ const Notifications = () => {
 
         // Low stock: qty < 5 (or meter_qty < 5m for meter category)
         state.warehouse?.forEach(p => {
-            const isMeter = isMeterCategory(p?.category);
+            const isMeter = isMeterCategory(p);
             const meterQty = Number(p?.meter_qty ?? (Number(p?.pack_qty || 0) * Number(p?.qty || 0)));
             const qtyValue = isMeter ? meterQty : Number(p?.qty || 0);
             if (qtyValue < 5) {
@@ -41,7 +41,7 @@ const Notifications = () => {
         });
 
         state.store?.forEach(p => {
-            const isMeter = isMeterCategory(p?.category);
+            const isMeter = isMeterCategory(p);
             const meterQty = Number(p?.meter_qty ?? (Number(p?.pack_qty || 0) * Number(p?.qty || 0)));
             const qtyValue = isMeter ? meterQty : Number(p?.qty || 0);
             if (qtyValue < 5) {

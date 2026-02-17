@@ -165,13 +165,23 @@ export function calculateInventoryTotal(warehouse, store, displayCurrency, usdTo
   const items = allProducts.map(p => {
     const qty = Number(p.qty || 0)
     const price = Number(p.price || 0)
-    if (isMeterCategory(p?.category)) {
-      const meterQty = Number(p.meter_qty ?? (Number(p.pack_qty || 0) * qty))
-      return {
-        amount: meterQty * price,
-        currency: p.currency || 'UZS'
+
+    if (isMeterCategory(p)) {
+      // Value meter-category inventory in `dona` (piece) price when available.
+      // Prefer `price_piece` (price per piece). If missing, fall back to per-meter valuation
+      const packQty = Number(p.pack_qty || 0)
+      const meterQty = Number(p.meter_qty ?? (packQty * qty))
+      const pieceCount = packQty > 0 ? Math.ceil(meterQty / packQty) : qty
+      const piecePrice = p.price_piece !== undefined && p.price_piece !== null ? Number(p.price_piece) : null
+
+      if (piecePrice && piecePrice > 0) {
+        return { amount: pieceCount * piecePrice, currency: p.currency || 'UZS' }
       }
+
+      // fallback: value by meters using `price` (existing behavior)
+      return { amount: meterQty * price, currency: p.currency || 'UZS' }
     }
+
     return {
       amount: qty * price,
       currency: p.currency || 'UZS'

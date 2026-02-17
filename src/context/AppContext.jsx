@@ -83,7 +83,7 @@ function reducer(state, action) {
     case 'ADD_WAREHOUSE':
       return { ...state, warehouse: [...state.warehouse, action.payload], logs: [...state.logs, action.log] }
     case 'MOVE_TO_STORE': {
-      const isMeter = isMeterCategory(action.payload?.item?.category)
+      const isMeter = isMeterCategory(action.payload?.item)
       if (isMeter) {
         const packQty = Number(action.payload?.pack_qty ?? action.payload?.item?.pack_qty ?? 0)
         const meterDelta = Number(action.payload?.meter_qty ?? action.payload?.meter ?? 0)
@@ -94,7 +94,7 @@ function reducer(state, action) {
           const newQty = packQty > 0 ? Math.ceil(newMeter / packQty) : Math.max(0, Number(it.qty || 0) - Number(action.payload.qty || 0))
           return { ...it, meter_qty: newMeter, qty: newQty }
         })
-        const filteredWh = nextWarehouse.filter(w => isMeterCategory(w.category) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
+        const filteredWh = nextWarehouse.filter(w => isMeterCategory(w) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
 
         const existingStore = state.store.find(s => s.id === action.payload.item?.id)
         let newStore
@@ -129,7 +129,7 @@ function reducer(state, action) {
     case 'SELL_STORE': {
       const sold = state.store.map((it) => {
         if (it.id !== action.payload.id) return it
-        if (isMeterCategory(it.category) && action.payload.meter_qty != null) {
+        if (isMeterCategory(it) && action.payload.meter_qty != null) {
           const packQty = Number(it.pack_qty || 0)
           const baseMeter = Number(it.meter_qty ?? (Number(it.qty || 0) * packQty))
           const newMeter = Math.max(0, baseMeter - Number(action.payload.meter_qty))
@@ -138,7 +138,7 @@ function reducer(state, action) {
         }
         return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
       })
-      const filteredStore = sold.filter(s => isMeterCategory(s.category) ? Number(s.meter_qty || 0) > 0 : Number(s.qty) > 0)
+      const filteredStore = sold.filter(s => isMeterCategory(s) ? Number(s.meter_qty || 0) > 0 : Number(s.qty) > 0)
       // update account balances (credit the selling account) when a sale happens
       try {
         const log = action.log || {}
@@ -167,7 +167,7 @@ function reducer(state, action) {
     case 'SELL_WAREHOUSE': {
       const soldWh = state.warehouse.map((it) => {
         if (it.id !== action.payload.id) return it
-        if (isMeterCategory(it.category) && action.payload.meter_qty != null) {
+        if (isMeterCategory(it) && action.payload.meter_qty != null) {
           const packQty = Number(it.pack_qty || 0)
           const baseMeter = Number(it.meter_qty ?? (Number(it.qty || 0) * packQty))
           const newMeter = Math.max(0, baseMeter - Number(action.payload.meter_qty))
@@ -176,7 +176,7 @@ function reducer(state, action) {
         }
         return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
       })
-      const filteredWh = soldWh.filter(w => isMeterCategory(w.category) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
+      const filteredWh = soldWh.filter(w => isMeterCategory(w) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
       // also credit the selling account (if present) for warehouse sales
       try {
         const log = action.log || {}
@@ -718,7 +718,7 @@ export const AppProvider = ({ children }) => {
       const lowStockIds = []
       ;[...(state.store || []), ...(state.warehouse || [])].forEach(p => {
         if (!p) return
-        const isMeter = isMeterCategory(p.category)
+        const isMeter = isMeterCategory(p)
         const meterQty = Number(p.meter_qty ?? (Number(p.pack_qty || 0) * Number(p.qty || 0)))
         const qtyValue = isMeter ? meterQty : Number(p.qty || 0)
         const threshold = isMeter ? 5 : 2
@@ -744,7 +744,7 @@ export const AppProvider = ({ children }) => {
       // Low stock notifications (only new ones) - 3 different notification types
       ;[...(state.store || []), ...(state.warehouse || [])].forEach(p => {
         if (!p) return
-        const isMeter = isMeterCategory(p.category)
+        const isMeter = isMeterCategory(p)
         const meterQty = Number(p.meter_qty ?? (Number(p.pack_qty || 0) * Number(p.qty || 0)))
         const qtyValue = isMeter ? meterQty : Number(p.qty || 0)
         const threshold = isMeter ? 5 : 2

@@ -38,8 +38,8 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
       if (a.type === 'low_stock' && b.type === 'low_stock') {
         const aItem = a?.item;
         const bItem = b?.item;
-        const aIsMeter = isMeterCategory(aItem?.category);
-        const bIsMeter = isMeterCategory(bItem?.category);
+        const aIsMeter = isMeterCategory(aItem);
+        const bIsMeter = isMeterCategory(bItem);
         const aQty = aIsMeter
           ? Number(aItem?.meter_qty ?? (Number(aItem?.pack_qty || 0) * Number(aItem?.qty || 0)))
           : Number(aItem?.qty ?? Number.POSITIVE_INFINITY);
@@ -292,7 +292,7 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
                       </Typography>
                       {n.item?.qty != null && !isOverdue && (
                         <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.6)', display: 'block', mt: 0.5 }}>
-                          {isMeterCategory(n.item?.category)
+                          {isMeterCategory(n.item)
                             ? `Qolgan metr: ${Number(n.item?.meter_qty ?? (Number(n.item?.pack_qty || 0) * Number(n.item?.qty || 0)))} m`
                             : `Qolgan miqdor: ${n.item.qty}`
                           }

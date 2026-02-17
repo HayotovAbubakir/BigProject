@@ -28,7 +28,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     setItems(pool.map(p => {
       const baseName = p.name || p.title || '—'
       const displayName = formatProductName(p) || baseName
-      const isMeter = isMeterCategory(p.category)
+      const isMeter = isMeterCategory(p)
       const packQty = Number(p.pack_qty || 0)
       const meterQty = isMeter ? Number(p.meter_qty ?? (Number(p.qty || 0) * packQty)) : 0
       return {
@@ -179,7 +179,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
         <Box sx={{ mb: 2 }}>
           <FormControl sx={{ minWidth: 160 }}>
             <InputLabel id="ws-source">Manba</InputLabel>
-            <Select labelId="ws-source" value={selectedSource} label="Manba" onChange={(e) => setSelectedSource(e.target.value)}>
+            <Select labelId="ws-source" value={selectedSource} label="Manba" onChange={(e) => setSelectedSource(e.target.value)} MenuProps={{ disablePortal: true, anchorOrigin: { vertical: 'bottom', horizontal: 'left' }, transformOrigin: { vertical: 'top', horizontal: 'left' }, PaperProps: { sx: { maxWidth: '100%', boxSizing: 'border-box' } }, disableScrollLock: true }}>
               <MenuItem value="store">Do'kon</MenuItem>
               <MenuItem value="warehouse">Ombor</MenuItem>
             </Select>
@@ -204,8 +204,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
                       value={it.unit}
                       label="Birlik"
                       onChange={(e) => updateUnit(it.id, e.target.value)}
-                      size="small"
-                    >
+                      size="small"                      MenuProps={{ disablePortal: true, anchorOrigin: { vertical: 'bottom', horizontal: 'left' }, transformOrigin: { vertical: 'top', horizontal: 'left' }, PaperProps: { sx: { maxWidth: '100%', boxSizing: 'border-box' } }, disableScrollLock: true }}                    >
                       <MenuItem value="metr">Metr</MenuItem>
                       <MenuItem value="dona">Dona</MenuItem>
                     </Select>
