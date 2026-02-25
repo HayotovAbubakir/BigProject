@@ -89,6 +89,7 @@ export const insertProduct = async (product) => {
       // retry once without that optional column so the app remains usable until the DB is migrated.
       const message = (err?.message || err?.details || '').toString()
       const isMeterMissing = /meter_qty/.test(message) && /schema cache|Could not find/i.test(message)
+      const isDuplicateName = err?.code === '23505' || /duplicate key value.+products_name_key/i.test(message)
 
       if (isMeterMissing && Object.prototype.hasOwnProperty.call(safe, 'meter_qty')) {
         console.warn('insertProduct: detected missing `meter_qty` in DB schema — retrying without it')
@@ -106,6 +107,20 @@ export const insertProduct = async (product) => {
 
         console.log('supabase.insertProduct success (without meter_qty) ->', data2)
         return data2
+      }
+
+      if (isDuplicateName) {
+        console.warn('insertProduct: duplicate name detected, returning existing product by name')
+        const { data: existing, error: fetchErr } = await supabase
+          .from('products')
+          .select('*')
+          .eq('name', safe.name)
+          .maybeSingle()
+        if (fetchErr) {
+          console.error('insertProduct duplicate fetch failed:', fetchErr)
+          throw err
+        }
+        if (existing) return existing
       }
 
       // otherwise rethrow original error so caller sees the real failure

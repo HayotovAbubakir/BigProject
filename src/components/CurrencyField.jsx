@@ -101,7 +101,6 @@ export default function CurrencyField({
    * This stops unwanted value changes when scrolling over the input
    */
   const handleWheel = (e) => {
-    e.preventDefault()
     e.target.blur()
   }
 

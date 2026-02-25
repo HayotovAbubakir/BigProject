@@ -19,11 +19,8 @@ const usernameToEmail = (username) => {
 }
 
 const passwordPolicy = {
-  minLength: 10,
-  requireUpper: true,
-  requireLower: true,
-  requireNumber: true,
-  requireSymbol: true
+  minLength: 4,
+  disallowSpaces: true
 }
 
 const validatePassword = (password) => {
@@ -32,10 +29,9 @@ const validatePassword = (password) => {
   if (value.length < passwordPolicy.minLength) {
     errors.push(`Password must be at least ${passwordPolicy.minLength} characters`)
   }
-  if (passwordPolicy.requireUpper && !/[A-Z]/.test(value)) errors.push('Password must include an uppercase letter')
-  if (passwordPolicy.requireLower && !/[a-z]/.test(value)) errors.push('Password must include a lowercase letter')
-  if (passwordPolicy.requireNumber && !/[0-9]/.test(value)) errors.push('Password must include a number')
-  if (passwordPolicy.requireSymbol && !/[^A-Za-z0-9]/.test(value)) errors.push('Password must include a symbol')
+  if (passwordPolicy.disallowSpaces && /\s/.test(value)) {
+    errors.push('Password cannot contain spaces')
+  }
   return { ok: errors.length === 0, errors }
 }
 

@@ -16,7 +16,8 @@ import {
 import { useApp } from '../context/useApp';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../context/LocaleContext';
-import { formatMoney } from '../utils/format';
+import useDisplayCurrency from '../hooks/useDisplayCurrency';
+import { formatInteger } from '../utils/format';
 
 const logIcons = {
   SELL: <ShoppingCartIcon />,
@@ -78,6 +79,7 @@ function LogItem({ log }) {
   const theme = useTheme();
   const isCreditLog = (log.kind || '').toString().toUpperCase().includes('CREDIT') || (log.action || '').toString().toUpperCase().includes('CREDIT');
   const { t } = useLocale();
+  const { displayCurrency, formatForDisplay } = useDisplayCurrency();
 
   const parseDetailPairs = (detail) => {
     if (!detail) return [];
@@ -172,6 +174,16 @@ function LogItem({ log }) {
                   <Typography variant="body2"><strong>Bosh to'lov:</strong> {creditDetail['Bosh to\'lov']}</Typography>
                 </Grid>
               )}
+              {creditDetail["To'lov"] && (
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2"><strong>To'lov:</strong> {creditDetail["To'lov"]}</Typography>
+                </Grid>
+              )}
+              {creditDetail['Qolgan oldin'] && (
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="body2"><strong>Qolgan (oldin):</strong> {creditDetail['Qolgan oldin']}</Typography>
+                </Grid>
+              )}
               {creditDetail.Qolgan && (
                 <Grid item xs={6} sm={3}>
                   <Typography variant="body2"><strong>Qolgan:</strong> {creditDetail.Qolgan}</Typography>
@@ -202,17 +214,21 @@ function LogItem({ log }) {
               <Grid container spacing={1}>
                 {log.qty && (
                   <Grid item xs={6}>
-                    <Typography variant="body2"><strong>Soni:</strong> {log.qty}</Typography>
+                    <Typography variant="body2"><strong>Soni:</strong> {formatInteger(log.qty)}</Typography>
                   </Grid>
                 )}
                 {log.unit_price != null && (
                   <Grid item xs={6}>
-                    <Typography variant="body2"><strong>Narx:</strong> {formatMoney(log.unit_price)} {log.currency}</Typography>
+                    <Typography variant="body2">
+                      <strong>Narx:</strong> {formatForDisplay(log.unit_price, log.currency)} {displayCurrency}
+                    </Typography>
                   </Grid>
                 )}
                 {log.amount != null && (
                   <Grid item xs={6}>
-                    <Typography variant="body2"><strong>Jami:</strong> {formatMoney(log.amount)} {log.currency}</Typography>
+                    <Typography variant="body2">
+                      <strong>Jami:</strong> {formatForDisplay(log.amount, log.currency)} {displayCurrency}
+                    </Typography>
                   </Grid>
                 )}
               </Grid>

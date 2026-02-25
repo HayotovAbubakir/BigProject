@@ -63,7 +63,6 @@ export default function NumberField({ value, onChange, label, fullWidth = true, 
    * This stops unwanted value changes when scrolling over the input
    */
   const handleWheel = (e) => {
-    e.preventDefault()
     e.target.blur() // Remove focus to ensure no value change
   }
 

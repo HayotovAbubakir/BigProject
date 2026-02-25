@@ -143,7 +143,6 @@ export function useNumericInput(initialValue = '', onValueChange = null) {
    * Handle wheel to prevent accidental value changes
    */
   const handleWheel = useCallback((e) => {
-    e.preventDefault()
     if (inputRef.current) {
       inputRef.current.blur()
     }

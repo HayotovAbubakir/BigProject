@@ -1,4 +1,5 @@
 import { supabase } from '/supabase/supabaseClient'
+import { formatMoney, formatInteger } from '../utils/format'
 
 const isSupabaseConfigured = () => {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -11,9 +12,58 @@ export const getLogs = async (user, date = null) => {
   try {
     let query = supabase.from('logs').select('*').order('created_at', { ascending: false })
     if (date) query = query.eq('date', date)
+
     const { data, error } = await query
     if (error) throw error
-    return data || []
+    const logs = data || []
+
+    // Fetch user profiles to enrich logs with full names (acts like a JOIN)
+    const usernames = Array.from(new Set(logs
+      .map(l => (l.user_name || l.user || l.created_by || '').toString().toLowerCase())
+      .filter(Boolean)))
+
+    let profileMap = {}
+    if (usernames.length > 0) {
+      try {
+        const { data: profiles, error: profileErr } = await supabase
+          .from('user_profiles')
+          .select('username, full_name')
+          .in('username', usernames)
+        if (profileErr) throw profileErr
+        profileMap = (profiles || []).reduce((acc, p) => {
+          acc[(p.username || '').toLowerCase()] = p
+          return acc
+        }, {})
+      } catch (profileErr) {
+        console.warn('[getLogs] profile lookup failed (fallback to raw usernames):', profileErr?.message || profileErr)
+      }
+    }
+
+    const enriched = logs.map(l => {
+      const uname = (l.user_name || l.user || l.created_by || '').toString().toLowerCase()
+      const profile = profileMap[uname]
+      const user_full_name = profile?.full_name || null
+      const user_username = profile?.username || l.user_name || l.user || null
+      const user_display = user_full_name || user_username || "Noma'lum"
+      // Add formatted numeric fields for display
+      const qty_formatted = l.qty != null ? formatInteger(l.qty) : null
+      const unit_price_formatted = l.unit_price != null ? formatMoney(l.unit_price) : null
+      const amount_formatted = l.amount != null ? formatMoney(l.amount) : null
+      const total_uzs_formatted = l.total_uzs != null ? formatInteger(l.total_uzs) : null
+
+      // Create a display-friendly 'detail_formatted' by replacing long numeric sequences with formatted versions
+      const formatNumbersInText = (txt) => {
+        if (!txt || typeof txt !== 'string') return txt
+        // Replace sequences of digits (4+ digits) optionally with decimals, that are not already formatted with commas
+        return txt.replace(/(?<![,\d])(\d{4,}(?:\.\d+)?)(?![,\d])/g, (m) => formatMoney(m))
+      }
+
+      const detail_formatted = formatNumbersInText(l.detail)
+
+      return { ...l, user_full_name, user_username, user_display, qty_formatted, unit_price_formatted, amount_formatted, total_uzs_formatted, detail_formatted }
+    })
+
+    return enriched
   } catch (err) {
     console.error('getLogs error:', err)
     return []

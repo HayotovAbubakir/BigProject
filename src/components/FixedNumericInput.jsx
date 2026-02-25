@@ -150,7 +150,7 @@ export default function FixedNumericInput({
    * Prevent mouse wheel from changing value
    */
   function handleWheel(e) {
-    e.preventDefault()
+    if (e?.target) e.target.blur()
   }
 
   return (

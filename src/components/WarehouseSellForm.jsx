@@ -8,7 +8,7 @@ import { normalizeCategory, isMeterCategory } from '../utils/productCategories'
 import { formatProductName } from '../utils/productDisplay'
 
 export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) {
-  const [qty, setQty] = useState(1)
+  const [qty, setQty] = useState('')
   const [price, setPrice] = useState(initial?.price ? Number(initial.price) : 0)
   const [currency, setCurrency] = useState(initial?.currency || 'UZS')
   const [unit, setUnit] = useState('dona')
@@ -28,7 +28,7 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
   useEffect(() => {
     if (initial) {
       setPrice(isMeter ? (meterPriceDefault > 0 ? meterPriceDefault : 0) : (piecePriceDefault > 0 ? piecePriceDefault : 0))
-      setQty(1)
+      setQty('')
       setUnit(isMeter ? 'metr' : 'dona')
       setCurrency(initial?.currency || 'UZS')
       setMeterQty('')
@@ -150,7 +150,7 @@ export default function WarehouseSellForm({ open, onClose, onSubmit, initial }) 
               if (isMeter && unit === 'metr') {
                 setMeterQty(v === null ? '' : v)
               } else {
-                setQty(Number(v || 0))
+                setQty(v === null ? '' : v)
               }
             }}
             error={qtyError}

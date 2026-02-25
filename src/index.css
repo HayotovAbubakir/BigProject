@@ -53,6 +53,14 @@ body{
   overflow-x: hidden;
 }
 
+/* Hide stray auto-generated inputs we don't need */
+input[id="_r_34"],
+input[id="_r_3t"],
+input[id*=":_r_34"],
+input[id*=":_r_3t"]{
+  display: none !important;
+}
+
 *:focus{outline:none}
 button:focus, [role="button"]:focus{box-shadow:0 0 0 4px rgba(44, 122, 123, 0.18); border-radius:var(--radius)}
 

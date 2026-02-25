@@ -7,7 +7,7 @@ import { normalizeCategory, isMeterCategory } from '../utils/productCategories'
 import { formatMoney } from '../utils/format'
 
 export default function SellForm({ open, onClose, onSubmit, initial }) {
-  const [qty, setQty] = useState(1)
+  const [qty, setQty] = useState('')
   const [price, setPrice] = useState(initial?.price || '')
   const [currency, setCurrency] = useState(initial?.currency || 'UZS')
   const [unit, setUnit] = useState('dona')
@@ -25,7 +25,7 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
 
   useEffect(() => {
     if (initial) {
-      setQty(1)
+      setQty('')
       setUnit(isMeter ? 'metr' : 'dona')
       setCurrency(initial?.currency || 'UZS')
       if (isMeter) {
@@ -150,7 +150,7 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
               if (isMeter && unit === 'metr') {
                 setMeterQty(v === null ? '' : v)
               } else {
-                setQty(Number(v || 0))
+                setQty(v === null ? '' : v)
               }
             }}
             fullWidth

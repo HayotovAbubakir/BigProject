@@ -94,7 +94,6 @@ function reducer(state, action) {
           const newQty = packQty > 0 ? Math.ceil(newMeter / packQty) : Math.max(0, Number(it.qty || 0) - Number(action.payload.qty || 0))
           return { ...it, meter_qty: newMeter, qty: newQty }
         })
-        const filteredWh = nextWarehouse.filter(w => isMeterCategory(w) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
 
         const existingStore = state.store.find(s => s.id === action.payload.item?.id)
         let newStore
@@ -108,11 +107,10 @@ function reducer(state, action) {
           const itemToAdd = { ...action.payload.item, meter_qty: meterDelta, qty: newQty }
           newStore = [...state.store, itemToAdd]
         }
-        return { ...state, warehouse: filteredWh, store: newStore, logs: [...state.logs, action.log] }
+        return { ...state, warehouse: nextWarehouse, store: newStore, logs: [...state.logs, action.log] }
       }
 
-      const whUpdated = state.warehouse.map((it) => (it.id === action.payload.id ? { ...it, qty: Number(it.qty) - Number(action.payload.qty) } : it))
-      const filteredWh = whUpdated.filter(w => Number(w.qty) > 0)
+      const whUpdated = state.warehouse.map((it) => (it.id === action.payload.id ? { ...it, qty: Math.max(0, Number(it.qty) - Number(action.payload.qty)) } : it))
 
       const moveQty = Number(action.payload.qty)
       const itemToAdd = { ...action.payload.item, qty: Number(action.payload.item.qty) }
@@ -120,11 +118,11 @@ function reducer(state, action) {
       const existingStore = state.store.find(s => s.id === itemToAdd.id)
       let newStore
       if (existingStore) {
-        newStore = state.store.map(s => s.id === existingStore.id ? { ...s, qty: Number(s.qty) + moveQty } : s)
+        newStore = state.store.map(s => s.id === existingStore.id ? { ...s, qty: Math.max(0, Number(s.qty) + moveQty) } : s)
       } else {
         newStore = [...state.store, itemToAdd]
       }
-      return { ...state, warehouse: filteredWh, store: newStore, logs: [...state.logs, action.log] }
+      return { ...state, warehouse: whUpdated, store: newStore, logs: [...state.logs, action.log] }
     }
     case 'SELL_STORE': {
       const sold = state.store.map((it) => {
@@ -138,7 +136,7 @@ function reducer(state, action) {
         }
         return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
       })
-      const filteredStore = sold.filter(s => isMeterCategory(s) ? Number(s.meter_qty || 0) > 0 : Number(s.qty) > 0)
+      const filteredStore = sold
       // update account balances (credit the selling account) when a sale happens
       try {
         const log = action.log || {}
@@ -176,7 +174,7 @@ function reducer(state, action) {
         }
         return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
       })
-      const filteredWh = soldWh.filter(w => isMeterCategory(w) ? Number(w.meter_qty || 0) > 0 : Number(w.qty) > 0)
+      const filteredWh = soldWh
       // also credit the selling account (if present) for warehouse sales
       try {
         const log = action.log || {}
@@ -353,6 +351,21 @@ export const AppProvider = ({ children }) => {
       .toLowerCase()
       .replace(/\s+/g, ' ')
   }, [])
+
+  // Build a signature that differentiates products with same name but different specs (category/size/pack/stone/electrode)
+  const productSignature = React.useCallback((p) => {
+    if (!p) return ''
+    return [
+      normalizeProductName(p.name),
+      (p.category || '').toString().toLowerCase(),
+      (p.electrode_size || '').toString().toLowerCase(),
+      (p.stone_thickness || '').toString().toLowerCase(),
+      (p.stone_size || '').toString().toLowerCase(),
+      (p.pack_qty || '').toString(),
+      (p.price_pack || '').toString(),
+      (p.price_piece || '').toString()
+    ].join('|')
+  }, [normalizeProductName])
   const isDuplicateProductNameError = React.useCallback((err) => {
     const msg = (err?.message || err?.details || err?.error || '').toString().toLowerCase()
     return msg.includes('products_name_key') || msg.includes('duplicate key value')
@@ -420,9 +433,9 @@ export const AppProvider = ({ children }) => {
   // Action creators with DB persistence
   const addWarehouseProduct = React.useCallback(async (payload, logData) => {
     try {
-      const targetName = normalizeProductName(payload?.name)
-      const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
-      const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
+      const targetSig = productSignature(payload)
+      const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
+      const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
 
       if (existingWarehouse) {
         const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
@@ -446,9 +459,9 @@ export const AppProvider = ({ children }) => {
       dispatch({ type: 'ADD_WAREHOUSE', payload: product, log })
     } catch (_err) {
       if (isDuplicateProductNameError(_err)) {
-        const targetName = normalizeProductName(payload?.name)
-        const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
-        const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
+        const targetSig = productSignature(payload)
+        const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
+        const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
         if (existingWarehouse) {
           const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
           const updates = { qty: newQty }
@@ -471,9 +484,9 @@ export const AppProvider = ({ children }) => {
 
   const addStoreProduct = React.useCallback(async (payload, logData) => {
     try {
-      const targetName = normalizeProductName(payload?.name)
-      const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
-      const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
+      const targetSig = productSignature(payload)
+      const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
+      const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
 
       if (existingStore) {
         const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
@@ -497,9 +510,9 @@ export const AppProvider = ({ children }) => {
       dispatch({ type: 'ADD_STORE', payload: product, log })
     } catch (_err) {
       if (isDuplicateProductNameError(_err)) {
-        const targetName = normalizeProductName(payload?.name)
-        const existingStore = (state.store || []).find(p => normalizeProductName(p.name) === targetName)
-        const existingWarehouse = (state.warehouse || []).find(p => normalizeProductName(p.name) === targetName)
+        const targetSig = productSignature(payload)
+        const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
+        const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
         if (existingStore) {
           const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
           const updates = { qty: newQty }

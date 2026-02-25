@@ -4,7 +4,7 @@ import NumberField from './NumberField'
 import { normalizeCategory, isMeterCategory } from '../utils/productCategories'
 
 export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
-  const [qty, setQty] = useState(1)
+  const [qty, setQty] = useState('')
   const [meter, setMeter] = useState('')
   const [unit, setUnit] = useState('metr')
   const [price, setPrice] = useState('')
@@ -18,13 +18,14 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
 
   useEffect(() => {
     if (initial) {
-      setQty(1)
+      setQty('')
       setMeter('')
       setUnit(isMeter ? 'metr' : 'dona')
       const baseMeter = Number(initial.price ?? 0)
       const basePiece = Number(initial.price_piece ?? initial.price ?? 0)
-      const prefMeter = baseMeter ? baseMeter * 1.2 : 0
-      const prefPiece = basePiece ? basePiece * 1.2 : 0
+      // Use original product prices as defaults when moving to store (no automatic markup)
+      const prefMeter = baseMeter ? baseMeter : 0
+      const prefPiece = basePiece ? basePiece : 0
       setPrice(prefMeter ? String(prefMeter) : '')
       setPricePiece(prefPiece ? String(prefPiece) : '')
       setError('')
@@ -114,10 +115,10 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
             unit === 'metr' ? (
               <NumberField label="Metr" value={meter} onChange={(v) => setMeter(v === null ? '' : v)} fullWidth />
             ) : (
-              <NumberField label="Soni (dona)" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth />
+              <NumberField label="Soni (dona)" value={qty} onChange={(v) => setQty(v === null ? '' : v)} fullWidth />
             )
           ) : (
-            <NumberField label="Soni" value={qty} onChange={(v) => setQty(Number(v || 0))} fullWidth />
+            <NumberField label="Soni" value={qty} onChange={(v) => setQty(v === null ? '' : v)} fullWidth />
           )}
 
           {isMeter ? (

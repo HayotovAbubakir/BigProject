@@ -122,10 +122,10 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
                           {l.productName || l.detail || '-'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
-                          {l.date} {l.time} • {l.user}
+                          {l.date} {l.time} • {l.user_display || l.user_full_name || l.user || l.user_name || "Noma'lum"}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-                          <Typography variant="body2">{t('qty')}: <strong>{l.qty ?? '-'}</strong></Typography>
+                        <Typography variant="body2">{t('qty')}: <strong>{l.qty != null ? formatNumber(l.qty) : '-'}</strong></Typography>
                           {(() => {
                             
                             const qty = Number(l.qty || 0)
@@ -180,9 +180,9 @@ export default function DailySalesByDate({ selectedDate: propDate, onDateChange 
                 salesForDate.map((l, i) => (
                   <TableRow key={`${l.productId || i}-${i}`} hover>
                     <TableCell>{l.time || ''}</TableCell>
-                    <TableCell>{l.user || ''}</TableCell>
+                    <TableCell>{l.user_display || l.user_full_name || l.user || l.user_name || "Noma'lum"}</TableCell>
                     <TableCell>{l.productName || l.detail || ''}</TableCell>
-                    <TableCell align="right">{l.qty ?? ''}</TableCell>
+                    <TableCell align="right">{l.qty != null ? formatNumber(l.qty) : ''}</TableCell>
                     {(() => {
                       const qty = Number(l.qty || 0)
                       const rawAmount = Number(l.amount || 0)

@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  Typography, Button, Table, TableHead, TableRow, TableCell, TableBody,
-  TableContainer, Box, Grid, Paper, IconButton, Tooltip, useTheme, useMediaQuery, Chip, Dialog, DialogTitle, DialogContent, DialogActions
+  Typography, Button, Box, Grid, Paper, IconButton, Tooltip, useTheme, useMediaQuery, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Card, CardContent, CardActions
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -20,11 +19,28 @@ import useExchangeRate from '../hooks/useExchangeRate';
 import CreditForm from '../components/CreditForm';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { calculateCreditTotals } from '../utils/currencyUtils';
+import { formatInteger } from '../utils/format';
+
+function StatusItem({ label, value }) {
+  return (
+    <Box sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+      <Typography variant="caption" color="text.secondary">{label}</Typography>
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>{value}</Typography>
+    </Box>
+  )
+}
 
 function CreditCard({ credit, onEdit, onDelete, onComplete, isRestricted }) {
   const { t } = useLocale();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
   const remaining = credit.remaining !== undefined ? credit.remaining : credit.amount - (credit.bosh_toluv || 0);
+  const initialPaid = Number(credit.bosh_toluv || 0);
+  const fmt = (v) => new Intl.NumberFormat('en-US').format(Number(v || 0));
+  const currencyLabel = credit.currency || 'UZS';
+  const unitPrice = credit.unit_price || credit.price || 0;
+  const totalAmount = credit.amount || 0;
+  const displayTime = credit.time || (credit.created_at ? new Date(credit.created_at).toLocaleTimeString() : '');
+  const displayDate = credit.date || (credit.created_at ? new Date(credit.created_at).toISOString().slice(0, 10) : '');
 
   // Format created_at to show date and time
   const formatDateTime = (timestamp) => {
@@ -40,42 +56,72 @@ function CreditCard({ credit, onEdit, onDelete, onComplete, isRestricted }) {
   };
 
   return (
-    <Grid item xs={12} sm={6}> 
-      <Paper elevation={2} sx={{ p: { xs: 1, md: 2 }, height: '100%', position: 'relative' }}>
-        {credit.completed && <Chip label={t('completed')} color="success" size="small" sx={{ position: 'absolute', top: 8, right: 8 }} />}
-        <Box sx={{ mb: 1 }}>
-          <Typography variant="h6" sx={{ fontSize: { xs: '0.9rem', md: '1.25rem' } }}>{credit.name}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
-            {formatDateTime(credit.created_at)}
-            {credit.created_by && ` - ${credit.created_by}`}
-          </Typography>
-        </Box>
-        
-        {credit.credit_type === 'product' && (credit.product_name || credit.productName) && (
-          <Box sx={{ mb: 2, p: { xs: 1, md: 1.5 }, bgcolor: 'action.hover', borderRadius: 1 }}>
-            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: { xs: '0.8rem', md: '0.875rem' } }}>{credit.product_name || credit.productName}</Typography>
-            <Box sx={{ display: 'flex', gap: { xs: 1, md: 2 }, mt: 1, flexWrap: 'wrap', fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
-              {(credit.qty || credit.quantity) && (
-                <Typography variant="caption"><strong>Soni:</strong> {credit.qty || credit.quantity}</Typography>
-              )}
-              {(credit.unit_price || credit.price) && (
-                <Typography variant="caption"><strong>Narxi:</strong> {(credit.unit_price || credit.price).toLocaleString()} {credit.currency || 'UZS'}</Typography>
-              )}
-              {credit.amount && (
-                <Typography variant="caption"><strong>Jami:</strong> {credit.amount.toLocaleString()} {credit.currency || 'UZS'}</Typography>
-              )}
+    <Grid item xs={12} sm={6} md={4}>
+      <Card elevation={0} sx={{ position: 'relative', borderRadius: 3, height: '100%', bgcolor: '#1a1d21', border: '1px solid #2d3035', color: 'white' }}>
+        {credit.completed && <Chip label={t('completed')} color="success" size="small" sx={{ position: 'absolute', top: 10, right: 10 }} />}
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1, pb: 1 }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, minWidth: 0, wordBreak: 'break-word' }}>
+              {credit.name || t('unknown')}
+            </Typography>
+            <Box sx={{ textAlign: 'right' }}>
+              <Typography variant="caption" sx={{ color: 'gray.300' }}>{displayDate}</Typography>
+              <Typography variant="caption" sx={{ color: 'gray.500', display: 'block' }}>{displayTime}</Typography>
             </Box>
           </Box>
-        )}
-        
-        <Typography variant="h5" sx={{ my: 1, fontSize: { xs: '1.1rem', md: '1.5rem' } }}>{formatForDisplay(remaining, credit.currency)} {displayCurrency}</Typography>
-        <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Izoh: {credit.note || ''}</Typography>
-        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          {!credit.completed && <Tooltip title={t('complete')}><IconButton onClick={onComplete} color="success"><CheckIcon /></IconButton></Tooltip>}
-          <Tooltip title={t('edit')}><IconButton onClick={onEdit} disabled={isRestricted}><EditIcon /></IconButton></Tooltip>
-          <Tooltip title={t('delete')}><IconButton onClick={onDelete} color="error" disabled={isRestricted}><DeleteIcon /></IconButton></Tooltip>
-        </Box>
-      </Paper>
+
+          {/* Body */}
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" sx={{ color: 'gray.400' }}>{t('product')}</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700, wordBreak: 'break-word' }}>
+                {credit.product_name || credit.productName || t('unknown')}
+              </Typography>
+              <Box sx={{ mt: 0.5, display: 'inline-flex', px: 1, py: 0.3, borderRadius: '12px', bgcolor: '#23272f', border: '1px solid #2d3035', color: 'white' }}>
+                {t('qty')}: <strong style={{ marginLeft: 6 }}>{fmt(credit.qty || credit.quantity || 0)}</strong>
+              </Box>
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+              <Typography variant="body2" sx={{ color: 'gray.400' }}>{t('unit_price')}</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                {fmt(unitPrice)} {currencyLabel}
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'gray.400', mt: 0.5 }}>{t('amount')}</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 800, color: '#3dd598' }}>
+                {fmt(totalAmount)} {currencyLabel}
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Status */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 1, mt: 1 }}>
+            <Box sx={{ p: 1, border: '1px solid #2d3035', borderRadius: 1, bgcolor: '#111317' }}>
+              <Typography variant="caption" sx={{ color: 'gray.400' }}>{t('boshToluv')}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>{fmt(initialPaid)} {currencyLabel}</Typography>
+            </Box>
+            <Box sx={{ p: 1, border: '1px solid #2d3035', borderRadius: 1, bgcolor: '#111317' }}>
+              <Typography variant="caption" sx={{ color: 'gray.400' }}>{t('remaining')}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 800, color: '#ff6b6b' }}>{fmt(remaining)} {currencyLabel}</Typography>
+            </Box>
+            <Box sx={{ p: 1, border: '1px solid #2d3035', borderRadius: 1, bgcolor: '#111317' }}>
+              <Typography variant="caption" sx={{ color: 'gray.400' }}>{t('who')}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{credit.created_by || credit.user_name || "Noma'lum"}</Typography>
+            </Box>
+          </Box>
+
+          {credit.note && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {t('note')}: {credit.note}
+            </Typography>
+          )}
+        </CardContent>
+        <CardActions sx={{ justifyContent: 'flex-end', gap: 0.5, px: 2, pb: 2 }}>
+          {!credit.completed && <Tooltip title={t('complete')}><IconButton size="small" onClick={onComplete} color="success"><CheckIcon fontSize="small" /></IconButton></Tooltip>}
+          <Tooltip title={t('edit')}><IconButton size="small" onClick={onEdit} disabled={isRestricted}><EditIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title={t('delete')}><IconButton size="small" onClick={onDelete} color="error" disabled={isRestricted}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+        </CardActions>
+      </Card>
     </Grid>
   );
 }
@@ -92,7 +138,6 @@ export default function Credits() {
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
   const { rate: usdToUzs } = useExchangeRate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Cheklangan userlar umumiy kredits funksiyalarini ishlata olmaydi
   const isRestricted = user?.permissions?.new_account_restriction ?? false;
@@ -166,8 +211,33 @@ export default function Credits() {
       return;
     }
     const amountVal = parseNumber(credit?.amount || ((credit?.qty || 1) * (credit?.unit_price || credit?.price || 0)));
+    const remainingBefore = credit?.remaining !== undefined ? credit.remaining : amountVal - parseNumber(credit?.bosh_toluv || 0);
     const updates = { completed: true, completed_at: new Date().toISOString(), completed_by: username, bosh_toluv: amountVal };
-    const logData = { id: uuidv4(), date: new Date().toISOString().slice(0, 10), time: new Date().toLocaleTimeString(), user_name: username, action: 'credit_closed', kind: 'credit', product_name: credit?.name, qty: 1, unit_price: parseNumber(credit?.amount || 0), amount: parseNumber(credit?.amount || 0), currency: credit?.currency || 'UZS', detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya yakunlandi (${credit?.type === 'berilgan' ? 'berilgan' : 'olingan'}), Klient: ${credit?.name}, Miqdor: ${parseNumber(credit?.amount || 0)} ${credit?.currency || 'UZS'}` };
+    const detailParts = [
+      `Harakat: Nasiya yakunlandi`,
+      `Kredit turi: ${credit?.type === 'berilgan' ? 'berilgan (berildi)' : 'olingan (olindi)'}`,
+      `Klient: ${credit?.name}`,
+      `Kredit berilgan sana: ${credit?.date || (credit?.created_at ? new Date(credit.created_at).toLocaleDateString('uz-UZ') : '-')}`,
+      `Asl summa: ${amountVal} ${credit?.currency || 'UZS'}`,
+      `Avval qolgan: ${remainingBefore} ${credit?.currency || 'UZS'}`,
+      `Yakuni uchun to'langan: ${remainingBefore} ${credit?.currency || 'UZS'}`,
+      `Qachon yakunlandi: ${new Date().toLocaleString('uz-UZ')}`,
+      `Foydalanuvchi: ${username}`
+    ];
+    const logData = {
+      id: uuidv4(),
+      date: new Date().toISOString().slice(0, 10),
+      time: new Date().toLocaleTimeString(),
+      user_name: username,
+      action: 'credit_closed',
+      kind: 'credit',
+      product_name: credit?.name,
+      qty: 1,
+      unit_price: parseNumber(credit?.amount || 0),
+      amount: parseNumber(credit?.amount || 0),
+      currency: credit?.currency || 'UZS',
+      detail: detailParts.join(', ')
+    };
     updateCredit(credit.id, updates, logData);
   };
   
@@ -208,56 +278,18 @@ export default function Credits() {
           </Box>
         </Box>
 
-        {isMobile ? (
-          <Grid container spacing={2}>
-            {filteredCredits.map(c => (
-              <CreditCard 
-                key={c.id} 
-                credit={c}
-                isRestricted={isRestricted}
-                onEdit={() => setEditing(c)}
-                onDelete={() => setConfirm({ open: true, item: c, action: 'delete' })}
-                onComplete={() => setConfirm({ open: true, item: c, action: 'complete' })}
-
-              />
-            ))}
-          </Grid>
-        ) : (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>{t('who')}</TableCell>
-                  <TableCell>{t('date')}</TableCell>
-                  <TableCell align="right">{t('amount')}</TableCell>
-                  <TableCell align="right">{t('remaining')}</TableCell>
-                  <TableCell>{t('type')}</TableCell>
-                  <TableCell>{t('note')}</TableCell>
-                  <TableCell align="right">
-                    {t('actions')}
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredCredits.map((c) => (
-                  <TableRow key={c.id} hover sx={{ opacity: c.completed ? 0.6 : 1 }}>
-                    <TableCell>{c.name}</TableCell>
-                    <TableCell>{c.date}</TableCell>
-                    <TableCell align="right">{formatForDisplay(c.amount, c.currency)} {displayCurrency}</TableCell>
-                    <TableCell align="right">{formatForDisplay(c.remaining !== undefined ? c.remaining : c.amount - (c.bosh_toluv || 0), c.currency)} {displayCurrency}</TableCell>
-                    <TableCell><Chip label={c.type} size="small" color={c.type === 'olingan' ? 'error' : 'success'} variant="outlined" /></TableCell>
-                    <TableCell>Izoh: {c.note || ''}</TableCell>
-                    <TableCell align="right">
-                      {!c.completed && <Tooltip title={t('complete')}><IconButton onClick={() => setConfirm({ open: true, item: c, action: 'complete' })} color="success"><CheckIcon /></IconButton></Tooltip>}
-                        <Tooltip title={t('edit')}><IconButton onClick={() => setEditing(c)}><EditIcon /></IconButton></Tooltip>
-                        <Tooltip title={t('delete')}><IconButton onClick={() => setConfirm({ open: true, item: c, action: 'delete' })} color="error"><DeleteIcon /></IconButton></Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
+        <Grid container spacing={2}>
+          {filteredCredits.map(c => (
+            <CreditCard 
+              key={c.id} 
+              credit={c}
+              isRestricted={isRestricted}
+              onEdit={() => setEditing(c)}
+              onDelete={() => setConfirm({ open: true, item: c, action: 'delete' })}
+              onComplete={() => setConfirm({ open: true, item: c, action: 'complete' })}
+            />
+          ))}
+        </Grid>
       </Paper>
 
       <CreditForm open={openForm} onClose={() => setOpenForm(false)} onSubmit={(p) => { handleAdd(p); setOpenForm(false); }} />

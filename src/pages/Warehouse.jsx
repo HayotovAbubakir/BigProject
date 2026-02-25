@@ -22,6 +22,7 @@ import { useApp } from '../context/useApp';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../context/LocaleContext';
 import useDisplayCurrency from '../hooks/useDisplayCurrency';
+import { useNotification } from '../context/NotificationContext';
 import WarehouseForm from '../components/WarehouseForm';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WholesaleSale from '../components/WholesaleSale';
@@ -104,6 +105,7 @@ export default function Warehouse() {
   const { t } = useLocale();
   const { rate: usdToUzs } = useExchangeRate();
   const { displayCurrency, formatForDisplay } = useDisplayCurrency();
+  const { notify } = useNotification();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -472,12 +474,10 @@ export default function Warehouse() {
           setSellItem(null);
 
           // Success notification
-          const { notify } = useNotification?.() || {};
           if (notify) notify('Success', `Sotildi: ${formatMoney(totalUzs)} UZS`, 'success');
 
         } catch (err) {
           console.error('[Warehouse Sell] Error:', err);
-          const { notify } = useNotification?.() || {};
           if (notify) notify('Error', `Xato: ${err.message}`, 'error');
         }
       }} />

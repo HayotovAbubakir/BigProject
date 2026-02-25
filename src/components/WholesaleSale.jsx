@@ -36,7 +36,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
         name: baseName,
         displayName,
         available: Number(p.qty || 0),
-        qty: 0,
+        qty: '',
         unit: isMeter ? 'metr' : 'dona',
         unitPrice: Number(p.price || 0),
         priceMeter: Number(p.price || 0),
@@ -49,7 +49,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     }))
   }, [selectedSource, state.store, state.warehouse])
 
-  const updateQty = (id, qty) => setItems(it => it.map(i => i.id === id ? { ...i, qty: Number(qty) } : i))
+  const updateQty = (id, qty) => setItems(it => it.map(i => i.id === id ? { ...i, qty: (qty == null ? '' : qty) } : i))
   const updatePrice = (id, price) => setItems(it => it.map(i => i.id === id ? { ...i, unitPrice: Number(price) } : i))
   const updateUnit = (id, unit) => setItems(it => it.map(i => {
     if (i.id !== id) return i
@@ -213,7 +213,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
                 <NumberField
                   label={it.isMeter ? (it.unit === 'metr' ? 'Metr' : 'Soni (dona)') : 'Soni'}
                   value={it.qty}
-                  onChange={(v) => updateQty(it.id, Number(v || 0))}
+                  onChange={(v) => updateQty(it.id, v)}
                   fullWidth
                   sx={{ mt: 1 }}
                 />

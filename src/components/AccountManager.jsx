@@ -227,7 +227,7 @@ export default function AccountManager({ open, onClose }) {
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                helperText="Min 10 chars, upper/lower/number/symbol"
+                helperText="Min 4 chars, no spaces"
               />
               <FormControlLabel 
                 control={<Checkbox checked={newAccountRestricted} onChange={(e) => setNewAccountRestricted(e.target.checked)} />} 

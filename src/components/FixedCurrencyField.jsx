@@ -135,7 +135,6 @@ export default function FixedCurrencyField({
    * Prevent mouse wheel from changing value
    */
   const handleWheel = (e) => {
-    e.preventDefault()
     e.target.blur()
   }
 

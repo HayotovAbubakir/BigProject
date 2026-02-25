@@ -1,16 +1,19 @@
 import React from 'react';
 import { Typography, Card, CardContent, Grid, Box, Alert } from '@mui/material';
-import { formatWithSpaces } from '../utils/format';
+import { formatMoney } from '../utils/format';
 import { useApp } from '../context/useApp';
 import useExchangeRate from '../hooks/useExchangeRate';
 import { useLocale } from '../context/LocaleContext';
 import { useAuth } from '../hooks/useAuth';
+import useDisplayCurrency from '../hooks/useDisplayCurrency';
+import { convertFromBaseUzs, normalizeToBaseUzs, calculateInventoryTotal } from '../utils/currencyUtils';
 
 export default function Accounts() {
   const { state } = useApp();
   const { rate: usdToUzs } = useExchangeRate();
   const { t } = useLocale();
   const { user } = useAuth();
+  const { displayCurrency } = useDisplayCurrency();
 
   // Check if current user is restricted - if so, prevent access to this page
   const isRestricted = user?.permissions?.new_account_restriction ?? false;
@@ -24,50 +27,46 @@ export default function Accounts() {
     );
   }
 
-  // Calculate warehouse value in UZS
-  const warehouseValueUzs = state.warehouse.reduce((sum, item) => {
-    const qty = Number(item.qty || 0);
-    let price = Number(item.price || 0);
-    if (item.currency === 'USD') {
-      price = usdToUzs ? price * usdToUzs : 0;
-    }
-    return sum + qty * price;
-  }, 0);
+  const warehouseTotals = React.useMemo(
+    () => calculateInventoryTotal(state.warehouse, [], displayCurrency, usdToUzs),
+    [state.warehouse, displayCurrency, usdToUzs]
+  );
 
-  // Calculate store value in UZS
-  const storeValueUzs = state.store.reduce((sum, item) => {
-    const qty = Number(item.qty || 0);
-    let price = Number(item.price || 0);
-    if (item.currency === 'USD') {
-      price = usdToUzs ? price * usdToUzs : 0;
-    }
-    return sum + qty * price;
-  }, 0);
+  const storeTotals = React.useMemo(
+    () => calculateInventoryTotal([], state.store, displayCurrency, usdToUzs),
+    [state.store, displayCurrency, usdToUzs]
+  );
 
-  // Total inventory value
-  const totalInventoryValueUzs = warehouseValueUzs + storeValueUzs;
+  const totalInventoryValue = convertFromBaseUzs(
+    (warehouseTotals.totalUzs || 0) + (storeTotals.totalUzs || 0),
+    displayCurrency,
+    usdToUzs
+  );
 
-  // Calculate total debts (olingan nasiyalar)
-  const totalDebtsUzs = state.credits
-    .filter(c => c.credit_subtype === 'olingan' && !c.completed)
-    .reduce((sum, c) => {
-      const amount = Number(c.amount || 0);
-      if (c.currency === 'USD') {
-        return sum + Math.round(c.amount_uzs || (usdToUzs ? amount * usdToUzs : amount));
-      }
-      return sum + amount;
-    }, 0);
+  const creditSum = React.useCallback(
+    (predicate) =>
+      state.credits
+        .filter(c => predicate(c))
+        .reduce((sum, c) => {
+          const base = c.amount_uzs != null
+            ? Number(c.amount_uzs)
+            : normalizeToBaseUzs(c.amount, c.currency, usdToUzs);
+          return sum + base;
+        }, 0),
+    [state.credits, usdToUzs]
+  );
 
-  // Calculate total receivables (berilgan nasiyalar)
-  const totalReceivablesUzs = state.credits
-    .filter(c => c.credit_subtype === 'berilgan' && !c.completed)
-    .reduce((sum, c) => {
-      const amount = Number(c.amount || 0);
-      if (c.currency === 'USD') {
-        return sum + Math.round(c.amount_uzs || (usdToUzs ? amount * usdToUzs : amount));
-      }
-      return sum + amount;
-    }, 0);
+  const totalDebts = convertFromBaseUzs(
+    creditSum(c => c.credit_subtype === 'olingan' && !c.completed),
+    displayCurrency,
+    usdToUzs
+  );
+
+  const totalReceivables = convertFromBaseUzs(
+    creditSum(c => c.credit_subtype === 'berilgan' && !c.completed),
+    displayCurrency,
+    usdToUzs
+  );
 
   const SummaryCard = ({ title, value }) => (
     <Grid item xs={12} sm={6} md={4}>
@@ -77,7 +76,7 @@ export default function Accounts() {
             {title}
           </Typography>
           <Typography variant="h4" component="div">
-            {formatWithSpaces(value)} UZS
+            {formatMoney(value)} {displayCurrency}
           </Typography>
         </CardContent>
       </Card>
@@ -90,11 +89,11 @@ export default function Accounts() {
         {t('accounts_summary')}
       </Typography>
       <Grid container spacing={3}>
-        <SummaryCard title={t('total_receivables')} value={totalReceivablesUzs} />
-        <SummaryCard title={t('total_debts')} value={totalDebtsUzs} />
-        <SummaryCard title={t('store_inventory_value')} value={storeValueUzs} />
-        <SummaryCard title={t('warehouse_inventory_value')} value={warehouseValueUzs} />
-        <SummaryCard title={t('total_inventory_value')} value={totalInventoryValueUzs} />
+        <SummaryCard title={t('total_receivables')} value={totalReceivables} />
+        <SummaryCard title={t('total_debts')} value={totalDebts} />
+        <SummaryCard title={t('store_inventory_value')} value={storeTotals.totalInDisplay || 0} />
+        <SummaryCard title={t('warehouse_inventory_value')} value={warehouseTotals.totalInDisplay || 0} />
+        <SummaryCard title={t('total_inventory_value')} value={totalInventoryValue} />
       </Grid>
     </Box>
   );

@@ -44,7 +44,7 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
         date: toISODate(initial.date),
         currency: initial.currency || 'UZS',
         category: normalizedCategory,
-        price: Number(initial.price ?? piecePrice ?? 0),
+        price: normalizedCategory === 'elektrod' ? packPrice : Number(initial.price ?? piecePrice ?? 0),
         price_piece: piecePrice || '',
         price_pack: packPrice || '',
         pack_qty: packQty || '',
@@ -125,10 +125,6 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
       window.alert('Elektrod razmerini kiriting')
       return
     }
-    if (isElectrode && (!form.price_piece || Number(form.price_piece) <= 0)) {
-      window.alert('Dona narxini 0 dan katta kiriting')
-      return
-    }
     if (isElectrode && (!form.price_pack || Number(form.price_pack) <= 0)) {
       window.alert('Pachka narxini 0 dan katta kiriting')
       return
@@ -149,12 +145,12 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
     const normalizedCategory = normalizeCategory(form.category)
     let payload = { id: initial?.id || uuidv4(), ...form, category: normalizedCategory, qty: Number(form.qty), price: Number(form.price), date: toISODate(form.date) }
     if (isElectrode) {
-      const pieceValue = Number(form.price_piece || form.price || 0)
+      const packValue = Number(form.price_pack || form.price || 0)
       payload = {
         ...payload,
-        price: pieceValue,
-        price_piece: pieceValue,
-        price_pack: Number(form.price_pack || 0),
+        price: packValue,
+        price_piece: null,
+        price_pack: packValue,
         pack_qty: null,
         electrode_size: form.electrode_size ? form.electrode_size.toString().trim() : '',
         stone_thickness: null,
@@ -254,10 +250,7 @@ export default function StoreForm({ open, onClose, onSubmit, initial }) {
             <TextField label="Elektrod razmeri" fullWidth margin="dense" size="small" value={form.electrode_size} onChange={handle('electrode_size')} />
           )}
           {isElectrode && (
-            <>
-              <CurrencyField label="Narxi (1 pachka)" fullWidth margin="dense" value={form.price_pack} onChange={(v) => setForm(prev => ({ ...prev, price_pack: v === null ? '' : v }))} currency={form.currency} />
-              <CurrencyField label="Narxi (1 dona)" fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v, price: v === null ? '' : v }))} currency={form.currency} />
-            </>
+            <CurrencyField label="Narxi (1 pachka)" fullWidth margin="dense" value={form.price_pack} onChange={(v) => setForm(prev => ({ ...prev, price_pack: v === null ? '' : v, price: v === null ? '' : v }))} currency={form.currency} />
           )}
           {isStone && (
             <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>

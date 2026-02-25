@@ -67,10 +67,12 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
       const credit = (state.credits || []).find(c => c.id === deleteConfirm.id)
       if (!credit) return
 
+      const now = new Date()
+      const humanRemaining = credit.remaining ?? ((credit.amount || 0) - (credit.bosh_toluv || 0))
       const logPayload = {
         id: uuidv4(),
-        date: new Date().toISOString().slice(0, 10),
-        time: new Date().toLocaleTimeString(),
+        date: now.toISOString().slice(0, 10),
+        time: now.toLocaleTimeString(),
         user_name: username,
         action: 'CREDIT_DELETE',
         kind: 'credit',
@@ -81,9 +83,8 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
         unit_price: credit.unit_price || credit.unitPrice || credit.price || null,
         amount: credit.amount || ((credit.qty || 1) * (credit.unit_price || credit.price || 0)),
         currency: credit.currency || 'UZS',
-        remaining: credit.remaining,
-        detail: `Deleted credit ${deleteConfirm.id} for client ${credit.clientName || credit.name || credit.client_name || ''}` +
-                (credit.product_name || credit.productName ? `: ${credit.qty || 1} x ${credit.product_name || credit.productName} @ ${credit.unit_price || credit.unitPrice || credit.price || ''} ${credit.currency || 'UZS'}` : `: amount ${credit.amount || ''} ${credit.currency || 'UZS'}`)
+        remaining: humanRemaining,
+        detail: `Kim: ${username || 'Nomaʼlum'}, Sana: ${now.toLocaleDateString('uz-UZ')} ${now.toLocaleTimeString()}, Harakat: Nasiya o'chirildi, Klient: ${credit.clientName || credit.name || credit.client_name || ''}, Mahsulot: ${credit.product_name || credit.productName || '—'}, Soni: ${credit.qty || credit.quantity || 1}, Narx: ${credit.unit_price || credit.unitPrice || credit.price || 0} ${credit.currency || 'UZS'}, Jami: ${credit.amount || 0} ${credit.currency || 'UZS'}, Qolgan: ${humanRemaining} ${credit.currency || 'UZS'}`
       }
       
       try {
@@ -107,6 +108,13 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
     if (!credit) return
     const amt = Number(deductState.value || 0)
     const currentRemaining = (credit.remaining !== undefined) ? credit.remaining : ((credit.amount || 0) - (credit.bosh_toluv || 0))
+    const currency = credit.currency || 'UZS'
+    const clientName = credit.clientName || credit.name || credit.client_name || ''
+    const productName = credit.product_name || credit.productName || (credit.credit_type === 'cash' ? 'Pul' : '')
+    const qty = credit.qty || credit.quantity || 1
+    const unitPrice = credit.unit_price || credit.unitPrice || credit.price || null
+    const totalAmount = credit.amount || ((qty || 1) * (unitPrice || 0))
+    const direction = credit.credit_subtype || credit.credit_direction || credit.type || credit.credit_type || ''
     
     if (!amt || amt <= 0) {
       return notify('Xato', 'To\'lov miqdori 0 dan katta bo\'lishi kerak', 'error')
@@ -128,18 +136,37 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
       updates.completed_by = username
     }
 
+    const detailParts = [
+      `Kim: ${username}`,
+      `Vaqt: ${new Date().toLocaleTimeString()}`,
+      `Harakat: Nasiya to'lov (minus)`,
+      `Klient: ${clientName || '-'}`,
+      `Mahsulot: ${productName || '-'}`,
+      `Soni: ${qty || '-'}`,
+      unitPrice ? `Narx: ${unitPrice} ${currency}` : null,
+      totalAmount ? `Jami: ${totalAmount} ${currency}` : null,
+      `To'lov: ${amt} ${currency}`,
+      `Qolgan oldin: ${currentRemaining} ${currency}`,
+      `Qolgan: ${newRemaining} ${currency}`,
+      direction ? `Yo'nalish: ${direction}` : null,
+      `Valyuta: ${currency}`
+    ].filter(Boolean)
+
     const logPayload = {
       id: uuidv4(),
       user_name: username,
       action: 'CREDIT_DEDUCT',
       kind: 'credit',
-      client_name: credit.clientName || credit.name || credit.client_name || credit.name,
-      product_name: credit.product_name || credit.productName || null,
-      qty: credit.qty || 1,
-      unit_price: credit.unit_price || credit.unitPrice || credit.price || null,
+      client_name: clientName || credit.name,
+      product_name: productName || null,
+      qty,
+      unit_price: unitPrice,
       amount: amt,
-      currency: credit.currency,
-      detail: `Deducted ${amt} ${credit.currency || 'UZS'} from credit for ${credit.clientName || credit.name}`,
+      currency,
+      remaining: newRemaining,
+      remaining_before: currentRemaining,
+      credit_type: credit.credit_type || credit.credit_subtype || credit.type || null,
+      detail: detailParts.join(', '),
       date: new Date().toISOString().slice(0, 10),
       time: new Date().toLocaleTimeString(),
     };

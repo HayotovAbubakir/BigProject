@@ -33,7 +33,10 @@ export function NotificationProvider({ children }) {
           autoHideDuration={6000}
           onClose={() => hideNotification(n.id)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-          style={{ bottom: `${index * 65 + 20}px` }}
+          sx={{
+            bottom: `${index * 65 + 20}px`,
+            zIndex: (theme) => theme.zIndex.modal + 20
+          }}
         >
           <Alert onClose={() => hideNotification(n.id)} severity={n.severity} sx={{ width: '100%' }}>
             <AlertTitle>{n.title}</AlertTitle>

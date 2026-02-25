@@ -172,19 +172,44 @@ export default function Clients() {
   const removeProduct = (index) => setProducts(products.filter((_, i) => i !== index));
 
   const isProductFilled = (p) => {
-    if (!p.name || !p.qty || !p.sellPrice) return false;
-    if (p.isNewProduct) {
-      const cat = normalizeCategory(p.category);
-      if (!cat) return false;
-      if (cat === 'elektrod') {
-        return !!p.electrode_size && Number(p.price_pack) > 0 && Number(p.price_piece) > 0;
+    if (!p.name || !p.qty) return false;
+    const cat = normalizeCategory(p.category || '');
+    const isMeter = isMeterCategory(cat || p);
+    const isBerilgan = creditSubtype === 'berilgan';
+    const isBerilganMeter = isBerilgan && isMeter;
+
+    // For meter items: pack size + both prices when received; only piece price when given.
+    if (p.isNewProduct && isMeter) {
+      const hasPack = Number(p.pack_qty) > 0;
+      const piecePriceOk = Number(p.price_piece) > 0;
+      if (isBerilgan) {
+        return hasPack && piecePriceOk;
       }
-      if (isMeterCategory(cat)) {
-        return Number(p.pack_qty) > 0 && Number(p.price_piece || p.sellPrice) > 0;
-      }
-      // stones optional fields
+      const meterPriceOk = Number(p.sellPrice) > 0;
+      return hasPack && meterPriceOk && piecePriceOk;
     }
-    return true;
+
+    if (p.isNewProduct && cat === 'elektrod') {
+      // Electrodes: only pack price required; per-piece/per-meter ignored
+      return !!p.electrode_size && Number(p.price_pack) > 0;
+    }
+
+    if (p.isNewProduct && isMeterCategory(cat)) {
+      if (isBerilgan) {
+        return Number(p.pack_qty) > 0 && Number(p.price_piece) > 0;
+      }
+      return Number(p.pack_qty) > 0 && Number(p.price_piece || p.sellPrice) > 0;
+    }
+
+    if (creditSubtype === 'olingan' && isMeter) {
+      if (!p.receivePrice || Number(p.receivePrice) <= 0) return false;
+    }
+
+    if (isBerilganMeter) {
+      return Number(p.price_piece) > 0;
+    }
+
+    return !!p.sellPrice;
   };
 
   const convertDownPayment = (amount, fromCurrency, toCurrency) => {
@@ -199,14 +224,64 @@ export default function Clients() {
     return value
   }
 
-  const handleAddCredit = async () => {
-    const initialPayAmount = Number(initialPayment) || 0;
-    const initialPayCurrency = (initialPaymentCurrency || creditCurrency || 'UZS').toUpperCase();
+  const resetCreditForm = () => {
+    setCreditType('cash')
+    setCreditSubtype('berilgan')
+    setCreditAmount('')
+    setCreditCurrency('UZS')
+    setInitialPayment('')
+    setInitialPaymentCurrency('UZS')
+    setProducts([])
+    setLocation('warehouse')
+    setCreditDate(new Date().toISOString().slice(0,10))
+    setCreditNote('')
+  }
 
+  const handleAddCredit = () => {
+    if (!creditClient) return;
+
+    // Snapshot current form values so we can reset UI immediately (optimistic UX)
+    const snapshot = {
+      creditType,
+      creditSubtype,
+      creditAmount,
+      creditCurrency,
+      initialPayment,
+      initialPaymentCurrency,
+      products: products.map(p => ({ ...p })),
+      location,
+      creditDate,
+      creditNote,
+      creditClient
+    }
+
+    // Close modal & clear fields without waiting for network
+    setCreditOpen(false)
+    resetCreditForm()
+    setCreditClient(null)
+
+    ;(async () => {
+    const initialPayAmount = Number(snapshot.initialPayment) || 0;
+    const initialPayCurrency = (snapshot.initialPaymentCurrency || snapshot.creditCurrency || 'UZS').toUpperCase();
+    const convertedDownPaymentBase = convertDownPayment(initialPayAmount, initialPayCurrency, snapshot.creditCurrency);
+
+    const {
+      creditType,
+      creditSubtype,
+      creditAmount,
+      creditCurrency,
+      products,
+      location,
+      creditDate,
+      creditNote,
+      creditClient
+    } = snapshot
+
+    try {
     if (creditType === 'cash') {
       if (!creditAmount) return;
       const totalAmount = Number(creditAmount);
-      const convertedDownPayment = convertDownPayment(initialPayAmount, initialPayCurrency, creditCurrency)
+      const convertedDownPayment = convertedDownPaymentBase
       if (convertedDownPayment === null) {
         notify('Xato', 'Valyuta kursi kiritilmagan. Kursni kiriting yoki bir xil valyutada kiriting.', 'error')
         return
@@ -214,16 +289,17 @@ export default function Clients() {
       if (convertedDownPayment > totalAmount) {
         notify('Warning', "Boshlang'ich to'lov umumiy miqdordan ko'p bo'lishi mumkin emas", 'warning'); return;
       }
-      const payload = {
-        id: uuidv4(),
-        client_id: creditClient.id,
-        name: creditClient.name,
-        credit_type: 'cash',
-        amount: totalAmount,
-        currency: creditCurrency,
-        bosh_toluv: convertedDownPayment,
-        bosh_toluv_original: initialPayAmount,
-        bosh_toluv_currency: initialPayCurrency,
+          const payload = {
+            id: uuidv4(),
+            client_id: creditClient.id,
+            name: creditClient.name,
+            credit_type: 'cash',
+            credit_subtype: creditSubtype,
+            amount: totalAmount,
+            currency: creditCurrency,
+            bosh_toluv: convertedDownPayment,
+            bosh_toluv_original: initialPayAmount,
+            bosh_toluv_currency: initialPayCurrency,
         completed: (totalAmount - convertedDownPayment) <= 0,
         created_by: username,
         date: creditDate,
@@ -256,100 +332,158 @@ export default function Clients() {
         let productId;
         let productName = p.name;
         let productQty = Number(p.qty);
-        let productUnitPrice = Number(p.sellPrice || p.price_piece || p.price_pack);
-        let productCurrency = p.sellCurrency;
-        const convertedDownPayment = convertDownPayment(initialPayAmount, initialPayCurrency, productCurrency)
-        if (convertedDownPayment === null) {
-          notify('Xato', 'Valyuta kursi kiritilmagan. Kursni kiriting yoki bir xil valyutada kiriting.', 'error')
-          return
-        }
+        let existingProduct = null;
+        const cat = normalizeCategory(p.category || '');
+        const isMeter = isMeterCategory(cat);
+        const isElectrode = cat === 'elektrod';
+        const packQty = isMeter ? Number(p.pack_qty || 0) : 0;
 
         if (p.isNewProduct) {
+          // Allow new product for both 'olingan' (received) and 'berilgan' (given) credits
+          const newProductId = uuidv4();
+          const basePrice = isElectrode
+            ? Number(p.price_pack || 0)
+            : (creditSubtype === 'olingan'
+                ? (isMeter ? Number(p.sellPrice || p.price_piece || 0) : Number(p.receivePrice || 0))
+                : Number(p.sellPrice || p.price_piece || 0));
+          const meterPrice = isMeter ? basePrice : null;
+          const piecePrice = isElectrode
+            ? null
+            : (isMeter
+                ? Number(p.price_piece || (meterPrice && packQty ? meterPrice * packQty : 0))
+                : Number(p.price_piece || p.sellPrice || basePrice));
+          const productPayload = {
+            id: newProductId,
+            name: productName,
+            qty: productQty,
+            price: isMeter ? meterPrice : basePrice,
+            price_piece: piecePrice,
+            price_pack: isElectrode ? Number(p.price_pack || 0) : null,
+            pack_qty: isMeter ? packQty : null,
+            meter_qty: isMeter ? Number(productQty * packQty) : null,
+            category: cat,
+            electrode_size: isElectrode ? (p.electrode_size || '') : null,
+            stone_thickness: cat === 'tosh' ? (p.stone_thickness || '') : null,
+            stone_size: cat === 'tosh' ? (p.stone_size || '') : null,
+            currency: creditSubtype === 'olingan' ? (p.receiveCurrency || 'UZS') : (p.sellCurrency || 'UZS')
+          };
+          const logData = { id: uuidv4(), user_name: username, action: 'PRODUCT_ADD', detail: `Added new product ${productName} via credit (${creditSubtype}) for client ${creditClient.name}` };
+
           if (creditSubtype === 'olingan') {
-            // New product being received as credit
-            const newProductId = uuidv4();
-            const cat = normalizeCategory(p.category);
-            const isMeter = isMeterCategory(cat);
-            const isElectrode = cat === 'elektrod';
-            const productPayload = {
-              id: newProductId,
-              name: productName,
-              qty: productQty,
-              price: Number(p.receivePrice || p.price_piece || p.sellPrice || 0),
-              price_piece: isElectrode ? Number(p.price_piece || p.receivePrice || 0) : (isMeter ? Number(p.price_piece || p.sellPrice || 0) : null),
-              price_pack: isElectrode ? Number(p.price_pack || 0) : null,
-              pack_qty: isMeter ? Number(p.pack_qty || 0) : null,
-              meter_qty: isMeter ? Number(productQty * Number(p.pack_qty || 0)) : null,
-              category: cat,
-              electrode_size: isElectrode ? (p.electrode_size || '') : null,
-              stone_thickness: cat === 'tosh' ? (p.stone_thickness || '') : null,
-              stone_size: cat === 'tosh' ? (p.stone_size || '') : null,
-              currency: p.receiveCurrency
-            };
-            const logData = { id: uuidv4(), user_name: username, action: 'PRODUCT_ADD', detail: `Added new product ${productName} via credit from client ${creditClient.name}` };
+            // receiving: create and add to inventory
             if (location === 'warehouse') {
               await addWarehouseProduct(productPayload, logData);
             } else {
               await addStoreProduct(productPayload, logData);
             }
             productId = newProductId;
+            existingProduct = productPayload;
           } else {
-            notify('Error', 'Yangi mahsulotni faqat qabul qilingan nasiya sifatida kiritish mumkin.', 'error');
-            return;
+            // berilgan: do NOT touch inventory; standalone product record for credit only
+            productId = null;
+            existingProduct = null;
           }
         } else {
           // Existing product
           const inventory = location === 'warehouse' ? state.warehouse : state.store;
-          const existingProduct = inventory.find(item => item.name === p.name);
+          existingProduct = inventory.find(item => item.name === p.name);
           if (!existingProduct) {
             notify('Error', `Mahsulot "${p.name}" ${location === 'warehouse' ? 'omborda' : 'do\'konda'} topilmadi.`, 'error');
             return;
           }
           productId = existingProduct.id;
-          // If giving product to client (berilgan), decrement stock
-          if (creditSubtype === 'berilgan') {
-            const available = Number(existingProduct.qty || 0);
-            if (available < productQty) {
-              notify('Error', `Tanlangan mahsulotdan yetarli zaxira yo'q. Mavjud: ${available}`, 'error');
-              return;
-            }
-            const newQty = Math.max(0, available - productQty);
-            const invLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'product_credited', kind: 'CREDIT', product_name: existingProduct.name, qty: productQty, detail: `Product credited to client ${creditClient.name}: -${productQty}` };
-            if (location === 'warehouse') {
-              await updateWarehouseProduct(existingProduct.id, { qty: newQty }, invLog);
-            } else {
-              await updateStoreProduct(existingProduct.id, { qty: newQty }, invLog);
-            }
+        }
+
+        const derivedCategory = normalizeCategory(p.category || existingProduct?.category || '');
+        const isMeterResolved = isMeterCategory(derivedCategory || existingProduct || p);
+        const packQtyResolved = Number(p.pack_qty || existingProduct?.pack_qty || 0);
+        const totalMeters = isMeterResolved ? Number(productQty * (packQtyResolved || 0)) : 0;
+        let creditUnitPrice;
+        if (creditSubtype === 'olingan') {
+          creditUnitPrice = Number(isMeterResolved ? p.sellPrice || p.price_piece || p.price_pack : p.receivePrice || 0);
+        } else {
+          creditUnitPrice = Number(isMeterResolved ? (p.price_piece || p.sellPrice || 0) : (p.sellPrice || p.price_piece || p.price_pack));
+        }
+        const productCurrency = creditSubtype === 'olingan' ? (p.receiveCurrency || 'UZS') : (p.sellCurrency || 'UZS');
+        const qtyForAmount = (creditSubtype === 'berilgan' && isMeterResolved)
+          ? productQty
+          : (isMeterResolved ? (totalMeters > 0 ? totalMeters : productQty) : productQty);
+        const totalAmount = Number(qtyForAmount || 0) * Number(creditUnitPrice || 0);
+        const convertedDownPayment = convertDownPayment(initialPayAmount, initialPayCurrency, productCurrency)
+        if (convertedDownPayment === null) {
+          notify('Xato', 'Valyuta kursi kiritilmagan. Kursni kiriting yoki bir xil valyutada kiriting.', 'error')
+          return
+        }
+
+        // Inventory adjustments for existing products happen after calculations to avoid TDZ errors
+        if (!p.isNewProduct && creditSubtype === 'berilgan') {
+          const available = Number(existingProduct.qty || 0);
+          if (available < productQty) {
+            notify('Error', `Tanlangan mahsulotdan yetarli zaxira yo'q. Mavjud: ${available}`, 'error');
+            return;
           }
-          // If receiving product from client (olingan), increment stock
-          if (creditSubtype === 'olingan') {
-            const available = Number(existingProduct.qty || 0);
-            const newQty = available + productQty;
-            const invLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'product_received_credit', kind: 'CREDIT', product_name: existingProduct.name, qty: productQty, detail: `Product received on credit from client ${creditClient.name}: +${productQty}` };
-            if (location === 'warehouse') {
-              await updateWarehouseProduct(existingProduct.id, { qty: newQty }, invLog);
-            } else {
-              await updateStoreProduct(existingProduct.id, { qty: newQty }, invLog);
-            }
+          const newQty = Math.max(0, available - productQty);
+          const invLog = {
+            id: uuidv4(),
+            date: new Date().toISOString().slice(0,10),
+            time: new Date().toLocaleTimeString(),
+            user_name: username,
+            action: 'product_credited',
+            kind: 'CREDIT',
+            product_name: existingProduct.name,
+            qty: productQty,
+            unit_price: creditUnitPrice,
+            amount: totalAmount,
+            currency: productCurrency,
+            detail: `Kim: ${username}, Sana: ${new Date().toLocaleDateString('uz-UZ')} ${new Date().toLocaleTimeString()}, Harakat: Nasiya sotildi (ombor/do'kondan chiqarildi), Klient: ${creditClient.name}, Mahsulot: ${existingProduct.name}, Soni: ${productQty}, Narx: ${creditUnitPrice} ${productCurrency}, Jami: ${totalAmount} ${productCurrency}`
+          };
+          if (location === 'warehouse') {
+            await updateWarehouseProduct(existingProduct.id, { qty: newQty }, invLog);
+          } else {
+            await updateStoreProduct(existingProduct.id, { qty: newQty }, invLog);
+          }
+        }
+        if (!p.isNewProduct && creditSubtype === 'olingan') {
+          const available = Number(existingProduct.qty || 0);
+          const newQty = available + productQty;
+          const invLog = {
+            id: uuidv4(),
+            date: new Date().toISOString().slice(0,10),
+            time: new Date().toLocaleTimeString(),
+            user_name: username,
+            action: 'product_received_credit',
+            kind: 'CREDIT',
+            product_name: existingProduct.name,
+            qty: productQty,
+            unit_price: creditUnitPrice,
+            amount: totalAmount,
+            currency: productCurrency,
+            detail: `Kim: ${username}, Sana: ${new Date().toLocaleDateString('uz-UZ')} ${new Date().toLocaleTimeString()}, Harakat: Nasiya qabul qilindi (omborga qo'shildi), Klient: ${creditClient.name}, Mahsulot: ${existingProduct.name}, Soni: ${productQty}, Narx: ${creditUnitPrice} ${productCurrency}, Jami: ${totalAmount} ${productCurrency}`
+          };
+          if (location === 'warehouse') {
+            await updateWarehouseProduct(existingProduct.id, { qty: newQty }, invLog);
+          } else {
+            await updateStoreProduct(existingProduct.id, { qty: newQty }, invLog);
           }
         }
 
-        const payload = {
-          id: uuidv4(),
-          client_id: creditClient.id,
-          name: creditClient.name,
-          credit_type: 'product',
-          product_id: productId,
-          product_name: productName,
-          qty: productQty,
-          unit_price: productUnitPrice,
-          amount: (productQty || 0) * (productUnitPrice || 0),
+          const payload = {
+            id: uuidv4(),
+            client_id: creditClient.id,
+            name: creditClient.name,
+            credit_type: 'product',
+            credit_subtype: creditSubtype,
+            product_id: productId,
+            product_name: productName,
+            qty: productQty,
+            unit_price: creditUnitPrice,
+            amount: totalAmount,
           bosh_toluv: convertedDownPayment,
           bosh_toluv_original: initialPayAmount,
           bosh_toluv_currency: initialPayCurrency,
           currency: productCurrency,
           // bosh_toluv set above from initial payment
-          completed: ((productQty || 0) * (productUnitPrice || 0)) - convertedDownPayment <= 0,
+          completed: totalAmount - convertedDownPayment <= 0,
           created_by: username,
           date: creditDate,
           note: creditNote,
@@ -365,15 +499,15 @@ export default function Clients() {
           kind: 'credit',
           product_name: productName,
           qty: productQty,
-          unit_price: productUnitPrice,
-          amount: (productQty || 0) * (productUnitPrice || 0),
+          unit_price: creditUnitPrice,
+          amount: totalAmount,
           currency: productCurrency || 'UZS',
           product_id: productId,
           client_name: creditClient.name,
           down_payment: convertedDownPayment || 0,
-          remaining: (productQty || 0) * (productUnitPrice || 0),
+          remaining: totalAmount,
           credit_type: 'product',
-          detail: `Added product credit for ${creditClient.name}: ${productQty} x ${productName} @ ${productUnitPrice} ${productCurrency || 'UZS'}${initialPayAmount > 0 ? `, down payment ${convertedDownPayment} ${productCurrency || 'UZS'}${initialPayCurrency !== productCurrency ? ` (${initialPayAmount} ${initialPayCurrency})` : ''}` : ''}`
+          detail: `Kim: ${username}, Sana: ${new Date().toLocaleDateString('uz-UZ')} ${new Date().toLocaleTimeString()}, Harakat: Nasiya qo'shildi (${creditSubtype}), Klient: ${creditClient.name}, Mahsulot: ${productName}, Kategoriya: ${derivedCategory || '-'}, ${isElectrode ? `Razmer: ${p.electrode_size || existingProduct?.electrode_size || '-'}, ` : ''}${derivedCategory === 'tosh' ? `Qalinlik: ${p.stone_thickness || existingProduct?.stone_thickness || '-'}, Hajmi: ${p.stone_size || existingProduct?.stone_size || '-'}, ` : ''}${isMeter ? `Pachka: ${packQtyResolved || 0}, Metr: ${totalMeters || 0}, ` : ''}Soni: ${productQty}, Narx: ${creditUnitPrice} ${productCurrency}, Jami: ${totalAmount} ${productCurrency}, Bosh to'lov: ${convertedDownPayment} ${productCurrency}${initialPayCurrency !== productCurrency ? ` (${initialPayAmount} ${initialPayCurrency})` : ''}`
         };
         
         // ALSO create a SELL log for daily_sales so it appears in dashboard daily sales
@@ -386,13 +520,13 @@ export default function Clients() {
           kind: 'SELL',
           product_name: productName,
           qty: productQty,
-          unit_price: productUnitPrice,
-          amount: (productQty || 0) * (productUnitPrice || 0),
+          unit_price: creditUnitPrice,
+          amount: totalAmount,
           currency: productCurrency || 'UZS',
           product_id: productId,
           client_name: creditClient.name,
-          total_uzs: productCurrency === 'USD' ? Math.round((productQty || 0) * (productUnitPrice || 0) * (state.exchangeRate || 1)) : (productQty || 0) * (productUnitPrice || 0),
-          detail: `Nasiya sotuvı (berildi) ${creditClient.name} ga: ${productQty} x ${productName} @ ${productUnitPrice} ${productCurrency || 'UZS'}`
+          total_uzs: productCurrency === 'USD' ? Math.round(totalAmount * (state.exchangeRate || 1)) : totalAmount,
+          detail: `Nasiya sotuvı (berildi) ${creditClient.name} ga: ${productQty} x ${productName} @ ${creditUnitPrice} ${productCurrency || 'UZS'}`
         };
         
         const created = await addCredit(payload, creditLogData);
@@ -410,7 +544,29 @@ export default function Clients() {
             const amountVal = Number(payload.amount || 0)
             const completedFlag = (amountVal - Number(convertedDownPayment || 0)) <= 0
             const updates = { bosh_toluv: Number(convertedDownPayment || 0), bosh_toluv_original: initialPayAmount, bosh_toluv_currency: initialPayCurrency, completed: completedFlag }
-            const creditLog = { id: uuidv4(), date: new Date().toISOString().slice(0,10), time: new Date().toLocaleTimeString(), user_name: username, action: 'CREDIT_PAYMENT', kind: 'PAYMENT', product_name: `Payment for credit to ${creditClient.name}`, detail: `Initial payment of ${initialPayAmount} ${initialPayCurrency} for credit to ${creditClient.name}`, amount: Number(convertedDownPayment || 0), currency: productCurrency }
+            const remainingAfter = Math.max(0, amountVal - Number(convertedDownPayment || 0))
+            const creditLog = {
+              id: uuidv4(),
+              date: new Date().toISOString().slice(0,10),
+              time: new Date().toLocaleTimeString(),
+              user_name: username,
+              action: 'CREDIT_PAYMENT',
+              kind: 'PAYMENT',
+              product_name: `Payment for credit to ${creditClient.name}`,
+              amount: Number(convertedDownPayment || 0),
+              currency: productCurrency,
+              detail: [
+                `Harakat: Boshlang'ich to'lov`,
+                `Klient: ${creditClient.name}`,
+                `Kredit turi: ${creditSubtype}`,
+                `Kredit sanasi: ${payload.date || new Date().toISOString().slice(0,10)}`,
+                `Asl summa: ${amountVal} ${productCurrency}`,
+                `To'lov: ${initialPayAmount} ${initialPayCurrency} (=${Number(convertedDownPayment || 0)} ${productCurrency})`,
+                `Qolgan: ${remainingAfter} ${productCurrency}`,
+                `Foydalanuvchi: ${username}`,
+                `Yaratilgan: ${new Date().toLocaleString('uz-UZ')}`
+              ].join(', ')
+            }
             await updateCredit(created.id, updates, creditLog)
           } catch (e) {
             console.warn('Failed to apply initial payment to created product credit', e)
@@ -420,23 +576,43 @@ export default function Clients() {
     }
 
     if (initialPayAmount > 0 && creditType === 'product') {
+      const downPaymentForCredit = convertedDownPaymentBase;
+      if (downPaymentForCredit === null) {
+        notify('Xato', 'Valyuta kursi kiritilmagan. Kursni kiriting yoki bir xil valyutada kiriting.', 'error')
+        return
+      }
+      const remainingAfter = Math.max(0, Number(creditAmount || 0) - Number(downPaymentForCredit || 0));
       const paymentLog = {
           id: uuidv4(),
           user_name: username,
           action: 'CREDIT_PAYMENT',
           kind: 'PAYMENT',
           product_name: `Payment for credit to ${creditClient.name}`,
-          detail: `Initial payment of ${initialPayAmount} ${initialPayCurrency} for credit to ${creditClient.name}`,
           date: new Date().toISOString().slice(0, 10),
           time: new Date().toLocaleTimeString(),
           amount: initialPayAmount,
           currency: initialPayCurrency,
+          detail: [
+            `Harakat: Boshlang'ich to'lov`,
+            `Klient: ${creditClient.name}`,
+            `Kredit turi: ${creditSubtype}`,
+            `Kredit sanasi: ${creditDate}`,
+            `Asl summa: ${creditAmount} ${creditCurrency}`,
+            `To'lov: ${initialPayAmount} ${initialPayCurrency} (=${Number(downPaymentForCredit || 0)} ${creditCurrency})`,
+            `Qolgan: ${remainingAfter} ${creditCurrency}`,
+            `Foydalanuvchi: ${username}`,
+            `Yaratilgan: ${new Date().toLocaleString('uz-UZ')}`
+          ].join(', ')
       };
       await insertLog(paymentLog);
     }
 
-    setCreditOpen(false);
-    setCreditClient(null);
+    notify('Muvaffaqiyat', t('credit_saved') || "Nasiya qo'shildi", 'success');
+    } catch (err) {
+      console.error('Add credit failed:', err);
+      notify('Xato', 'Nasiyani saqlashda xatolik yuz berdi', 'error');
+    }
+    })();
   };
 
   const filteredClients = state.clients.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()));
@@ -646,10 +822,11 @@ export default function Clients() {
                 const isMeter = isMeterCategory(derivedCategory);
                 const isElectrode = normalizeCategory(derivedCategory) === 'elektrod';
                 const isStone = normalizeCategory(derivedCategory) === 'tosh';
+                const isBerilganMeter = creditSubtype === 'berilgan' && isMeter;
                 return (
                   <Grid container spacing={1} key={index} sx={{ mb: 2, alignItems: 'center' }}>
                     <Grid item xs={12} sm={4}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {p.isNewProduct ? (
                           <TextField
                             label={t('productName')}
@@ -711,22 +888,16 @@ export default function Clients() {
                             {categories.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
                           </TextField>
                         </Grid>
-                        {isElectrode && (
-                          <>
-                            <Grid item xs={6} sm={2}>
-                              <TextField label="Razmer" fullWidth margin="dense" value={p.electrode_size} onChange={(e) => updateProduct(index, 'electrode_size', e.target.value)} />
-                            </Grid>
-                            <Grid item xs={6} sm={2}>
-                              <CurrencyField label="Narxi (pachka)" fullWidth margin="dense" value={p.price_pack} onChange={(val) => updateProduct(index, 'price_pack', val)} currency={p.sellCurrency || 'UZS'} />
-                            </Grid>
-                            <Grid item xs={6} sm={2}>
-                              <CurrencyField label="Narxi (dona)" fullWidth margin="dense" value={p.price_piece} onChange={(val) => updateProduct(index, 'price_piece', val)} currency={p.sellCurrency || 'UZS'} />
-                            </Grid>
-                            <Grid item xs={6} sm={2}>
-                              <CurrencyField label="Narxi (metr)" fullWidth margin="dense" value={p.sellPrice} onChange={(val) => updateProduct(index, 'sellPrice', val)} currency={p.sellCurrency || 'UZS'} />
-                            </Grid>
-                          </>
-                        )}
+                    {isElectrode && (
+                      <>
+                        <Grid item xs={6} sm={2}>
+                          <TextField label="Razmer" fullWidth margin="dense" value={p.electrode_size} onChange={(e) => updateProduct(index, 'electrode_size', e.target.value)} />
+                        </Grid>
+                        <Grid item xs={6} sm={2}>
+                          <CurrencyField label="Narxi (pachka)" fullWidth margin="dense" value={p.price_pack} onChange={(val) => updateProduct(index, 'price_pack', val)} currency={p.sellCurrency || 'UZS'} />
+                        </Grid>
+                      </>
+                    )}
                         {isMeter && (
                           <Grid item xs={6} sm={2}>
                             <NumberField label="Metr (1 dona)" fullWidth margin="dense" value={p.pack_qty} onChange={(val) => updateProduct(index, 'pack_qty', val)} />
@@ -744,11 +915,11 @@ export default function Clients() {
                         )}
                       </>
                     )}
-                    {creditSubtype === 'olingan' && (
+                    {creditSubtype === 'olingan' && !isMeter && (
                       <>
                         <Grid item xs={6} sm={2}>
                           <CurrencyField
-                            label="Olingan narx"
+                            label={isMeter ? 'Olingan narx (1 metr)' : 'Olingan narx'}
                             fullWidth
                             margin="dense"
                             value={p.receivePrice}
@@ -771,17 +942,51 @@ export default function Clients() {
                         </Grid>
                       </>
                     )}
-                    {!isElectrode && (
-                      <Grid item xs={6} sm={2}>
-                        <CurrencyField
-                          label={creditSubtype === 'olingan' ? "Aytilgan narx" : t('price')}
-                          fullWidth
-                          margin="dense"
-                          value={p.sellPrice}
-                          onChange={(val) => updateProduct(index, 'sellPrice', val)}
-                          currency={p.sellCurrency || 'UZS'}
-                        />
-                      </Grid>
+                    {isMeter ? (
+                      <>
+                        {!isBerilganMeter && (
+                          <Grid item xs={6} sm={2}>
+                            <CurrencyField
+                              label="Metr narxi"
+                              fullWidth
+                              margin="dense"
+                              value={p.sellPrice}
+                              onChange={(val) => updateProduct(index, 'sellPrice', val)}
+                              currency={p.sellCurrency || 'UZS'}
+                            />
+                          </Grid>
+                        )}
+                        <Grid item xs={6} sm={2}>
+                          <CurrencyField
+                            label="Dona narxi"
+                            fullWidth
+                            margin="dense"
+                            value={p.price_piece}
+                            onChange={(val) => updateProduct(index, 'price_piece', val)}
+                            currency={p.sellCurrency || 'UZS'}
+                          />
+                        </Grid>
+                        {isBerilganMeter && (
+                          <Grid item xs={12}>
+                            <Typography variant="caption" color="text.secondary">
+                              {`Berilgan nasiya (metr mahsulot): faqat dona narxi talab qilinadi, metr narxi o'chirilgan.`}
+                            </Typography>
+                          </Grid>
+                        )}
+                      </>
+                    ) : (
+                      !isElectrode && (
+                        <Grid item xs={6} sm={2}>
+                          <CurrencyField
+                            label={creditSubtype === 'olingan' ? "Aytilgan narx" : t('price')}
+                            fullWidth
+                            margin="dense"
+                            value={p.sellPrice}
+                            onChange={(val) => updateProduct(index, 'sellPrice', val)}
+                            currency={p.sellCurrency || 'UZS'}
+                          />
+                        </Grid>
+                      )
                     )}
                     <Grid item xs={6} sm={1}>
                       <TextField
@@ -849,7 +1054,22 @@ export default function Clients() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreditOpen(false)}>{t('cancel')}</Button>
-          <Button onClick={handleAddCredit} variant="contained" disabled={creditType === 'cash' ? !creditAmount : products.length === 0 || products.some(p => !isProductFilled(p) || (p.isNewProduct && creditSubtype === 'olingan' && !p.receivePrice))}>{t('add')}</Button>
+          <Button
+            onClick={handleAddCredit}
+            variant="contained"
+            disabled={
+              creditType === 'cash'
+                ? !creditAmount
+                : products.length === 0 || products.some(p => {
+                    const cat = normalizeCategory(p.category || '')
+                    const isMeter = isMeterCategory(cat || p)
+                    const requiresReceive = p.isNewProduct && creditSubtype === 'olingan' && !isMeter
+                    return !isProductFilled(p) || requiresReceive
+                  })
+            }
+          >
+            {t('add')}
+          </Button>
         </DialogActions>
       </Dialog>
 
