@@ -160,7 +160,7 @@ export const getDailySalesRecord = async (username, date = null) => {
   try {
     const { data, error } = await supabase
       .from('daily_sales')
-      .select('*')
+      .select('id,user_name,date,total_uzs,total_usd,created_at,updated_at')
       .eq('user_name', username.toLowerCase())
       .eq('date', targetDate)
       .single()
@@ -193,7 +193,7 @@ export const getTodaysSalesSummary = async () => {
   try {
     const { data, error } = await supabase
       .from('daily_sales')
-      .select('*')
+      .select('id,user_name,date,total_uzs,total_usd,created_at,updated_at')
       .eq('date', today)
 
     if (error) {

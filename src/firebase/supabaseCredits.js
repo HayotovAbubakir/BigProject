@@ -1,4 +1,5 @@
 import { supabase } from '/supabase/supabaseClient'
+import { safeLimit } from '../utils/network'
 
 const isSupabaseConfigured = () => {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -6,13 +7,40 @@ const isSupabaseConfigured = () => {
   return url && key && !url.includes('placeholder') && !key.includes('placeholder')
 }
 
-export const getCredits = async () => {
+const CREDIT_COLUMNS = [
+  'id',
+  'name',
+  'amount',
+  'currency',
+  'credit_type',
+  'product_id',
+  'product_name',
+  'qty',
+  'unit_price',
+  'client_id',
+  'bosh_toluv',
+  'bosh_toluv_currency',
+  'bosh_toluv_original',
+  'completed',
+  'created_at',
+  'created_by',
+  'date',
+  'note',
+  'down_payment_note',
+].join(',')
+
+export const getCredits = async (options = {}) => {
   if (!isSupabaseConfigured()) return []
+  const limit = typeof options.limit === 'number' ? options.limit : safeLimit(120, 20)
+  const offset = options.offset || 0
+  const columns = options.columns || CREDIT_COLUMNS
+
   try {
     const { data, error } = await supabase
       .from('credits')
-      .select('*')
+      .select(columns)
       .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
     if (error) throw error
     return data || []
   } catch (err) {
@@ -123,7 +151,7 @@ export const insertCredit = async (credit) => {
       const { data, error } = await supabase
         .from('credits')
         .insert(payload)
-        .select('*')
+        .select(CREDIT_COLUMNS)
         .single()
       if (error) throw error
       console.log('supabase.insertCredit success ->', data)
@@ -142,7 +170,7 @@ export const insertCredit = async (credit) => {
         const { data: data2, error: error2 } = await supabase
           .from('credits')
           .insert(safePayload)
-          .select('*')
+          .select(CREDIT_COLUMNS)
           .single()
 
         if (error2) throw error2
@@ -162,7 +190,7 @@ export const insertCredit = async (credit) => {
         const { data: data3, error: error3 } = await supabase
           .from('credits')
           .insert(withoutProduct)
-          .select('*')
+          .select(CREDIT_COLUMNS)
           .single()
 
         if (error3) throw error3
@@ -245,7 +273,7 @@ export const updateCredit = async (id, updates) => {
         .from('credits')
         .update(safeUpdates)
         .eq('id', id)
-        .select('*')
+        .select(CREDIT_COLUMNS)
         .single()
       if (error) throw error
       console.log('supabase.updateCredit success ->', data)
@@ -264,7 +292,7 @@ export const updateCredit = async (id, updates) => {
           .from('credits')
           .update(safeWithoutDownPayment)
           .eq('id', id)
-          .select('*')
+          .select(CREDIT_COLUMNS)
           .single()
 
         if (error2) throw error2
@@ -289,7 +317,7 @@ export const deleteCredit = async (id) => {
       .from('credits')
       .delete()
       .eq('id', id)
-      .select('*')
+      .select(CREDIT_COLUMNS)
       .single()
     if (error) throw error
     console.log('supabase.deleteCredit success ->', data)

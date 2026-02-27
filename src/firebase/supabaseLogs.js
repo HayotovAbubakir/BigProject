@@ -1,5 +1,6 @@
 import { supabase } from '/supabase/supabaseClient'
 import { formatMoney, formatInteger } from '../utils/format'
+import { safeLimit, isSlowConnection } from '../utils/network'
 
 const isSupabaseConfigured = () => {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -7,10 +8,37 @@ const isSupabaseConfigured = () => {
   return url && key && !url.includes('placeholder') && !key.includes('placeholder')
 }
 
-export const getLogs = async (user, date = null) => {
+const LOG_COLUMNS = [
+  'id',
+  'date',
+  'time',
+  'action',
+  'kind',
+  'user_name',
+  'product_name',
+  'product_id',
+  'qty',
+  'unit_price',
+  'amount',
+  'currency',
+  'total_uzs',
+  'detail',
+  'created_at',
+].join(',')
+
+export const getLogs = async (user, date = null, options = {}) => {
   if (!isSupabaseConfigured()) return []
+  const limit = typeof options.limit === 'number' ? options.limit : safeLimit(80, 20)
+  const offset = options.offset || 0
+  const columns = options.columns || LOG_COLUMNS
+  const liteMode = isSlowConnection()
+
   try {
-    let query = supabase.from('logs').select('*').order('created_at', { ascending: false })
+    let query = supabase
+      .from('logs')
+      .select(columns)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
     if (date) query = query.eq('date', date)
 
     const { data, error } = await query
@@ -18,7 +46,7 @@ export const getLogs = async (user, date = null) => {
     const logs = data || []
 
     // Fetch user profiles to enrich logs with full names (acts like a JOIN)
-    const usernames = Array.from(new Set(logs
+    const usernames = liteMode ? [] : Array.from(new Set(logs
       .map(l => (l.user_name || l.user || l.created_by || '').toString().toLowerCase())
       .filter(Boolean)))
 
@@ -112,7 +140,7 @@ export const insertCreditLog = async (log) => {
     const { data, error } = await supabase
       .from('logs')
       .insert(logData)
-      .select('*')
+      .select(LOG_COLUMNS)
       .single()
     if (error) throw error
     console.log('supabase.insertCreditLog success ->', data)
@@ -158,7 +186,7 @@ export const insertLog = async (log) => {
     const { data, error } = await supabase
       .from('logs')
       .insert([logData])
-      .select()
+      .select(LOG_COLUMNS)
       .single()
 
     if (error) {

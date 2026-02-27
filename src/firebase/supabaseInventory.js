@@ -1,4 +1,5 @@
 import { supabase } from '/supabase/supabaseClient'
+import { safeLimit } from '../utils/network'
 
 const isSupabaseConfigured = () => {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -6,17 +7,48 @@ const isSupabaseConfigured = () => {
   return url && key && !url.includes('placeholder') && !key.includes('placeholder')
 }
 
-export const getProducts = async (location = null) => {
+const PRODUCT_COLUMNS = [
+  'id',
+  'name',
+  'qty',
+  'price',
+  'currency',
+  'pack_qty',
+  'meter_qty',
+  'price_pack',
+  'price_piece',
+  'category',
+  'location',
+  'note',
+  'date',
+  'electrode_size',
+  'stone_thickness',
+  'stone_size',
+].join(',')
+
+export const getProducts = async (location = null, options = {}) => {
   if (!isSupabaseConfigured()) return []
+  const limit = typeof options.limit === 'number' ? options.limit : safeLimit(120, 20)
+  const offset = options.offset || 0
+  const withCount = !!options.withCount
+  const columns = options.columns || PRODUCT_COLUMNS
+
   try {
-    let query = supabase.from('products').select('*')
+    let query = supabase
+      .from('products')
+      .select(columns, { count: withCount ? 'exact' : 'planned' })
+      .order('date', { ascending: false })
+      .range(offset, offset + limit - 1)
+
     if (location) query = query.eq('location', location)
-    const { data, error } = await query
+
+    const { data, error, count } = await query
     if (error) throw error
+    if (withCount) return { data: data || [], count: count || 0 }
     return data || []
   } catch (err) {
     console.error('getProducts error:', err)
-    return []
+    return withCount ? { data: [], count: 0 } : []
   }
 }
 
@@ -75,7 +107,7 @@ export const insertProduct = async (product) => {
       const { data, error } = await supabase
         .from('products')
         .insert(safe)
-        .select('*')
+        .select(PRODUCT_COLUMNS)
         .single()
 
       if (error) {
@@ -97,7 +129,7 @@ export const insertProduct = async (product) => {
         const { data: data2, error: error2 } = await supabase
           .from('products')
           .insert(withoutMeter)
-          .select('*')
+          .select(PRODUCT_COLUMNS)
           .single()
 
         if (error2) {
@@ -113,7 +145,7 @@ export const insertProduct = async (product) => {
         console.warn('insertProduct: duplicate name detected, returning existing product by name')
         const { data: existing, error: fetchErr } = await supabase
           .from('products')
-          .select('*')
+          .select(PRODUCT_COLUMNS)
           .eq('name', safe.name)
           .maybeSingle()
         if (fetchErr) {
@@ -173,7 +205,7 @@ export const updateProduct = async (id, updates) => {
       .from('products')
       .update(safeUpdates)
       .eq('id', id)
-      .select('*')
+      .select(PRODUCT_COLUMNS)
       .single();
 
     if (error) {
@@ -198,7 +230,7 @@ export const deleteProduct = async (id) => {
       .from('products')
       .delete()
       .eq('id', id)
-      .select('*')
+      .select(PRODUCT_COLUMNS)
       .single()
     if (error) throw error
     return data

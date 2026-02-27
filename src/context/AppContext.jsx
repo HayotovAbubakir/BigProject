@@ -5,11 +5,12 @@ import { getClients, insertClient as dbInsertClient, updateClient as dbUpdateCli
 import { getProducts, insertProduct as dbInsertProduct, updateProduct as dbUpdateProduct, deleteProduct as dbDeleteProduct } from '../firebase/supabaseInventory'
 import { getCredits, insertCredit as dbInsertCredit, updateCredit as dbUpdateCredit, deleteCredit as dbDeleteCredit } from '../firebase/supabaseCredits'
 import { getLogs, insertLog, insertCreditLog } from '../firebase/supabaseLogs'
-import { getAllUserBalances } from '../firebase/supabaseAccounts'
+import { getAllUserBalances, updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts'
 import { supabase } from '/supabase/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import { useNotification } from './NotificationContext';
 import { DEFAULT_PRODUCT_CATEGORIES, PRODUCT_CATEGORIES_STORAGE_KEY, loadStoredProductCategories, mergeCategories, isMeterCategory } from '../utils/productCategories'
+import { getConnectionInfo, isSlowConnection, safeLimit } from '../utils/network'
 
 const lowStockJokes = [
   "{name} mahsuloti kam qoldi. Yetkazib berish vaqtini o'ylash kerak!",
@@ -48,6 +49,8 @@ const initialState = {
     { username: 'habibjon', label: 'Habibjon', permissions: { credits_manage: true, wholesale_allowed: true, add_products: true, manage_accounts: true } },
   ],
 }
+
+const PENDING_SYNC_KEY = 'bigproject_pending_ops'
 
 
 const AppContext = createContext(null)
@@ -343,6 +346,10 @@ export const AppProvider = ({ children }) => {
   const { user, username, hasPermission } = useAuth()
   const { notify } = useNotification()
   const [hydrated, setHydrated] = React.useState(false)
+  const [isOnline, setIsOnline] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+  const [connectionInfo, setConnectionInfo] = React.useState(getConnectionInfo())
+  const slowConnectionRef = useRef(isSlowConnection())
+  const pendingOpsRef = useRef([])
   const mountedRef = useRef(true)
   const normalizeProductName = React.useCallback((value) => {
     return (value || '')
@@ -370,6 +377,36 @@ export const AppProvider = ({ children }) => {
     const msg = (err?.message || err?.details || err?.error || '').toString().toLowerCase()
     return msg.includes('products_name_key') || msg.includes('duplicate key value')
   }, [])
+
+  React.useEffect(() => {
+    const updateNet = () => {
+      const info = getConnectionInfo()
+      slowConnectionRef.current = info.slow
+      setConnectionInfo(info)
+      setIsOnline(!info.offline)
+    }
+    updateNet()
+    if (typeof window === 'undefined') return
+    const conn = navigator?.connection || navigator?.mozConnection || navigator?.webkitConnection
+    window.addEventListener('online', updateNet)
+    window.addEventListener('offline', updateNet)
+    if (conn?.addEventListener) conn.addEventListener('change', updateNet)
+    return () => {
+      window.removeEventListener('online', updateNet)
+      window.removeEventListener('offline', updateNet)
+      if (conn?.removeEventListener) conn.removeEventListener('change', updateNet)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const saved = JSON.parse(localStorage.getItem(PENDING_SYNC_KEY) || '[]')
+      if (Array.isArray(saved)) pendingOpsRef.current = saved
+    } catch (_err) {
+      void _err
+    }
+  }, [])
   
   React.useEffect(() => {
     mountedRef.current = true;
@@ -380,22 +417,24 @@ export const AppProvider = ({ children }) => {
         return
       }
       try {
+        const fetchLimit = safeLimit(120, 20)
+        const logsLimit = safeLimit(60, 20)
         const [credits, warehouse, store, logs, clients, userBalances] = await Promise.all([
-          getCredits(),
-          getProducts('warehouse'),
-          getProducts('store'),
-          getLogs(),
-          getClients(),
+          getCredits({ limit: fetchLimit }),
+          getProducts('warehouse', { limit: fetchLimit }),
+          getProducts('store', { limit: fetchLimit }),
+          getLogs(null, null, { limit: logsLimit }),
+          getClients({ limit: fetchLimit }),
           getAllUserBalances(),
         ]);
 
         if (!mountedRef.current) return;
 
-        dispatch({ type: 'SET_CREDITS', payload: credits });
-        dispatch({ type: 'SET_WAREHOUSE', payload: warehouse });
-        dispatch({ type: 'SET_STORE', payload: store });
-        dispatch({ type: 'SET_LOGS', payload: logs });
-        dispatch({ type: 'SET_CLIENTS', payload: clients });
+        dispatch({ type: 'SET_CREDITS', payload: Array.isArray(credits) ? credits : credits?.data || [] });
+        dispatch({ type: 'SET_WAREHOUSE', payload: Array.isArray(warehouse) ? warehouse : warehouse?.data || [] });
+        dispatch({ type: 'SET_STORE', payload: Array.isArray(store) ? store : store?.data || [] });
+        dispatch({ type: 'SET_LOGS', payload: Array.isArray(logs) ? logs : logs?.data || [] });
+        dispatch({ type: 'SET_CLIENTS', payload: Array.isArray(clients) ? clients : clients?.data || [] });
 
         // Merge user balances with existing accounts
         if (userBalances && userBalances.length > 0) {
@@ -428,164 +467,233 @@ export const AppProvider = ({ children }) => {
   }, [state.ui?.productCategories])
 
   const [syncState, setSyncState] = React.useState('idle')
+  const persistPendingOps = React.useCallback(() => {
+    if (typeof localStorage === 'undefined') return
+    try {
+      localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingOpsRef.current))
+    } catch (_err) {
+      void _err
+    }
+  }, [])
+
+  const queueOp = React.useCallback((op) => {
+    if (!op) return
+    pendingOpsRef.current = [...pendingOpsRef.current, op]
+    persistPendingOps()
+  }, [persistPendingOps])
+
+  const runSyncAction = React.useCallback(async (op) => {
+    switch (op.type) {
+      case 'insertProduct': {
+        const saved = await dbInsertProduct(op.payload)
+        if (op.log) insertLog(op.log).catch(() => null)
+        const updates = saved || op.payload
+        const actionType = (op.payload.location || '').toLowerCase() === 'store' ? 'EDIT_STORE' : 'EDIT_WAREHOUSE'
+        dispatch({ type: actionType, payload: { id: op.payload.id, updates }, log: op.log || null })
+        return
+      }
+      case 'updateProduct': {
+        const saved = await dbUpdateProduct(op.payload.id, op.payload.updates)
+        if (op.log) insertLog(op.log).catch(() => null)
+        const actionType = (op.payload.location || '').toLowerCase() === 'store' ? 'EDIT_STORE' : 'EDIT_WAREHOUSE'
+        dispatch({ type: actionType, payload: { id: op.payload.id, updates: saved || op.payload.updates }, log: op.log || null })
+        return
+      }
+      case 'deleteProduct': {
+        await dbDeleteProduct(op.payload.id)
+        if (op.log) insertLog(op.log).catch(() => null)
+        return
+      }
+      case 'insertCredit': {
+        const saved = await dbInsertCredit(op.payload)
+        if (op.log) {
+          try { await insertCreditLog(op.log) } catch { await insertLog(op.log).catch(() => null) }
+        }
+        dispatch({ type: 'EDIT_CREDIT', payload: { id: saved?.id || op.payload.id, updates: saved || op.payload }, log: op.log || null })
+        return
+      }
+      case 'updateCredit': {
+        const saved = await dbUpdateCredit(op.payload.id, op.payload.updates)
+        dispatch({ type: 'EDIT_CREDIT', payload: { id: op.payload.id, updates: saved || op.payload.updates }, log: op.log || null })
+        return
+      }
+      case 'deleteCredit': {
+        await dbDeleteCredit(op.payload.id)
+        return
+      }
+      case 'insertClient': {
+        const saved = await dbInsertClient(op.payload)
+        dispatch({ type: 'ADD_CLIENT', payload: saved || op.payload, log: op.log || null })
+        return
+      }
+      case 'updateClient': {
+        const saved = await dbUpdateClient(op.payload.id, op.payload.updates)
+        dispatch({ type: 'EDIT_CLIENT', payload: { id: op.payload.id, updates: saved || op.payload.updates }, log: op.log || null })
+        return
+      }
+      case 'deleteClient': {
+        await dbDeleteClient(op.payload.id)
+        return
+      }
+      case 'insertLog': {
+        if (op.log) await insertLog(op.log)
+        return
+      }
+      case 'sellStore': {
+        const { productId, updates, logPayload, username: saleUser, totalUzs, totalUsd } = op.payload || {}
+        if (logPayload) insertLog(logPayload).catch(() => null)
+        if (productId && updates) await dbUpdateProduct(productId, updates)
+        if (saleUser && typeof totalUzs === 'number') {
+          updateAccountBalance(saleUser, totalUzs, totalUsd || 0).catch(() => null)
+          updateDailySales(saleUser, totalUzs, totalUsd || 0).catch(() => null)
+        }
+        return
+      }
+      default:
+        return
+    }
+  }, [dispatch, dbInsertProduct, dbUpdateProduct, dbDeleteProduct, dbInsertCredit, dbUpdateCredit, dbDeleteCredit, dbInsertClient, dbUpdateClient, dbDeleteClient])
+
+  const flushPendingOps = React.useCallback(async () => {
+    if (!isOnline) return
+    if (!pendingOpsRef.current.length) return
+    setSyncState('syncing')
+    const queueCopy = [...pendingOpsRef.current]
+    for (let i = 0; i < queueCopy.length; i += 1) {
+      const op = pendingOpsRef.current[0]
+      try {
+        await runSyncAction(op)
+        pendingOpsRef.current.shift()
+        persistPendingOps()
+      } catch (err) {
+        console.error('[AppContext] sync failed for op', op?.type, err)
+        notify('Sync failed', err?.message || 'Pending action will retry when connection improves', 'warning')
+        break
+      }
+    }
+    setSyncState('idle')
+  }, [isOnline, runSyncAction, notify, persistPendingOps])
+
+  React.useEffect(() => {
+    flushPendingOps()
+  }, [flushPendingOps])
   
+  const syncOrQueue = React.useCallback((op, rollback) => {
+    if (!op) return
+    if (isOnline && !slowConnectionRef.current) {
+      runSyncAction(op).catch(err => {
+        console.error('[AppContext] syncOrQueue failed', err)
+        if (rollback) rollback()
+        queueOp(op)
+        notify('Sync queued', err?.message || 'Will retry when online', 'warning')
+      })
+    } else {
+      queueOp(op)
+    }
+  }, [isOnline, runSyncAction, queueOp, notify])
   
   // Action creators with DB persistence
   const addWarehouseProduct = React.useCallback(async (payload, logData) => {
-    try {
-      const targetSig = productSignature(payload)
-      const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
-      const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
+    const targetSig = productSignature(payload)
+    const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
+    const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
+    const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
 
-      if (existingWarehouse) {
-        const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
-        const updates = { qty: newQty }
-        const data = await dbUpdateProduct(existingWarehouse.id, updates)
-        let log = null
-        try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse add-merge), continuing', e) }
-        dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates: data || updates }, log })
-        notify('Diqqat', 'Mahsulot allaqachon omborda bor edi. Miqdoriga qo\'shildi.', 'warning')
-        return data
-      }
-
-      if (existingStore) {
-        notify('Xato', 'Bu nomdagi mahsulot do\'konda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
-        throw new Error('Product already exists in store')
-      }
-
-      const product = await dbInsertProduct({ ...payload, location: 'warehouse' })
-      let log = null
-      try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse add), continuing', e) }
-      dispatch({ type: 'ADD_WAREHOUSE', payload: product, log })
-    } catch (_err) {
-      if (isDuplicateProductNameError(_err)) {
-        const targetSig = productSignature(payload)
-        const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
-        const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
-        if (existingWarehouse) {
-          const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
-          const updates = { qty: newQty }
-          const data = await dbUpdateProduct(existingWarehouse.id, updates)
-          let log = null
-          try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse add-merge), continuing', e) }
-          dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates: data || updates }, log })
-          notify('Diqqat', 'Mahsulot allaqachon omborda bor edi. Miqdoriga qo\'shildi.', 'warning')
-          return data
-        }
-        if (existingStore) {
-          notify('Xato', 'Bu nomdagi mahsulot do\'konda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
-        }
-      }
-      const message = `Failed to add warehouse product: ${_err.message}`;
-      notify('Error', message, 'error')
-      throw _err
+    if (existingWarehouse) {
+      const previous = existingWarehouse
+      const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
+      const updates = { qty: newQty }
+      dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates }, log })
+      syncOrQueue(
+        { type: 'updateProduct', payload: { id: existingWarehouse.id, updates, location: 'warehouse' }, log },
+        () => dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates: previous } })
+      )
+      notify('Diqqat', 'Mahsulot allaqachon omborda bor edi. Miqdoriga qo\'shildi.', 'warning')
+      return updates
     }
-  }, [dispatch, notify, normalizeProductName, isDuplicateProductNameError, state.store, state.warehouse])
+
+    if (existingStore) {
+      notify('Xato', 'Bu nomdagi mahsulot do\'konda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
+      throw new Error('Product already exists in store')
+    }
+
+    const optimisticProduct = { ...payload, id: payload.id || uuidv4(), location: 'warehouse' }
+    dispatch({ type: 'ADD_WAREHOUSE', payload: optimisticProduct, log })
+    syncOrQueue({ type: 'insertProduct', payload: optimisticProduct, log })
+    return optimisticProduct
+  }, [dispatch, notify, productSignature, state.store, state.warehouse, syncOrQueue])
 
   const addStoreProduct = React.useCallback(async (payload, logData) => {
-    try {
-      const targetSig = productSignature(payload)
-      const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
-      const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
+    const targetSig = productSignature(payload)
+    const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
+    const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
+    const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
 
-      if (existingStore) {
-        const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
-        const updates = { qty: newQty }
-        const data = await dbUpdateProduct(existingStore.id, updates)
-        let log = null
-        try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store add-merge), continuing', e) }
-        dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates: data || updates }, log })
-        notify('Diqqat', 'Mahsulot allaqachon do\'konda bor edi. Miqdoriga qo\'shildi.', 'warning')
-        return data
-      }
-
-      if (existingWarehouse) {
-        notify('Xato', 'Bu nomdagi mahsulot omborda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
-        throw new Error('Product already exists in warehouse')
-      }
-
-      const product = await dbInsertProduct({ ...payload, location: 'store' })
-      let log = null
-      try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store add), continuing', e) }
-      dispatch({ type: 'ADD_STORE', payload: product, log })
-    } catch (_err) {
-      if (isDuplicateProductNameError(_err)) {
-        const targetSig = productSignature(payload)
-        const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
-        const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
-        if (existingStore) {
-          const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
-          const updates = { qty: newQty }
-          const data = await dbUpdateProduct(existingStore.id, updates)
-          let log = null
-          try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store add-merge), continuing', e) }
-          dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates: data || updates }, log })
-          notify('Diqqat', 'Mahsulot allaqachon do\'konda bor edi. Miqdoriga qo\'shildi.', 'warning')
-          return data
-        }
-        if (existingWarehouse) {
-          notify('Xato', 'Bu nomdagi mahsulot omborda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
-        }
-      }
-      const message = `Failed to add store product: ${_err.message}`;
-      notify('Error', message, 'error')
-      throw _err
+    if (existingStore) {
+      const previous = existingStore
+      const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
+      const updates = { qty: newQty }
+      dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates }, log })
+      syncOrQueue(
+        { type: 'updateProduct', payload: { id: existingStore.id, updates, location: 'store' }, log },
+        () => dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates: previous } })
+      )
+      notify('Diqqat', 'Mahsulot allaqachon do\'konda bor edi. Miqdoriga qo\'shildi.', 'warning')
+      return updates
     }
-  }, [dispatch, notify, normalizeProductName, isDuplicateProductNameError, state.store, state.warehouse])
+
+    if (existingWarehouse) {
+      notify('Xato', 'Bu nomdagi mahsulot omborda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
+      throw new Error('Product already exists in warehouse')
+    }
+
+    const optimisticProduct = { ...payload, id: payload.id || uuidv4(), location: 'store' }
+    dispatch({ type: 'ADD_STORE', payload: optimisticProduct, log })
+    syncOrQueue({ type: 'insertProduct', payload: optimisticProduct, log })
+    return optimisticProduct
+  }, [dispatch, notify, productSignature, state.store, state.warehouse, syncOrQueue])
 
   const updateWarehouseProduct = React.useCallback(async (id, updates, logData) => {
-    let data = updates; // fallback to updates if DB fails
-    try {
-      data = await dbUpdateProduct(id, updates)
-    } catch (_err) {
-      const message = `Failed to update warehouse product in database: ${_err.message}. Local state updated.`;
-      notify('Warning', message, 'warning')
-      // Don't throw, continue to update local state
-    }
-    let log = null
-    try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse update), continuing', e) }
-    dispatch({ type: 'EDIT_WAREHOUSE', payload: { id, updates: data }, log })
-  }, [dispatch, notify])
+    const previous = (state.warehouse || []).find(w => w.id === id)
+    const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
+    const merged = previous ? { ...previous, ...updates } : updates
+    dispatch({ type: 'EDIT_WAREHOUSE', payload: { id, updates: merged }, log })
+    syncOrQueue(
+      { type: 'updateProduct', payload: { id, updates, location: 'warehouse' }, log },
+      () => previous && dispatch({ type: 'EDIT_WAREHOUSE', payload: { id, updates: previous } })
+    )
+  }, [dispatch, state.warehouse, syncOrQueue])
 
   const updateStoreProduct = React.useCallback(async (id, updates, logData) => {
-    let data = updates; // fallback to updates if DB fails
-    try {
-      data = await dbUpdateProduct(id, updates)
-    } catch (_err) {
-      const message = `Failed to update store product in database: ${_err.message}. Local state updated.`;
-      notify('Warning', message, 'warning')
-      // Don't throw, continue to update local state
-    }
-    let log = null
-    try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store update), continuing', e) }
-    dispatch({ type: 'EDIT_STORE', payload: { id, updates: data }, log })
-  }, [dispatch, notify])
+    const previous = (state.store || []).find(w => w.id === id)
+    const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
+    const merged = previous ? { ...previous, ...updates } : updates
+    dispatch({ type: 'EDIT_STORE', payload: { id, updates: merged }, log })
+    syncOrQueue(
+      { type: 'updateProduct', payload: { id, updates, location: 'store' }, log },
+      () => previous && dispatch({ type: 'EDIT_STORE', payload: { id, updates: previous } })
+    )
+  }, [dispatch, state.store, syncOrQueue])
 
   const deleteWarehouseProduct = React.useCallback(async (id, logData) => {
-    try {
-      await dbDeleteProduct(id)
-      let log = null
-      try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (warehouse delete), continuing', e) }
-      dispatch({ type: 'DELETE_WAREHOUSE', payload: { id }, log })
-    } catch (_err) {
-      const message = `Failed to delete warehouse product: ${_err.message}`;
-      notify('Error', message, 'error')
-      throw _err
-    }
-  }, [dispatch, notify])
+    const previous = (state.warehouse || []).find(w => w.id === id)
+    const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
+    dispatch({ type: 'DELETE_WAREHOUSE', payload: { id }, log })
+    syncOrQueue(
+      { type: 'deleteProduct', payload: { id, location: 'warehouse' }, log },
+      () => previous && dispatch({ type: 'ADD_WAREHOUSE', payload: previous })
+    )
+  }, [dispatch, state.warehouse, syncOrQueue])
 
   const deleteStoreProduct = React.useCallback(async (id, logData) => {
-    try {
-      await dbDeleteProduct(id)
-      let log = null
-      try { log = await insertLog(logData) } catch (e) { console.warn('insertLog failed (store delete), continuing', e) }
-      dispatch({ type: 'DELETE_STORE', payload: { id }, log })
-    } catch (_err) {
-      const message = `Failed to delete store product: ${_err.message}`;
-      notify('Error', message, 'error')
-      throw _err
-    }
-  }, [dispatch, notify])
+    const previous = (state.store || []).find(w => w.id === id)
+    const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
+    dispatch({ type: 'DELETE_STORE', payload: { id }, log })
+    syncOrQueue(
+      { type: 'deleteProduct', payload: { id, location: 'store' }, log },
+      () => previous && dispatch({ type: 'ADD_STORE', payload: previous })
+    )
+  }, [dispatch, state.store, syncOrQueue])
 
   const sellStoreProduct = React.useCallback(async (item, { id, qty, deduct_qty, price, currency }, logData) => {
     try {

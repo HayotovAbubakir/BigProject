@@ -1,4 +1,5 @@
 import { supabase } from '/supabase/supabaseClient'
+import { safeLimit } from '../utils/network'
 
 const isSupabaseConfigured = () => {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -6,12 +7,20 @@ const isSupabaseConfigured = () => {
   return url && key && !url.includes('placeholder') && !key.includes('placeholder')
 }
 
-export const getClients = async () => {
+const CLIENT_COLUMNS = 'id,name,phone,created_at,updated_at'
+
+export const getClients = async (options = {}) => {
   if (!isSupabaseConfigured()) return []
+  const limit = typeof options.limit === 'number' ? options.limit : safeLimit(120, 20)
+  const offset = options.offset || 0
+  const columns = options.columns || CLIENT_COLUMNS
+
   try {
     const { data, error } = await supabase
       .from('clients')
-      .select('*')
+      .select(columns)
+      .order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1)
     if (error) throw error
     return data || []
   } catch (err) {
@@ -27,7 +36,7 @@ export const insertClient = async (client) => {
     const { data, error } = await supabase
       .from('clients')
       .insert({ ...client })
-      .select('*')
+      .select(CLIENT_COLUMNS)
       .single()
     if (error) throw error
     console.log('supabase.insertClient success ->', data)
@@ -58,7 +67,7 @@ export const updateClient = async (id, updates) => {
       .from('clients')
       .update(safeUpdates)
       .eq('id', id)
-      .select('*')
+      .select(CLIENT_COLUMNS)
       .single()
     if (error) throw error
     console.log('supabase.updateClient success ->', data)
