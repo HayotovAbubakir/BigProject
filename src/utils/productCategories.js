@@ -1,6 +1,15 @@
-export const METER_CATEGORY = 'metrlab sotiladigan mahsulotlar'
+export const METER_CATEGORY = 'metrologiya'
+export const LEGACY_METER_CATEGORY = 'metrlab sotiladigan mahsulotlar'
 export const DEFAULT_PRODUCT_CATEGORIES = ['gaz balon', 'elektrod', 'tosh', METER_CATEGORY]
 export const PRODUCT_CATEGORIES_STORAGE_KEY = 'productCategories'
+
+const baseNormalize = (value) => (
+  value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+)
 
 export const normalizeCategory = (value) => {
   if (!value) return ''
@@ -10,11 +19,18 @@ export const normalizeCategory = (value) => {
     if (!candidate) return ''
     value = candidate
   }
-  return value
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
+  return baseNormalize(value).replace(LEGACY_METER_CATEGORY, METER_CATEGORY)
+}
+
+// Normalize a product-like object by upgrading its category field.
+// Returns the same reference when no change is needed to avoid extra renders.
+export const normalizeProductCategoryRecord = (product) => {
+  if (!product || typeof product !== 'object') return product
+  const normalized = normalizeCategory(product.category)
+  if (!normalized) return product
+  const raw = baseNormalize(product.category || '')
+  if (normalized === raw) return product
+  return { ...product, category: normalized }
 }
 
 // Also accepts a full product object and infers meter items from pack_qty / meter_qty

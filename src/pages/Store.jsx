@@ -98,7 +98,7 @@ function ProductCard({
               wordBreak: "break-word",
             }}
           >
-            {formatProductName(product)}
+            {formatProductName(product, t)}
           </Typography>
           {isMeter ? (
             <Box sx={{ textAlign: 'right' }}>
@@ -347,6 +347,7 @@ export default function Store() {
     const pieceLabel = isMeter ? `, Narx (1 dona): ${piecePrice} ${item.currency || "UZS"}` : "";
     const meterLabel = isMeter ? `, Metr: ${meterDelta} m` : "";
 
+    const variantLabelAdd = `${item.name} | Qalinlik: ${item.stone_thickness || 'N/A'} | Hajm: ${item.stone_size || 'N/A'}`;
     const logData = {
       id: uuidv4(),
       date: new Date().toISOString().slice(0, 10),
@@ -354,11 +355,11 @@ export default function Store() {
       user_name: username || "Admin",
       action: "Mahsulot qo'shildi",
       kind: "ADD_QTY",
-      product_name: item.name,
+      product_name: variantLabelAdd,
       qty: addedQty,
       unit_price: unitPrice,
       currency: item.currency || "UZS",
-      detail: `Kim: ${username || "Admin"}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Do'konga mahsulot qo'shildi, Mahsulot: ${item.name}, Soni: ${addedQty}${meterLabel}, ${priceLabel}${pieceLabel}, Jami: ${amount} ${item.currency || "UZS"}`,
+      detail: `Kim: ${username || "Admin"}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Do'konga mahsulot qo'shildi, Mahsulot: ${variantLabelAdd}, Soni: ${addedQty}${meterLabel}, ${priceLabel}${pieceLabel}, Jami: ${amount} ${item.currency || "UZS"}`,
     };
 
     await updateStoreProduct(
@@ -420,6 +421,8 @@ export default function Store() {
         totalUzs = Math.round(amount);
       }
 
+      const variantLabel = `${item?.name || id} | ${item?.stone_thickness || '-'} | ${item?.stone_size || '-'} | ${saleUnit || 'dona'}`;
+
       const log = {
         id: uuidv4(),
         date: new Date().toISOString().slice(0, 10),
@@ -427,14 +430,14 @@ export default function Store() {
         user_name: username || "Admin",
         action: "Mahsulot sotildi",
         kind: "SELL",
-        product_name: item?.name || id,
+        product_name: variantLabel,
         product_id: id,
         qty: qtyForLog,
         unit_price: parsedPrice,
         amount: amount,
         currency: saleCurrency,
         total_uzs: totalUzs,
-        detail: `Kim: ${username || "Admin"}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${item?.name || id}, Soni: ${displayQty}${meterLabel}${unitLabel}, ${priceLabel}, Jami: ${amount} ${saleCurrency}${rateText}${!isMeter ? (saleUnit === 'pachka' ? `, Birlik: pachka, Pachka: ${displayQty}, Pachkada: ${packQty}, Donalar: ${deductQty}` : ', Birlik: dona') : ''}`,
+        detail: `Kim: ${username || "Admin"}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Mahsulot sotildi, Mahsulot: ${variantLabel}, Soni: ${displayQty}${meterLabel}${unitLabel}, ${priceLabel}, Jami: ${amount} ${saleCurrency}${rateText}${!isMeter ? (saleUnit === 'pachka' ? `, Birlik: pachka, Pachka: ${displayQty}, Pachkada: ${packQty}, Donalar: ${deductQty}` : ', Birlik: dona') : ''}`,
         source: "store",
       };
 
@@ -646,7 +649,12 @@ export default function Store() {
           )}
         </Box>
 
-        {isMobile ? (
+        {filteredStore.length === 0 ? (
+          <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}>
+            <Typography variant="h6" gutterBottom>📦 {t('no_products') || 'Mahsulot topilmadi'}</Typography>
+            <Typography variant="body2">{t('adjust_filters') || 'Filtrlarni o‘zgartirib ko‘ring yoki qidiruvni tozalang.'}</Typography>
+          </Box>
+        ) : isMobile ? (
           <Grid container spacing={2}>
             {filteredStore.map((it) => (
               <ProductCard
@@ -687,7 +695,7 @@ export default function Store() {
               <TableBody>
                 {filteredStore.map((it) => (
                   <TableRow key={it.id} hover>
-                    <TableCell>{formatProductName(it)}</TableCell>
+                    <TableCell>{formatProductName(it, t)}</TableCell>
                     <TableCell align="center">
                       {isMeterCategory(it)
                         ? `${Number(it?.meter_qty ?? (Number(it?.qty || 0) * Number(it?.pack_qty || 0)))} m / ${Number(it?.pack_qty || 0) > 0 ? Math.ceil(Number(it?.meter_qty ?? (Number(it?.qty || 0) * Number(it?.pack_qty || 0))) / Number(it?.pack_qty || 0)) : Number(it?.qty || 0)} dona`

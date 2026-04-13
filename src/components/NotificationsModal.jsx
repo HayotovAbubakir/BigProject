@@ -11,6 +11,7 @@ import {
   Box,
   Chip
 } from '@mui/material';
+import { useTheme, alpha } from '@mui/material/styles';
 import { AutoAwesome, Inventory2, LocalFireDepartment, NewReleases } from '@mui/icons-material';
 import { isMeterCategory } from '../utils/productCategories';
 
@@ -23,6 +24,17 @@ const getPoem = () => {
 };
 
 const NotificationsModal = ({ open, handleClose, notifications }) => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const bgSurface = theme.palette.background.paper;
+  const textPrimary = theme.palette.text.primary;
+  const textSecondary = theme.palette.text.secondary;
+  const headerBorder = alpha(theme.palette.divider, 0.6);
+  const bodyBorder = alpha(theme.palette.divider, 0.9);
+  const listItemBg = isDark ? alpha('#0f172a', 0.8) : alpha('#f8fafc', 1);
+  const listItemBorder = bodyBorder;
+  const listItemHover = isDark ? alpha('#1f2937', 0.9) : alpha('#f9fafb', 1);
+  const iconColor = textSecondary;
   const summary = useMemo(() => {
     const lowStock = notifications.filter((n) => n.type === 'low_stock').length;
     const overdue = notifications.filter((n) => n.type === 'overdue_credit').length;
@@ -67,9 +79,10 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
         sx: {
           borderRadius: { xs: 3, sm: 4 },
           overflow: 'hidden',
-          background: 'linear-gradient(180deg, rgba(16, 24, 40, 0.92), rgba(15, 23, 42, 0.98))',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 30px 60px rgba(15, 23, 42, 0.45)'
+          bgcolor: bgSurface,
+          color: textPrimary,
+          border: `1px solid ${bodyBorder}`,
+          boxShadow: '0 30px 60px rgba(0,0,0,0.18)'
         }
       }}
     >
@@ -79,9 +92,9 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
             position: 'relative',
             px: { xs: 2.5, sm: 3 },
             py: { xs: 2.5, sm: 3 },
-            color: '#F8FAFC',
-            background: 'linear-gradient(130deg, rgba(76, 110, 245, 0.38), rgba(16, 185, 129, 0.25))',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+            color: textPrimary,
+            background: bgSurface,
+            borderBottom: `1px solid ${headerBorder}`
           }}
         >
           <Box
@@ -105,7 +118,7 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
               >
                 Premium Ogohlantirishlar
               </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.85 }}>
+              <Typography variant="body2" sx={{ color: textSecondary }}>
                 Aql bilan saralangan signal markazi
               </Typography>
             </Box>
@@ -113,7 +126,7 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
               icon={<AutoAwesome sx={{ color: '#0f172a' }} />}
               label="Premium"
               sx={{
-                bgcolor: '#FDE68A',
+                bgcolor: isDark ? '#fbbf24' : '#fde68a',
                 color: '#1F2937',
                 fontWeight: 600,
                 px: 0.5
@@ -133,8 +146,9 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
       <DialogContent
         dividers
         sx={{
-          background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.9))',
-          borderColor: 'rgba(255, 255, 255, 0.08)',
+          bgcolor: bgSurface,
+          color: textPrimary,
+          borderColor: headerBorder,
           px: { xs: 2.5, sm: 3 },
           py: { xs: 2.5, sm: 3 }
         }}
@@ -151,14 +165,14 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
             sx={{
               p: 2,
               borderRadius: 2,
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.08)'
+              background: isDark ? '#111827' : '#f9fafb',
+              border: `1px solid ${bodyBorder}`
             }}
           >
-            <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>
+            <Typography variant="caption" sx={{ color: textSecondary }}>
               Jami
             </Typography>
-            <Typography variant="h6" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ color: textPrimary, fontWeight: 600 }}>
               {summary.total}
             </Typography>
           </Box>
@@ -166,14 +180,14 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
             sx={{
               p: 2,
               borderRadius: 2,
-              background: 'rgba(245, 158, 11, 0.12)',
-              border: '1px solid rgba(245, 158, 11, 0.3)'
+              background: isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+              border: isDark ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(245, 158, 11, 0.2)'
             }}
           >
-            <Typography variant="caption" sx={{ color: 'rgba(253,230,138,0.9)' }}>
+            <Typography variant="caption" sx={{ color: isDark ? '#fde68a' : '#92400e' }}>
               Kam qoldi
             </Typography>
-            <Typography variant="h6" sx={{ color: '#FDE68A', fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ color: isDark ? '#fde68a' : '#b45309', fontWeight: 600 }}>
               {summary.lowStock}
             </Typography>
           </Box>
@@ -181,14 +195,14 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
             sx={{
               p: 2,
               borderRadius: 2,
-              background: 'rgba(239, 68, 68, 0.12)',
-              border: '1px solid rgba(239, 68, 68, 0.3)'
+              background: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+              border: isDark ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(239, 68, 68, 0.2)'
             }}
           >
-            <Typography variant="caption" sx={{ color: 'rgba(252,165,165,0.9)' }}>
+            <Typography variant="caption" sx={{ color: isDark ? '#fca5a5' : '#991b1b' }}>
               Muddati o'tgan
             </Typography>
-            <Typography variant="h6" sx={{ color: '#FCA5A5', fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ color: isDark ? '#fca5a5' : '#b91c1c', fontWeight: 600 }}>
               {summary.overdue}
             </Typography>
           </Box>
@@ -202,16 +216,16 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
             p: 1.5,
             mb: 2,
             borderRadius: 2,
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px dashed rgba(255, 255, 255, 0.15)'
+            background: isDark ? '#111827' : '#f9fafb',
+            border: `1px dashed ${bodyBorder}`
           }}
         >
-          <NewReleases sx={{ color: '#FDE68A' }} />
+          <NewReleases sx={{ color: isDark ? '#fde68a' : '#b45309' }} />
           <Box>
-            <Typography variant="subtitle2" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
+            <Typography variant="subtitle2" sx={{ color: textPrimary, fontWeight: 600 }}>
               Yangilik: aqlli tartiblash
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>
+            <Typography variant="caption" sx={{ color: textSecondary }}>
               Avval muddati o'tganlar ko'rsatiladi. Yangilandi: {lastUpdated}
             </Typography>
           </Box>
@@ -219,10 +233,10 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
 
         {sortedNotifications.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" gutterBottom sx={{ color: '#F8FAFC' }}>
+            <Typography variant="h6" gutterBottom sx={{ color: textPrimary }}>
               Hozircha ogohlantirish yo'q
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(248,250,252,0.7)' }}>
+            <Typography variant="body2" sx={{ color: textSecondary }}>
               Hammasi nazorat ostida. Dam olishingiz mumkin.
             </Typography>
           </Box>
@@ -241,11 +255,14 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
                     mb: 1.5,
                     borderRadius: 2.5,
                     p: 2,
-                    bgcolor: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: '0 12px 24px rgba(15, 23, 42, 0.28)',
+                    bgcolor: listItemBg,
+                    border: `1px solid ${listItemBorder}`,
+                    boxShadow: '0 12px 24px rgba(0, 0, 0, 0.12)',
                     position: 'relative',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    color: textPrimary,
+                    transition: 'background-color 0.2s ease',
+                    '&:hover': { backgroundColor: listItemHover }
                   }}
                 >
                   <Box
@@ -256,42 +273,44 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
                       background: `linear-gradient(120deg, ${accent}, transparent 65%)`
                     }}
                   />
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, width: '100%', position: 'relative', zIndex: 1 }}>
-                    <Box
-                      sx={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#0f172a',
-                        background: `linear-gradient(135deg, ${accent}, rgba(255,255,255,0.9))`,
-                        boxShadow: `0 10px 20px ${accent}40`
-                      }}
-                    >
-                      {icon}
-                    </Box>
-                    <Box sx={{ flex: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
-                        <Typography variant="subtitle1" sx={{ color: '#F8FAFC', fontWeight: 600 }}>
-                          {title}
-                        </Typography>
-                        <Chip
-                          size="small"
-                          label={isOverdue ? 'Critical' : 'Attention'}
-                          sx={{
-                            bgcolor: isOverdue ? 'rgba(248,113,113,0.2)' : 'rgba(251,191,36,0.2)',
-                            color: isOverdue ? '#FCA5A5' : '#FDE68A',
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, width: '100%', position: 'relative', zIndex: 1 }}>
+                      <Box
+                        sx={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: iconColor,
+                          background: isDark ? '#111827' : '#f3f4f6',
+                          boxShadow: `0 10px 20px ${accent}26`
+                        }}
+                      >
+                      {React.cloneElement(icon, { sx: { color: iconColor } })}
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
+                          <Typography variant="subtitle1" sx={{ color: textPrimary, fontWeight: 600 }}>
+                            {title}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={isOverdue ? 'Critical' : 'Attention'}
+                            sx={{
+                            bgcolor: isOverdue
+                              ? (isDark ? 'rgba(248,113,113,0.25)' : 'rgba(248,113,113,0.18)')
+                              : (isDark ? 'rgba(251,191,36,0.25)' : 'rgba(251,191,36,0.18)'),
+                            color: isOverdue ? '#ef4444' : '#f59e0b',
                             fontWeight: 600
                           }}
-                        />
-                      </Box>
-                      <Typography variant="body2" sx={{ color: 'rgba(248,250,252,0.8)' }}>
+                          />
+                        </Box>
+                      <Typography variant="body2" sx={{ color: textPrimary }}>
                         {n.message}
                       </Typography>
                       {n.item?.qty != null && !isOverdue && (
-                        <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.6)', display: 'block', mt: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: textSecondary, display: 'block', mt: 0.5 }}>
                           {isMeterCategory(n.item)
                             ? `Qolgan metr: ${Number(n.item?.meter_qty ?? (Number(n.item?.pack_qty || 0) * Number(n.item?.qty || 0)))} m`
                             : `Qolgan miqdor: ${n.item.qty}`
@@ -299,14 +318,14 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
                         </Typography>
                       )}
                       {n.item?.remaining != null && isOverdue && (
-                        <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.6)', display: 'block', mt: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: textSecondary, display: 'block', mt: 0.5 }}>
                           Qolgan summa: {n.item.remaining}
                         </Typography>
                       )}
                       {n.joke && (
                         <Typography
                           variant="caption"
-                          sx={{ fontStyle: 'italic', display: 'block', mt: 1, color: 'rgba(248,250,252,0.65)' }}
+                          sx={{ fontStyle: 'italic', display: 'block', mt: 1, color: textSecondary }}
                         >
                           {n.joke}
                         </Typography>
@@ -318,7 +337,7 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
                             fontStyle: 'italic',
                             display: 'block',
                             mt: 1,
-                            color: 'rgba(248,250,252,0.65)',
+                            color: textSecondary,
                             whiteSpace: 'pre-line'
                           }}
                         >
@@ -337,8 +356,8 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
         sx={{
           px: { xs: 2.5, sm: 3 },
           py: 2,
-          background: 'rgba(15, 23, 42, 0.95)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+          background: bgSurface,
+          borderTop: `1px solid ${headerBorder}`
         }}
       >
         <Button

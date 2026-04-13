@@ -53,11 +53,27 @@ export const getLogs = async (user, date = null, options = {}) => {
     let profileMap = {}
     if (usernames.length > 0) {
       try {
-        const { data: profiles, error: profileErr } = await supabase
+        let { data: profiles, error: profileErr } = await supabase
           .from('user_profiles')
           .select('username, full_name')
           .in('username', usernames)
-        if (profileErr) throw profileErr
+
+        if (profileErr) {
+          const msg = (profileErr?.message || profileErr?.details || '').toString()
+          const missingFullName = /full_name/i.test(msg) || /column .*full_name does not exist/i.test(msg)
+          if (missingFullName) {
+            console.warn('[getLogs] user_profiles.full_name missing - retrying without it')
+            const { data: basicProfiles, error: basicErr } = await supabase
+              .from('user_profiles')
+              .select('username')
+              .in('username', usernames)
+            if (basicErr) throw basicErr
+            profiles = (basicProfiles || []).map(p => ({ ...p, full_name: null }))
+          } else {
+            throw profileErr
+          }
+        }
+
         profileMap = (profiles || []).reduce((acc, p) => {
           acc[(p.username || '').toLowerCase()] = p
           return acc
@@ -207,6 +223,24 @@ export const insertLog = async (log) => {
     }
     
     // For all other errors, throw so parent handler can retry or log
+    throw err
+  }
+}
+
+// Delete all logs for a given YYYY-MM-DD date
+export const deleteLogsForDate = async (date) => {
+  if (!isSupabaseConfigured()) return { deleted: 0 }
+  const targetDate = (date || '').toString().slice(0, 10)
+  if (!targetDate) return { deleted: 0 }
+  try {
+    const { data, error, count } = await supabase
+      .from('logs')
+      .delete({ count: 'exact' })
+      .eq('date', targetDate)
+    if (error) throw error
+    return { deleted: count || (data ? data.length : 0) }
+  } catch (err) {
+    console.error('[deleteLogsForDate] Failed:', err?.message || err)
     throw err
   }
 }

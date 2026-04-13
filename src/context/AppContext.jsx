@@ -6,10 +6,10 @@ import { getProducts, insertProduct as dbInsertProduct, updateProduct as dbUpdat
 import { getCredits, insertCredit as dbInsertCredit, updateCredit as dbUpdateCredit, deleteCredit as dbDeleteCredit } from '../firebase/supabaseCredits'
 import { getLogs, insertLog, insertCreditLog } from '../firebase/supabaseLogs'
 import { getAllUserBalances, updateAccountBalance, updateDailySales } from '../firebase/supabaseAccounts'
-import { supabase } from '/supabase/supabaseClient'
+import { supabase, isSupabaseConfigured } from '/supabase/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
 import { useNotification } from './NotificationContext';
-import { DEFAULT_PRODUCT_CATEGORIES, PRODUCT_CATEGORIES_STORAGE_KEY, loadStoredProductCategories, mergeCategories, isMeterCategory } from '../utils/productCategories'
+import { DEFAULT_PRODUCT_CATEGORIES, PRODUCT_CATEGORIES_STORAGE_KEY, loadStoredProductCategories, mergeCategories, isMeterCategory, normalizeProductCategoryRecord, normalizeCategory } from '../utils/productCategories'
 import { getConnectionInfo, isSlowConnection, safeLimit } from '../utils/network'
 
 const lowStockJokes = [
@@ -140,6 +140,7 @@ function reducer(state, action) {
         return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
       })
       const filteredStore = sold
+      const nextLogs = action.log ? [...state.logs, action.log] : state.logs
       // update account balances (credit the selling account) when a sale happens
       try {
         const log = action.log || {}
@@ -159,10 +160,10 @@ function reducer(state, action) {
             return a
           })
         }
-        return { ...state, store: filteredStore, logs: [...state.logs, action.log], accounts: nextAccounts }
+        return { ...state, store: filteredStore, logs: nextLogs, accounts: nextAccounts }
       } catch (_err) {
         void _err
-        return { ...state, store: filteredStore, logs: [...state.logs, action.log] }
+        return { ...state, store: filteredStore, logs: nextLogs }
       }
     }
     case 'SELL_WAREHOUSE': {
@@ -178,6 +179,7 @@ function reducer(state, action) {
         return { ...it, qty: Number(it.qty) - Number(action.payload.qty) }
       })
       const filteredWh = soldWh
+      const nextLogs = action.log ? [...state.logs, action.log] : state.logs
       // also credit the selling account (if present) for warehouse sales
       try {
         const log = action.log || {}
@@ -197,10 +199,10 @@ function reducer(state, action) {
             return a
           })
         }
-        return { ...state, warehouse: filteredWh, logs: [...state.logs, action.log], accounts: nextAccounts }
+        return { ...state, warehouse: filteredWh, logs: nextLogs, accounts: nextAccounts }
       } catch (_err) {
         void _err
-        return { ...state, warehouse: filteredWh, logs: [...state.logs, action.log] }
+        return { ...state, warehouse: filteredWh, logs: nextLogs }
       }
     }
     case 'ADD_STORE':
@@ -343,7 +345,7 @@ function reducer(state, action) {
 
 export const AppProvider = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const { user, username, hasPermission } = useAuth()
+  const { user, authUser, session, username, hasPermission } = useAuth()
   const { notify } = useNotification()
   const [hydrated, setHydrated] = React.useState(false)
   const [isOnline, setIsOnline] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
@@ -351,32 +353,24 @@ export const AppProvider = ({ children }) => {
   const slowConnectionRef = useRef(isSlowConnection())
   const pendingOpsRef = useRef([])
   const mountedRef = useRef(true)
-  const normalizeProductName = React.useCallback((value) => {
-    return (value || '')
-      .toString()
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, ' ')
+  const normalizeProductList = React.useCallback((list) => {
+    const normalizedList = []
+    const updates = []
+    ;(Array.isArray(list) ? list : []).forEach((item) => {
+      const normalizedItem = normalizeProductCategoryRecord(item)
+      if (normalizedItem !== item && item?.id) {
+        updates.push({ id: item.id, category: normalizedItem.category })
+      }
+      normalizedList.push(normalizedItem)
+    })
+    return { normalizedList, updates }
   }, [])
 
-  // Build a signature that differentiates products with same name but different specs (category/size/pack/stone/electrode)
-  const productSignature = React.useCallback((p) => {
-    if (!p) return ''
-    return [
-      normalizeProductName(p.name),
-      (p.category || '').toString().toLowerCase(),
-      (p.electrode_size || '').toString().toLowerCase(),
-      (p.stone_thickness || '').toString().toLowerCase(),
-      (p.stone_size || '').toString().toLowerCase(),
-      (p.pack_qty || '').toString(),
-      (p.price_pack || '').toString(),
-      (p.price_piece || '').toString()
-    ].join('|')
-  }, [normalizeProductName])
-  const isDuplicateProductNameError = React.useCallback((err) => {
-    const msg = (err?.message || err?.details || err?.error || '').toString().toLowerCase()
-    return msg.includes('products_name_key') || msg.includes('duplicate key value')
-  }, [])
+  // Only attempt Supabase sync when we have auth + config
+  const canSyncNow = React.useCallback(() => {
+    // Require Supabase config + an authenticated session to avoid RLS/network spam when logged out
+    return isSupabaseConfigured() && !!authUser && !!session
+  }, [authUser, session])
 
   React.useEffect(() => {
     const updateNet = () => {
@@ -408,53 +402,81 @@ export const AppProvider = ({ children }) => {
     }
   }, [])
   
+  const refreshData = React.useCallback(async (updateHydration = false) => {
+    if (!username) {
+      if (mountedRef.current && updateHydration) setHydrated(false)
+      dispatch({ type: 'RESET_STATE' })
+      return
+    }
+    try {
+      const fetchLimit = safeLimit(120, 20)
+      const logsLimit = safeLimit(60, 20)
+      const [credits, warehouse, store, logs, clients, userBalances] = await Promise.all([
+        getCredits({ limit: fetchLimit }),
+        getProducts('warehouse', { limit: fetchLimit }),
+        getProducts('store', { limit: fetchLimit }),
+        getLogs(null, null, { limit: logsLimit }),
+        getClients({ limit: fetchLimit }),
+        getAllUserBalances(),
+      ]);
+
+      if (!mountedRef.current) return;
+
+      const warehouseData = Array.isArray(warehouse) ? warehouse : warehouse?.data || []
+      const storeData = Array.isArray(store) ? store : store?.data || []
+
+      const normalizedWarehouse = normalizeProductList(warehouseData)
+      const normalizedStore = normalizeProductList(storeData)
+
+      dispatch({ type: 'SET_CREDITS', payload: Array.isArray(credits) ? credits : credits?.data || [] });
+      dispatch({ type: 'SET_WAREHOUSE', payload: normalizedWarehouse.normalizedList });
+      dispatch({ type: 'SET_STORE', payload: normalizedStore.normalizedList });
+      dispatch({ type: 'SET_LOGS', payload: Array.isArray(logs) ? logs : logs?.data || [] });
+      dispatch({ type: 'SET_CLIENTS', payload: Array.isArray(clients) ? clients : clients?.data || [] });
+
+      if (userBalances?.length) {
+        console.log('[AppContext] Loaded user accounts:', userBalances);
+        dispatch({ type: 'SET_ACCOUNTS', payload: userBalances });
+      }
+
+      const categoryUpgrades = [...normalizedWarehouse.updates, ...normalizedStore.updates]
+      if (categoryUpgrades.length) {
+        const unique = new Map()
+        categoryUpgrades.forEach(({ id, category }) => {
+          if (id && category) unique.set(id, category)
+        })
+        const jobs = Array.from(unique.entries()).map(([id, category]) =>
+          dbUpdateProduct(id, { category }).catch((err) => console.error('Product category migrate failed', id, err))
+        )
+        Promise.allSettled(jobs).catch(() => null)
+      }
+    } catch (_err) {
+      console.error('AppContext: failed to load shared data', _err);
+    }
+
+    if (mountedRef.current && updateHydration) setHydrated(true);
+  }, [username, dispatch, normalizeProductList]);
+
   React.useEffect(() => {
     mountedRef.current = true;
-    const loadData = async () => {
-      if (!username) {
-        if (mountedRef.current) setHydrated(false)
-        dispatch({ type: 'RESET_STATE' })
-        return
-      }
-      try {
-        const fetchLimit = safeLimit(120, 20)
-        const logsLimit = safeLimit(60, 20)
-        const [credits, warehouse, store, logs, clients, userBalances] = await Promise.all([
-          getCredits({ limit: fetchLimit }),
-          getProducts('warehouse', { limit: fetchLimit }),
-          getProducts('store', { limit: fetchLimit }),
-          getLogs(null, null, { limit: logsLimit }),
-          getClients({ limit: fetchLimit }),
-          getAllUserBalances(),
-        ]);
-
-        if (!mountedRef.current) return;
-
-        dispatch({ type: 'SET_CREDITS', payload: Array.isArray(credits) ? credits : credits?.data || [] });
-        dispatch({ type: 'SET_WAREHOUSE', payload: Array.isArray(warehouse) ? warehouse : warehouse?.data || [] });
-        dispatch({ type: 'SET_STORE', payload: Array.isArray(store) ? store : store?.data || [] });
-        dispatch({ type: 'SET_LOGS', payload: Array.isArray(logs) ? logs : logs?.data || [] });
-        dispatch({ type: 'SET_CLIENTS', payload: Array.isArray(clients) ? clients : clients?.data || [] });
-
-        // Merge user balances with existing accounts
-        if (userBalances && userBalances.length > 0) {
-          console.log('[AppContext] Loaded user accounts:', userBalances);
-          dispatch({ type: 'SET_ACCOUNTS', payload: userBalances });
-        }
-
-      } catch (_err) {
-        console.error('AppContext: failed to load shared data', _err);
-      }
-
-      if (mountedRef.current) setHydrated(true);
-    };
-
-    loadData();
-
+    refreshData(true);
     return () => {
       mountedRef.current = false;
     };
-  }, [username]);
+  }, [refreshData]);
+
+  React.useEffect(() => {
+    if (!username || !supabase?.channel) return undefined;
+    const channel = supabase
+      .channel('realtime-sales-nasiya')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => refreshData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'nasiya' }, () => refreshData(false))
+      .subscribe();
+
+    return () => {
+      try { channel?.unsubscribe?.() } catch (_err) { void _err }
+    }
+  }, [username, refreshData]);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return
@@ -477,12 +499,19 @@ export const AppProvider = ({ children }) => {
   }, [])
 
   const queueOp = React.useCallback((op) => {
-    if (!op) return
+    if (!op || !op.type) {
+      console.warn('[AppContext] queueOp: invalid op skipped', op)
+      return
+    }
     pendingOpsRef.current = [...pendingOpsRef.current, op]
     persistPendingOps()
   }, [persistPendingOps])
 
   const runSyncAction = React.useCallback(async (op) => {
+    if (!op || !op.type) {
+      console.warn('[AppContext] runSyncAction: invalid op', op)
+      return
+    }
     switch (op.type) {
       case 'insertProduct': {
         const saved = await dbInsertProduct(op.payload)
@@ -555,12 +584,18 @@ export const AppProvider = ({ children }) => {
   }, [dispatch, dbInsertProduct, dbUpdateProduct, dbDeleteProduct, dbInsertCredit, dbUpdateCredit, dbDeleteCredit, dbInsertClient, dbUpdateClient, dbDeleteClient])
 
   const flushPendingOps = React.useCallback(async () => {
-    if (!isOnline) return
+    if (!isOnline || !canSyncNow()) return
     if (!pendingOpsRef.current.length) return
     setSyncState('syncing')
     const queueCopy = [...pendingOpsRef.current]
     for (let i = 0; i < queueCopy.length; i += 1) {
       const op = pendingOpsRef.current[0]
+      if (!op || !op.type) {
+        console.warn('[AppContext] flushPendingOps: dropping invalid op', op)
+        pendingOpsRef.current.shift()
+        persistPendingOps()
+        continue
+      }
       try {
         await runSyncAction(op)
         pendingOpsRef.current.shift()
@@ -572,86 +607,58 @@ export const AppProvider = ({ children }) => {
       }
     }
     setSyncState('idle')
-  }, [isOnline, runSyncAction, notify, persistPendingOps])
+  }, [isOnline, runSyncAction, notify, persistPendingOps, canSyncNow])
 
   React.useEffect(() => {
     flushPendingOps()
   }, [flushPendingOps])
   
   const syncOrQueue = React.useCallback((op, rollback) => {
-    if (!op) return
-    if (isOnline && !slowConnectionRef.current) {
-      runSyncAction(op).catch(err => {
-        console.error('[AppContext] syncOrQueue failed', err)
-        if (rollback) rollback()
-        queueOp(op)
-        notify('Sync queued', err?.message || 'Will retry when online', 'warning')
-      })
-    } else {
-      queueOp(op)
+    if (!op || !op.type) {
+      console.warn('[AppContext] syncOrQueue: invalid op skipped', op)
+      return
     }
-  }, [isOnline, runSyncAction, queueOp, notify])
+    try {
+      const ready = isOnline && !slowConnectionRef.current && canSyncNow()
+      if (ready) {
+        const promise = runSyncAction(op)
+        if (promise?.catch) {
+          promise.catch(err => {
+            console.error('[AppContext] syncOrQueue failed', err)
+            if (rollback) rollback()
+            queueOp(op)
+            notify('Sync queued', err?.message || 'Will retry when online', 'warning')
+          })
+        }
+      } else {
+        queueOp(op)
+      }
+    } catch (err) {
+      console.error('[AppContext] syncOrQueue threw synchronously', err)
+      if (rollback) rollback()
+      queueOp(op)
+      notify('Sync queued', err?.message || 'Will retry when online', 'warning')
+    }
+  }, [isOnline, runSyncAction, queueOp, notify, canSyncNow])
   
   // Action creators with DB persistence
   const addWarehouseProduct = React.useCallback(async (payload, logData) => {
-    const targetSig = productSignature(payload)
-    const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
-    const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
     const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
-
-    if (existingWarehouse) {
-      const previous = existingWarehouse
-      const newQty = Number(existingWarehouse.qty || 0) + Number(payload.qty || 0)
-      const updates = { qty: newQty }
-      dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates }, log })
-      syncOrQueue(
-        { type: 'updateProduct', payload: { id: existingWarehouse.id, updates, location: 'warehouse' }, log },
-        () => dispatch({ type: 'EDIT_WAREHOUSE', payload: { id: existingWarehouse.id, updates: previous } })
-      )
-      notify('Diqqat', 'Mahsulot allaqachon omborda bor edi. Miqdoriga qo\'shildi.', 'warning')
-      return updates
-    }
-
-    if (existingStore) {
-      notify('Xato', 'Bu nomdagi mahsulot do\'konda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
-      throw new Error('Product already exists in store')
-    }
-
-    const optimisticProduct = { ...payload, id: payload.id || uuidv4(), location: 'warehouse' }
+    const productId = payload.id || uuidv4()
+    const optimisticProduct = { ...payload, id: productId, location: 'warehouse' }
     dispatch({ type: 'ADD_WAREHOUSE', payload: optimisticProduct, log })
     syncOrQueue({ type: 'insertProduct', payload: optimisticProduct, log })
     return optimisticProduct
-  }, [dispatch, notify, productSignature, state.store, state.warehouse, syncOrQueue])
+  }, [dispatch, syncOrQueue])
 
   const addStoreProduct = React.useCallback(async (payload, logData) => {
-    const targetSig = productSignature(payload)
-    const existingStore = (state.store || []).find(p => productSignature(p) === targetSig)
-    const existingWarehouse = (state.warehouse || []).find(p => productSignature(p) === targetSig)
     const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
-
-    if (existingStore) {
-      const previous = existingStore
-      const newQty = Number(existingStore.qty || 0) + Number(payload.qty || 0)
-      const updates = { qty: newQty }
-      dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates }, log })
-      syncOrQueue(
-        { type: 'updateProduct', payload: { id: existingStore.id, updates, location: 'store' }, log },
-        () => dispatch({ type: 'EDIT_STORE', payload: { id: existingStore.id, updates: previous } })
-      )
-      notify('Diqqat', 'Mahsulot allaqachon do\'konda bor edi. Miqdoriga qo\'shildi.', 'warning')
-      return updates
-    }
-
-    if (existingWarehouse) {
-      notify('Xato', 'Bu nomdagi mahsulot omborda bor. Iltimos o\'sha joyda miqdor qo\'shing yoki nomini o\'zgartiring.', 'error')
-      throw new Error('Product already exists in warehouse')
-    }
-
-    const optimisticProduct = { ...payload, id: payload.id || uuidv4(), location: 'store' }
+    const productId = payload.id || uuidv4()
+    const optimisticProduct = { ...payload, id: productId, location: 'store' }
     dispatch({ type: 'ADD_STORE', payload: optimisticProduct, log })
     syncOrQueue({ type: 'insertProduct', payload: optimisticProduct, log })
     return optimisticProduct
-  }, [dispatch, notify, productSignature, state.store, state.warehouse, syncOrQueue])
+  }, [dispatch, syncOrQueue])
 
   const updateWarehouseProduct = React.useCallback(async (id, updates, logData) => {
     const previous = (state.warehouse || []).find(w => w.id === id)
@@ -695,6 +702,109 @@ export const AppProvider = ({ children }) => {
     )
   }, [dispatch, state.store, syncOrQueue])
 
+  const moveWarehouseToStore = React.useCallback(async (payload, logData) => {
+    try {
+      const source = (state.warehouse || []).find((w) => w.id === payload.id)
+      if (!source) throw new Error("Ombordagi mahsulot topilmadi")
+
+      const inputItem = payload.item || source
+      const isMeter = isMeterCategory(inputItem)
+      const packQty = Number(payload.pack_qty ?? inputItem.pack_qty ?? source.pack_qty ?? 0)
+      const meterDelta = isMeter ? Number(payload.meter_qty ?? payload.meter ?? 0) : 0
+      const moveQty = isMeter
+        ? Number(payload.qty || (packQty > 0 ? Math.ceil(meterDelta / Math.max(1, packQty)) : 0))
+        : Number(payload.qty || 0)
+
+      const baseSourceMeter = isMeter ? Number(source.meter_qty ?? (Number(source.qty || 0) * packQty)) : 0
+      const nextSourceMeter = isMeter ? Math.max(0, baseSourceMeter - meterDelta) : null
+      const nextSourceQty = isMeter
+        ? (packQty > 0 ? Math.ceil(nextSourceMeter / Math.max(1, packQty)) : Math.max(0, Number(source.qty || 0) - moveQty))
+        : Math.max(0, Number(source.qty || 0) - moveQty)
+
+      const existingStore = (state.store || []).find((s) => {
+        const sameName = (s.name || '').toLowerCase().trim() === (inputItem.name || '').toLowerCase().trim()
+        const sameThickness = (s.stone_thickness || '') === (inputItem.stone_thickness || '')
+        const sameSize = (s.stone_size || '') === (inputItem.stone_size || '')
+        return sameName && sameThickness && sameSize
+      })
+      const storeId = existingStore?.id || uuidv4()
+
+      const baseStoreMeter = isMeter ? Number(existingStore?.meter_qty ?? (Number(existingStore?.qty || 0) * packQty)) : 0
+      const nextStoreMeter = isMeter ? baseStoreMeter + meterDelta : null
+      const nextStoreQty = isMeter
+        ? (packQty > 0 ? Math.ceil(nextStoreMeter / Math.max(1, packQty)) : Number(existingStore?.qty || 0) + moveQty)
+        : Number(existingStore?.qty || 0) + moveQty
+
+      const currency = inputItem.currency || existingStore?.currency || source.currency || 'UZS'
+      const storePayload = {
+        ...(existingStore || {}),
+        ...inputItem,
+        id: storeId,
+        qty: nextStoreQty,
+        pack_qty: packQty,
+        currency,
+        location: 'store',
+      }
+      if (isMeter) storePayload.meter_qty = nextStoreMeter
+      else storePayload.meter_qty = null
+      if (inputItem.price !== undefined) storePayload.price = inputItem.price
+      if (inputItem.price_piece !== undefined) storePayload.price_piece = inputItem.price_piece
+      if (inputItem.price_pack !== undefined) storePayload.price_pack = inputItem.price_pack
+
+      const warehouseUpdates = isMeter ? { qty: nextSourceQty, meter_qty: nextSourceMeter } : { qty: nextSourceQty }
+      const log = logData ? { id: logData.id || uuidv4(), ...logData } : null
+
+      // Optimistic UI update
+      dispatch({
+        type: 'MOVE_TO_STORE',
+        payload: {
+          ...payload,
+          id: source.id,
+          qty: moveQty,
+          meter_qty: meterDelta,
+          pack_qty: packQty,
+          item: { ...inputItem, id: storeId, pack_qty: packQty, location: 'store' },
+        },
+        log,
+      })
+
+      // Persist warehouse deduction
+      syncOrQueue({ type: 'updateProduct', payload: { id: source.id, updates: warehouseUpdates, location: 'warehouse' }, log: null })
+
+      // Persist / upsert store
+      if (existingStore) {
+        const updates = {
+          qty: nextStoreQty,
+          pack_qty: packQty,
+          currency,
+          location: 'store',
+        }
+        if (isMeter) updates.meter_qty = nextStoreMeter
+        if (storePayload.price !== undefined) updates.price = storePayload.price
+        if (storePayload.price_piece !== undefined) updates.price_piece = storePayload.price_piece
+        if (storePayload.price_pack !== undefined) updates.price_pack = storePayload.price_pack
+        if (storePayload.category) updates.category = storePayload.category
+        if (storePayload.note !== undefined) updates.note = storePayload.note
+        if (storePayload.date) updates.date = storePayload.date
+        if (storePayload.electrode_size !== undefined) updates.electrode_size = storePayload.electrode_size
+        if (storePayload.stone_thickness !== undefined) updates.stone_thickness = storePayload.stone_thickness
+        if (storePayload.stone_size !== undefined) updates.stone_size = storePayload.stone_size
+
+        syncOrQueue({ type: 'updateProduct', payload: { id: storeId, updates, location: 'store' }, log: null })
+      } else {
+        syncOrQueue({ type: 'insertProduct', payload: storePayload, log: null })
+      }
+
+      if (log) syncOrQueue({ type: 'insertLog', log })
+
+      return { warehouseQty: nextSourceQty, storeQty: nextStoreQty }
+    } catch (err) {
+      const message = `Failed to move product: ${err.message}`
+      notify('Error', message, 'error')
+      throw err
+    }
+  }, [state.warehouse, state.store, dispatch, notify, syncOrQueue])
+
   const sellStoreProduct = React.useCallback(async (item, { id, qty, deduct_qty, price, currency }, logData) => {
     try {
       const effectiveQty = Number(deduct_qty ?? qty ?? 0);
@@ -716,6 +826,13 @@ export const AppProvider = ({ children }) => {
       payload.created_by = payload.created_by || username || 'shared'
       payload.created_at = payload.created_at || new Date().toISOString()
       const credit = await dbInsertCredit(payload)
+      const creditWithDirection = (() => {
+        if (!credit) return { ...payload }
+        if (!credit.credit_direction && payload.credit_direction) {
+          return { ...credit, credit_direction: payload.credit_direction }
+        }
+        return credit
+      })()
 
       // Normalize log payload for insertion and try both RPC and direct insert.
       const normalizedLog = {
@@ -733,6 +850,7 @@ export const AppProvider = ({ children }) => {
         client_name: logData?.client_name ?? payload.name ?? null,
         bosh_toluv: logData?.bosh_toluv ?? logData?.down_payment ?? payload.bosh_toluv ?? 0,
         credit_type: logData?.credit_type ?? payload.credit_type ?? payload.type ?? null,
+        credit_direction: logData?.credit_direction ?? payload.credit_direction ?? payload.type ?? null,
         detail: logData?.detail || null
       }
 
@@ -754,8 +872,8 @@ export const AppProvider = ({ children }) => {
 
       // Use the returned log if available, otherwise fall back to the normalized local log
       const finalLog = returnedLog || normalizedLog
-      dispatch({ type: 'ADD_CREDIT', payload: credit, log: finalLog })
-      return credit
+      dispatch({ type: 'ADD_CREDIT', payload: creditWithDirection, log: finalLog })
+      return creditWithDirection
     } catch (_err) {
       const message = `Failed to add credit: ${_err.message}`;
       notify('Error', message, 'error')
@@ -921,6 +1039,7 @@ export const AppProvider = ({ children }) => {
     // Action creators
     addWarehouseProduct,
     addStoreProduct,
+    moveWarehouseToStore,
     updateWarehouseProduct,
     updateStoreProduct,
     deleteWarehouseProduct,
@@ -932,7 +1051,7 @@ export const AppProvider = ({ children }) => {
     addClient,
     updateClient,
     deleteClient
-  }), [state, dispatch, syncState, addWarehouseProduct, addStoreProduct, updateWarehouseProduct, updateStoreProduct, deleteWarehouseProduct, deleteStoreProduct, sellStoreProduct, addCredit, updateCredit, deleteCredit, addClient, updateClient, deleteClient])
+  }), [state, dispatch, syncState, addWarehouseProduct, addStoreProduct, moveWarehouseToStore, updateWarehouseProduct, updateStoreProduct, deleteWarehouseProduct, deleteStoreProduct, sellStoreProduct, addCredit, updateCredit, deleteCredit, addClient, updateClient, deleteClient])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

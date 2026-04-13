@@ -1,47 +1,47 @@
-import React, { Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { CssBaseline, ThemeProvider } from '@mui/material'
-import { useLocale } from './context/LocaleContext'
-import { ThemeModeContext } from './context/ThemeModeContext'
-import { NotificationProvider } from './context/NotificationContext'
-import enableDevToolsLock from './utils/devToolsLock'
-import { lightTheme, darkTheme } from './theme'
+import React, { Suspense } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { CssBaseline, ThemeProvider } from "@mui/material";
+import { useLocale } from "./context/LocaleContext";
+import { ThemeModeContext } from "./context/ThemeModeContext";
+import { NotificationProvider } from "./context/NotificationContext";
+import enableDevToolsLock from "./utils/devToolsLock";
+import { lightTheme, darkTheme } from "./theme";
 
-import Layout from './components/Layout'
-const ReceiptApp = React.lazy(() => import('./components/ReceiptApp'))
-const Dashboard = React.lazy(() => import('./pages/Dashboard'))
-const Warehouse = React.lazy(() => import('./pages/Warehouse'))
-const Store = React.lazy(() => import('./pages/Store'))
-const Accounts = React.lazy(() => import('./pages/Accounts'))
-const Logs = React.lazy(() => import('./pages/Logs'))
-const Clients = React.lazy(() => import('./pages/Clients'))
-const Credits = React.lazy(() => import('./pages/Credits'))
-const Calculator = React.lazy(() => import('./pages/Calculator'))
+import Layout from "./components/Layout";
+const ReceiptApp = React.lazy(() => import("./components/ReceiptApp"));
+const Dashboard = React.lazy(() => import("./pages/Dashboard"));
+const Warehouse = React.lazy(() => import("./pages/Warehouse"));
+const Store = React.lazy(() => import("./pages/Store"));
+const Accounts = React.lazy(() => import("./pages/Accounts"));
+const Logs = React.lazy(() => import("./pages/Logs"));
+const Clients = React.lazy(() => import("./pages/Clients"));
+const Credits = React.lazy(() => import("./pages/Credits"));
+const Calculator = React.lazy(() => import("./pages/Calculator"));
 
 const App = () => {
-  const { t } = useLocale()
+  const { t } = useLocale();
   const [isDarkMode, setIsDarkMode] = React.useState(() => {
-    const savedMode = localStorage.getItem('isDarkMode');
-    return savedMode === 'true';
+    const savedMode = localStorage.getItem("isDarkMode");
+    return savedMode === "true";
   });
 
   React.useEffect(() => {
-    localStorage.setItem('isDarkMode', isDarkMode);
+    localStorage.setItem("isDarkMode", isDarkMode);
   }, [isDarkMode]);
 
   React.useEffect(() => {
-    if (typeof document === 'undefined') return
-    const themeValue = isDarkMode ? 'dark' : 'light'
-    document.body.setAttribute('data-theme', themeValue)
-    document.documentElement.setAttribute('data-theme', themeValue)
-  }, [isDarkMode])
+    if (typeof document === "undefined") return;
+    const themeValue = isDarkMode ? "dark" : "light";
+    document.body.setAttribute("data-theme", themeValue);
+    document.documentElement.setAttribute("data-theme", themeValue);
+  }, [isDarkMode]);
 
   // Enable DevTools lock on mount
   React.useEffect(() => {
-    enableDevToolsLock()
-  }, [])
+    enableDevToolsLock();
+  }, []);
 
-  const currentTheme = isDarkMode ? darkTheme : lightTheme
+  const currentTheme = isDarkMode ? darkTheme : lightTheme;
 
   return (
     <ThemeProvider theme={currentTheme}>
@@ -49,9 +49,9 @@ const App = () => {
       <ThemeModeContext.Provider value={{ isDarkMode, setIsDarkMode }}>
         <NotificationProvider>
           <BrowserRouter>
-            <Suspense fallback={<div>{t('loading')}</div>}>
+            <Suspense fallback={<div>{t("loading")}</div>}>
               <Layout>
-                <Routes>  
+                <Routes>
                   <Route path="/receipt" element={<ReceiptApp />} />
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/warehouse" element={<Warehouse />} />
@@ -68,7 +68,7 @@ const App = () => {
         </NotificationProvider>
       </ThemeModeContext.Provider>
     </ThemeProvider>
-  )
-}
+  );
+};
 
-export default App
+export default App;

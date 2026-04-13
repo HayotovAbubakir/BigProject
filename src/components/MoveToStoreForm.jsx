@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react'
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, FormHelperText, FormControl, InputLabel, Select, MenuItem, Typography } from '@mui/material'
 import NumberField from './NumberField'
 import { normalizeCategory, isMeterCategory } from '../utils/productCategories'
+import { useLocale } from '../context/LocaleContext'
 
 export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
+  const { t } = useLocale()
   const [qty, setQty] = useState('')
   const [meter, setMeter] = useState('')
   const [unit, setUnit] = useState('metr')
@@ -40,18 +42,18 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
     if (!initial) return
     if (isMeter) {
       if (unit === 'metr') {
-        if (nMeter <= 0) return setError('Metr 0 dan katta bo\'lishi kerak')
-        if (nMeter > availableMeter) return setError('Omborda yetarli metr yo\'q')
+        if (nMeter <= 0) return setError(t('validation_meter_positive'))
+        if (nMeter > availableMeter) return setError(t('validation_meter_insufficient'))
       } else {
-        if (nQty <= 0) return setError('Soni 0 dan katta bo\'lishi kerak')
-        if (nQty > availableDona) return setError('Omborda yetarli dona yo\'q')
+        if (nQty <= 0) return setError(t('validation_qty_positive'))
+        if (nQty > availableDona) return setError(t('validation_qty_insufficient'))
       }
-      if (nPrice <= 0) return setError('Narx (1 metr) 0 dan katta bo\'lishi kerak')
-      if (nPiecePrice <= 0) return setError('Narx (1 dona) 0 dan katta bo\'lishi kerak')
+      if (nPrice <= 0) return setError(t('validation_price_meter_positive'))
+      if (nPiecePrice <= 0) return setError(t('validation_price_piece_positive'))
     } else {
-      if (nQty <= 0) return setError('Soni 0 dan katta bo\'lishi kerak')
-      if (nQty > (initial.qty || 0)) return setError('Omborda yetarli miqdor yo\'q')
-      if (nPrice <= 0) return setError('Narx 0 dan katta bo\'lishi kerak')
+      if (nQty <= 0) return setError(t('validation_qty_positive'))
+      if (nQty > (initial.qty || 0)) return setError(t('validation_qty_insufficient'))
+      if (nPrice <= 0) return setError(t('validation_price_positive'))
     }
 
     const nextItem = { 
@@ -74,38 +76,38 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
-      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>O'tkazish</DialogTitle>
+      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>{t('move_to_store_title') || t('move_to_store')}</DialogTitle>
       <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word', overflowX: 'visible' }}>
         <Box sx={{ mt: 1, display: 'grid', gap: 1.5 }}>
           {isMeter && (
             <>
               <Typography variant="caption" color="text.secondary">
-                Mavjud: {availableMeter} m ({availableDona} dona)
+                {t('available_caption', { value: `${availableMeter} m (${availableDona} ${t('unit_piece') || 'dona'})` }) || `${t('available')}: ${availableMeter} m (${availableDona} ${t('unit_piece')})`}
               </Typography>
               {packQty > 0 && (
                 <Typography variant="caption" color="text.secondary">
-                  1 dona: {packQty} m
+                  1 {t('unit_piece') || 'dona'}: {packQty} m
                 </Typography>
               )}
               <FormControl fullWidth size="small">
-                <InputLabel id="move-unit-label">Birlik</InputLabel>
+                <InputLabel id="move-unit-label">{t('unit') || 'Birlik'}</InputLabel>
                 <Select
                   labelId="move-unit-label"
                   value={unit}
-                  label="Birlik"
+                  label={t('unit') || 'Birlik'}
                   onChange={(e) => setUnit(e.target.value)}
                   size="small"
                   MenuProps={{
-                    disablePortal: true,
-                    getContentAnchorEl: null,
+                    // Render dropdown in portal to avoid dialog overflow/layout issues
+                    disablePortal: false,
                     anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
                     transformOrigin: { vertical: 'top', horizontal: 'left' },
                     PaperProps: { sx: { maxWidth: '100%', boxSizing: 'border-box' } },
                     disableScrollLock: true
                   }}
                 >
-                  <MenuItem value="metr">Metr</MenuItem>
-                  <MenuItem value="dona">Dona</MenuItem>
+                  <MenuItem value="metr">{t('unit_meter') || 'Metr'}</MenuItem>
+                  <MenuItem value="dona">{t('unit_piece') || 'Dona'}</MenuItem>
                 </Select>
               </FormControl>
             </>
@@ -113,29 +115,29 @@ export default function MoveToStoreForm({ open, onClose, onSubmit, initial }) {
 
           {isMeter ? (
             unit === 'metr' ? (
-              <NumberField label="Metr" value={meter} onChange={(v) => setMeter(v === null ? '' : v)} fullWidth />
+              <NumberField label={t('unit_meter') || 'Metr'} value={meter} onChange={(v) => setMeter(v === null ? '' : v)} fullWidth />
             ) : (
-              <NumberField label="Soni (dona)" value={qty} onChange={(v) => setQty(v === null ? '' : v)} fullWidth />
+              <NumberField label={t('quantity_piece') || t('qty')} value={qty} onChange={(v) => setQty(v === null ? '' : v)} fullWidth />
             )
           ) : (
-            <NumberField label="Soni" value={qty} onChange={(v) => setQty(v === null ? '' : v)} fullWidth />
+            <NumberField label={t('qty')} value={qty} onChange={(v) => setQty(v === null ? '' : v)} fullWidth />
           )}
 
           {isMeter ? (
             <>
-              <NumberField label="Do'kon narxi (1 metr)" value={price} onChange={(v) => setPrice(String(v || ''))} fullWidth />
-              <NumberField label="Do'kon narxi (1 dona)" value={pricePiece} onChange={(v) => setPricePiece(String(v || ''))} fullWidth />
+              <NumberField label={t('store_price_per_meter')} value={price} onChange={(v) => setPrice(String(v || ''))} fullWidth />
+              <NumberField label={t('store_price_per_piece')} value={pricePiece} onChange={(v) => setPricePiece(String(v || ''))} fullWidth />
             </>
           ) : (
-            <NumberField label={isElectrode ? "Do'kon narxi (dona)" : "Do'kon narxi"} value={price} onChange={(v) => setPrice(String(v || ''))} fullWidth />
+            <NumberField label={isElectrode ? `${t('store_price_per_piece')}` : t('price')} value={price} onChange={(v) => setPrice(String(v || ''))} fullWidth />
           )}
 
           {error && <FormHelperText error sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>{error}</FormHelperText>}
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>
-        <Button onClick={onClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Bekor</Button>
-        <Button variant="contained" onClick={submit} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>O'tkazish</Button>
+        <Button onClick={onClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>{t('cancel')}</Button>
+        <Button variant="contained" onClick={submit} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>{t('move_to_store_title') || t('move_to_store')}</Button>
       </DialogActions>
     </Dialog>
   )

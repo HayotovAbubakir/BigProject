@@ -167,16 +167,24 @@ export default function Clients() {
     }
   };
 
-  const addProduct = () => setProducts([...products, { name: '', qty: '', receivePrice: '', receiveCurrency: 'UZS', sellPrice: '', sellCurrency: 'UZS', isNewProduct: false, category: '', pack_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', price_piece: '', price_pack: '' }]);
-  const updateProduct = (index, field, value) => setProducts(products.map((p, i) => i === index ? { ...p, [field]: value } : p));
-  const removeProduct = (index) => setProducts(products.filter((_, i) => i !== index));
+  const addProduct = () => setProducts([...products, { productId: '', name: '', qty: '', receivePrice: '', receiveCurrency: 'UZS', sellPrice: '', sellCurrency: 'UZS', isNewProduct: false, category: '', pack_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', price_piece: '', price_pack: '' }]);
+  const updateProduct = (index, field, value) => setProducts(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+  const updateProductFields = (index, updates) => setProducts(prev => prev.map((p, i) => i === index ? { ...p, ...updates } : p));
+  const removeProduct = (index) => setProducts(prev => prev.filter((_, i) => i !== index));
 
   const isProductFilled = (p) => {
-    if (!p.name || !p.qty) return false;
-    const cat = normalizeCategory(p.category || '');
-    const isMeter = isMeterCategory(cat || p);
+    const pool = location === 'warehouse' ? state.warehouse : state.store;
+    const selected = pool.find(item => item.id === p.productId);
+    const derivedCategory = normalizeCategory(p.category || selected?.category || '');
+    const isMeter = isMeterCategory(selected || derivedCategory || p);
     const isBerilgan = creditSubtype === 'berilgan';
     const isBerilganMeter = isBerilgan && isMeter;
+
+    if (p.isNewProduct) {
+      if (!p.name || !p.qty) return false;
+    } else {
+      if (!p.productId || !p.qty) return false;
+    }
 
     // For meter items: pack size + both prices when received; only piece price when given.
     if (p.isNewProduct && isMeter) {
@@ -189,12 +197,12 @@ export default function Clients() {
       return hasPack && meterPriceOk && piecePriceOk;
     }
 
-    if (p.isNewProduct && cat === 'elektrod') {
+    if (p.isNewProduct && derivedCategory === 'elektrod') {
       // Electrodes: only pack price required; per-piece/per-meter ignored
       return !!p.electrode_size && Number(p.price_pack) > 0;
     }
 
-    if (p.isNewProduct && isMeterCategory(cat)) {
+    if (p.isNewProduct && isMeterCategory(derivedCategory)) {
       if (isBerilgan) {
         return Number(p.pack_qty) > 0 && Number(p.price_piece) > 0;
       }
@@ -329,16 +337,18 @@ export default function Clients() {
       if (products.length === 0 || products.some(p => !isProductFilled(p))) return;
 
       for (const p of products) {
+        const inventory = location === 'warehouse' ? state.warehouse : state.store;
         let productId;
-        let productName = p.name;
+        let productName;
         let productQty = Number(p.qty);
         let existingProduct = null;
-        const cat = normalizeCategory(p.category || '');
-        const isMeter = isMeterCategory(cat);
-        const isElectrode = cat === 'elektrod';
-        const packQty = isMeter ? Number(p.pack_qty || 0) : 0;
 
         if (p.isNewProduct) {
+          const cat = normalizeCategory(p.category || '');
+          const isMeter = isMeterCategory(cat || p);
+          const isElectrode = cat === 'elektrod';
+          const packQty = isMeter ? Number(p.pack_qty || 0) : 0;
+          productName = p.name;
           // Allow new product for both 'olingan' (received) and 'berilgan' (given) credits
           const newProductId = uuidv4();
           const basePrice = isElectrode
@@ -385,13 +395,13 @@ export default function Clients() {
           }
         } else {
           // Existing product
-          const inventory = location === 'warehouse' ? state.warehouse : state.store;
-          existingProduct = inventory.find(item => item.name === p.name);
+          existingProduct = inventory.find(item => item.id === p.productId);
           if (!existingProduct) {
-            notify('Error', `Mahsulot "${p.name}" ${location === 'warehouse' ? 'omborda' : 'do\'konda'} topilmadi.`, 'error');
+            notify('Error', `Mahsulot tanlanmadi yoki topilmadi.`, 'error');
             return;
           }
           productId = existingProduct.id;
+          productName = existingProduct.name;
         }
 
         const derivedCategory = normalizeCategory(p.category || existingProduct?.category || '');
@@ -727,9 +737,16 @@ export default function Clients() {
       <CreditsDialog open={viewCreditsOpen} onClose={() => setViewCreditsOpen(false)} clientId={viewClient?.id} clientName={viewClient?.name} />
       
       {/* Add Credit Dialog */}
-      <Dialog open={creditOpen} onClose={() => setCreditOpen(false)} fullWidth maxWidth="lg">
+      <Dialog
+        open={creditOpen}
+        onClose={() => setCreditOpen(false)}
+        fullScreen
+        fullWidth
+        maxWidth="xl"
+        PaperProps={{ sx: { width: '100%', height: '100%' } }}
+      >
         <DialogTitle>{t('addCredit')} - {creditClient?.name}</DialogTitle>
-        <DialogContent sx={{ maxHeight: '70vh', overflowY: 'auto' }}>
+        <DialogContent sx={{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', pb: 2 }}>
           <TextField
             select
             label={t('type')}
@@ -817,11 +834,12 @@ export default function Clients() {
               <Typography variant="subtitle1" sx={{ mt: 2 }}>Mahsulotlar</Typography>
               {products.map((p, index) => {
                 const pool = location === 'warehouse' ? state.warehouse : state.store;
-                const selected = pool.find(item => item.name === p.name);
-                const derivedCategory = p.category || selected?.category;
-                const isMeter = isMeterCategory(derivedCategory);
-                const isElectrode = normalizeCategory(derivedCategory) === 'elektrod';
-                const isStone = normalizeCategory(derivedCategory) === 'tosh';
+                const selected = pool.find(item => item.id === p.productId);
+                const derivedCategory = p.isNewProduct ? p.category : (selected?.category || '');
+                const normalizedCat = normalizeCategory(derivedCategory || '');
+                const isMeter = isMeterCategory(selected || normalizedCat || p);
+                const isElectrode = normalizedCat === 'elektrod';
+                const isStone = normalizedCat === 'tosh';
                 const isBerilganMeter = creditSubtype === 'berilgan' && isMeter;
                 return (
                   <Grid container spacing={1} key={index} sx={{ mb: 2, alignItems: 'center' }}>
@@ -841,13 +859,26 @@ export default function Clients() {
                             label={t('selectProduct')}
                             fullWidth
                             margin="dense"
-                            value={p.name}
-                            onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                            value={p.productId || ""}
+                            onChange={(e) => {
+                              const nextId = e.target.value;
+                              const found = pool.find(item => item.id === nextId);
+                              updateProductFields(index, {
+                                productId: nextId,
+                                name: found?.name || '',
+                                category: found?.category || p.category,
+                                pack_qty: found?.pack_qty ?? p.pack_qty,
+                                electrode_size: found?.electrode_size ?? p.electrode_size,
+                                stone_thickness: found?.stone_thickness ?? p.stone_thickness,
+                                stone_size: found?.stone_size ?? p.stone_size,
+                              });
+                            }}
                           >
                             <MenuItem value="">-- {t('selectProduct')} --</MenuItem>
                             {pool.map(item => (
-                              <MenuItem key={item.id} value={item.name}>
-                                {formatProductName(item) || item.name} (Mavjud: {isMeterCategory(item) ? `${item.meter_qty ?? (item.qty * (item.pack_qty||0))} m` : item.qty})
+                              <MenuItem key={item.id} value={item.id}>
+                                {formatProductName(item) || item.name} • {item.date || t('arrived_date') || '—'} • {(item.id || '').slice(0, 8)}
+                                {` (Mavjud: ${isMeterCategory(item) ? `${item.meter_qty ?? (item.qty * (item.pack_qty||0))} m` : item.qty})`}
                               </MenuItem>
                             ))}
                           </TextField>
@@ -860,7 +891,7 @@ export default function Clients() {
                       </Box>
                       {!p.isNewProduct && selected && (
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                          {`Kategoriya: ${selected.category || '-'} | ${formatProductName(selected)}`}
+                          {`Kategoriya: ${selected.category || '-'} | ${formatProductName(selected)} | ID: ${(selected.id || '').slice(0, 8)}`}
                         </Typography>
                       )}
                     </Grid>
@@ -1063,7 +1094,10 @@ export default function Clients() {
                 : products.length === 0 || products.some(p => {
                     const cat = normalizeCategory(p.category || '')
                     const isMeter = isMeterCategory(cat || p)
-                    const requiresReceive = p.isNewProduct && creditSubtype === 'olingan' && !isMeter
+                    const requiresReceive = p.isNewProduct
+                      && creditSubtype === 'olingan'
+                      && !isMeter
+                      && (!(p.receivePrice) || Number(p.receivePrice) <= 0)
                     return !isProductFilled(p) || requiresReceive
                   })
             }

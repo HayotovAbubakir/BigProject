@@ -5,8 +5,10 @@ import CurrencyField from './CurrencyField'
 import useExchangeRate from '../hooks/useExchangeRate'
 import { normalizeCategory, isMeterCategory } from '../utils/productCategories'
 import { formatMoney } from '../utils/format'
+import { useLocale } from '../context/LocaleContext'
 
 export default function SellForm({ open, onClose, onSubmit, initial }) {
+  const { t, locale } = useLocale()
   const [qty, setQty] = useState('')
   const [price, setPrice] = useState(initial?.price || '')
   const [currency, setCurrency] = useState(initial?.currency || 'UZS')
@@ -89,41 +91,41 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh', overflow: 'hidden' } }}>
-      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>Sotish</DialogTitle>
+      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>{t('sell_title') || t('sell')}</DialogTitle>
       <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowY: 'auto', overflowX: 'hidden' }}>
         <Stack spacing={2}>
           {isMeter ? (
             <>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-                Mavjud: {meterAvailable} m
+                {t('available_caption', { value: `${meterAvailable} m` }) || `${t('available')}: ${meterAvailable} m`}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-                Butun: {fullPacksAvailable} dona{openMetersAvailable > 0 ? ` | Ochiq: ${openMetersAvailable} m` : ''}
+                {t('available_full')}: {fullPacksAvailable} {t('unit_piece') || 'dona'}{openMetersAvailable > 0 ? ` | ${t('available_open')}: ${openMetersAvailable} m` : ''}
               </Typography>
               {packQty > 0 && (
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-                  1 dona: {packQty} m
+                  1 {t('unit_piece') || 'dona'}: {packQty} m
                 </Typography>
               )}
             </>
           ) : (
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-              Mavjud: {availablePieces} dona{isElectrode ? ` (${availablePacks} pachka)` : ''}
+              {t('available')}: {availablePieces} {t('unit_piece') || 'dona'}{isElectrode ? ` (${availablePacks} ${t('unit_pack') || 'pachka'})` : ''}
             </Typography>
           )}
           {isElectrode && packQty > 0 && (
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>
-              Pachkada: {packQty} dona
+              {t('in_pack')}: {packQty} {t('unit_piece') || 'dona'}
             </Typography>
           )}
 
           {(isElectrode || isMeter) && (
             <FormControl fullWidth>
-              <InputLabel id="sell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Birlik</InputLabel>
+              <InputLabel id="sell-unit-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>{t('unit') || 'Birlik'}</InputLabel>
               <Select
                 labelId="sell-unit-label"
                 value={unit}
-                label="Birlik"
+                label={t('unit') || 'Birlik'}
                 onChange={(e) => setUnit(e.target.value)}
                 size="small"
                 MenuProps={{
@@ -132,19 +134,23 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
               >
                 {isMeter
                   ? [
-                      <MenuItem key="metr" value="metr">Metr</MenuItem>,
-                      <MenuItem key="dona" value="dona">Dona</MenuItem>,
+                      <MenuItem key="metr" value="metr">{t('unit_meter') || 'Metr'}</MenuItem>,
+                      <MenuItem key="dona" value="dona">{t('unit_piece') || 'Dona'}</MenuItem>,
                     ]
                   : [
-                      <MenuItem key="dona" value="dona">Dona</MenuItem>,
-                      <MenuItem key="pachka" value="pachka" disabled={packQty <= 0}>Pachka</MenuItem>,
+                      <MenuItem key="dona" value="dona">{t('unit_piece') || 'Dona'}</MenuItem>,
+                      <MenuItem key="pachka" value="pachka" disabled={packQty <= 0}>{t('unit_pack') || 'Pachka'}</MenuItem>,
                     ]}
               </Select>
             </FormControl>
           )}
 
           <NumberField
-            label={isMeter ? (unit === 'metr' ? 'Metr' : 'Soni (dona)') : (isElectrode ? `Soni (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Soni')}
+            label={
+              isMeter
+                ? (unit === 'metr' ? (t('unit_meter') || 'Metr') : (t('quantity_piece') || t('qty')))
+                : (isElectrode ? `${t('qty')} (${unit === 'pachka' ? (t('unit_pack') || 'pachka') : (t('unit_piece') || 'dona')})` : (t('qty') || ''))
+            }
             value={isMeter && unit === 'metr' ? meterQty : qty}
             onChange={(v) => {
               if (isMeter && unit === 'metr') {
@@ -156,12 +162,12 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
             fullWidth
             size="small"
             error={inputQty <= 0 || inputQty > available}
-            helperText={(inputQty <= 0 ? 'Min 1' : (inputQty > available ? 'Ko\'p' : ''))}
+            helperText={(inputQty <= 0 ? t('min_value') : (inputQty > available ? t('too_many') : ''))}
           />
 
           <FormControl fullWidth>
-            <InputLabel id="sell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>Valyuta</InputLabel>
-            <Select labelId="sell-currency-label" value={currency} label="Valyuta" onChange={(e) => setCurrency(e.target.value)} size="small">
+            <InputLabel id="sell-currency-label" sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>{t('currency_label') || t('currency')}</InputLabel>
+            <Select labelId="sell-currency-label" value={currency} label={t('currency_label') || t('currency')} onChange={(e) => setCurrency(e.target.value)} size="small">
               <MenuItem value="UZS">UZS</MenuItem>
               <MenuItem value="USD">USD</MenuItem>
             </Select>
@@ -170,41 +176,45 @@ export default function SellForm({ open, onClose, onSubmit, initial }) {
           {isMeter && (
             <Box sx={{ display: 'flex', gap: 2, rowGap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.72rem', md: '0.8rem' } }}>
-                Narx (1 metr): {formatMoney(meterPriceDefault || 0)} {currency}
+                {t('price_per_meter')}: {formatMoney(meterPriceDefault || 0)} {currency}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.72rem', md: '0.8rem' } }}>
-                1 dona: {formatMoney(piecePriceDefault || 0)} {currency}
+                1 {t('unit_piece') || 'dona'}: {formatMoney(piecePriceDefault || 0)} {currency}
               </Typography>
             </Box>
           )}
 
           <CurrencyField
-            label={isMeter ? (unit === 'metr' ? 'Narxi (1 metr)' : 'Narxi (1 dona)') : (isElectrode ? `Narxi (${unit === 'pachka' ? 'pachka' : 'dona'})` : 'Narxi')}
+            label={
+              isMeter
+                ? (unit === 'metr' ? t('price_per_meter') : t('price_per_piece'))
+                : (isElectrode ? `${t('price')} (${unit === 'pachka' ? (t('unit_pack') || 'pachka') : (t('unit_piece') || 'dona')})` : t('price'))
+            }
             value={price}
             onChange={(v) => setPrice(v)}
             fullWidth
             error={parsedPrice <= 0}
-            helperText={parsedPrice <= 0 ? 'Musbat' : ''}
+            helperText={parsedPrice <= 0 ? (t('validation_price_positive') || '') : ''}
             currency={currency}
           />
 
           {currency === 'USD' ? (
             <Box>
-              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', md: '0.875rem' } }}>Jami: {total} USD</Typography>
+              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', md: '0.875rem' } }}>{t('total')}: {total} USD</Typography>
               {usdToUzs ? (
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>≈ {Math.round(total * usdToUzs)} UZS</Typography>
               ) : (
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>Kurs yo'q</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', md: '0.75rem' } }}>{t('no_rate')}</Typography>
               )}
             </Box>
           ) : (
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>Jami: {Math.round(total)} UZS</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>{t('total')}: {Math.round(total)} UZS</Typography>
           )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>
-        <Button onClick={onClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Bekor</Button>
-        <Button variant="contained" onClick={submit} disabled={invalid} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Sotish</Button>
+        <Button onClick={onClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>{t('cancel')}</Button>
+        <Button variant="contained" onClick={submit} disabled={invalid} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>{t('sell')}</Button>
       </DialogActions>
     </Dialog>
   )

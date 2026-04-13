@@ -9,7 +9,7 @@ import NumberField from './NumberField'
 import CurrencyField from './CurrencyField'
 
 export default function CreditForm({ open, onClose, onSubmit, initial }) {
-  const [form, setForm] = useState({ name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '', bosh_toluv_original: '', bosh_toluv_currency: 'UZS' })
+  const [form, setForm] = useState({ name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '', bosh_toluv_original: '', bosh_toluv_currency: 'UZS', category: '', size: '', location: '', listed_price: '' })
   const [isPayment, setIsPayment] = useState(false)
   const { rate: usdToUzs } = useExchangeRate()
   const { t } = useLocale()
@@ -18,7 +18,7 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   useEffect(() => {
-    const newForm = initial ? { ...initial } : { name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '', bosh_toluv_original: '', bosh_toluv_currency: 'UZS' };
+    const newForm = initial ? { ...initial } : { name: '', date: '', amount: 0, currency: 'UZS', type: 'olingan', note: '', bosh_toluv_original: '', bosh_toluv_currency: 'UZS', category: '', size: '', location: '', listed_price: '' };
     const fallbackCurrency = newForm.currency || 'UZS'
     if (!newForm.bosh_toluv_currency) {
       newForm.bosh_toluv_currency = fallbackCurrency
@@ -59,8 +59,21 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
   }
 
   const submit = () => {
-    const totalAmount = isPayment ? form.amount : (Number(form.qty) || 0) * (Number(form.price) || 0);
-    const payload = { id: initial?.id || uuidv4(), ...form, amount: totalAmount };
+    const isElektrod = (form.category || '').toLowerCase() === 'elektrod' && form.type === 'olingan' && (form.credit_type || 'product') === 'product'
+
+    if (isElektrod) {
+      if (!form.name?.trim()) return notify('Xato', 'Nomi kiriting', 'error')
+      if (!form.size?.trim()) return notify('Xato', 'Razmer kiriting', 'error')
+      if (!form.location) return notify('Xato', 'Joylashuv tanlang (ombor yoki do\'kon)', 'error')
+      if (!form.qty || Number(form.qty) <= 0) return notify('Xato', 'Soni (pachka) ni kiriting', 'error')
+      if (!form.price || Number(form.price) <= 0) return notify('Xato', 'Olingan narxni kiriting (pachka)', 'error')
+    }
+
+    const parsedQty = Number((form.qty || '').toString().replace(/,/g, '')) || 0
+    const parsedPrice = Number((form.price || '').toString().replace(/,/g, '')) || 0
+    const parsedListed = Number((form.listed_price || '').toString().replace(/,/g, '')) || 0
+    const totalAmount = isPayment ? form.amount : (parsedQty || 0) * (parsedPrice || 0);
+    const payload = { id: initial?.id || uuidv4(), ...form, qty: parsedQty, price: parsedPrice, listed_price: parsedListed, amount: totalAmount };
     const downPaymentCurrency = (form.bosh_toluv_currency || form.currency || 'UZS').toUpperCase()
     const downPaymentOriginal = Number(form.bosh_toluv_original || 0)
     const downPaymentConverted = convertDownPayment(downPaymentOriginal, downPaymentCurrency, payload.currency)
@@ -91,8 +104,9 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
     
     // Determine credit_type based on whether product details are provided
     // If qty and price are provided, it's a 'product' credit, otherwise it's 'cash'
-    const hasProductDetails = payload.qty || payload.price || payload.product_name
+    const hasProductDetails = payload.qty || payload.price || payload.product_name || payload.category
     payload.credit_type = hasProductDetails ? 'product' : 'cash'
+    payload.credit_direction = payload.type
     
     if (payload.currency === 'USD') {
       payload.amount = Number(payload.amount) || 0
@@ -146,9 +160,46 @@ export default function CreditForm({ open, onClose, onSubmit, initial }) {
         ) : (
           <>
             <TextField label={t('who')} fullWidth margin="dense" value={form.name} onChange={handle('name')} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
-            <TextField label={t('productName')} fullWidth margin="dense" value={form.product_name} onChange={handle('product_name')} disabled={!!initial} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
-            <NumberField label={t('qty')} fullWidth margin="dense" value={form.qty} onChange={(v) => setForm({ ...form, qty: v })} disabled={!!initial} />
-            <CurrencyField label={t('price')} fullWidth margin="dense" value={form.price} onChange={(v) => setForm({ ...form, price: v })} disabled={!!initial} currency={form.currency} />
+            <TextField
+              select
+              label="Kategoriya"
+              fullWidth
+              margin="dense"
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              disabled={!!initial}
+            >
+              <MenuItem value="">Tanlang</MenuItem>
+              <MenuItem value="elektrod">Elektrod</MenuItem>
+            </TextField>
+            <TextField label="Mahsulot nomi" fullWidth margin="dense" value={form.product_name} onChange={handle('product_name')} disabled={!!initial} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
+            {form.category === 'elektrod' && (
+              <>
+                <TextField label="Razmer" fullWidth margin="dense" value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} disabled={!!initial} />
+                <TextField
+                  select
+                  label="Joylashuv"
+                  fullWidth
+                  margin="dense"
+                  value={form.location}
+                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+                  disabled={!!initial}
+                >
+                  <MenuItem value="">Tanlang</MenuItem>
+                  <MenuItem value="ombor">Ombor</MenuItem>
+                  <MenuItem value="do'kon">Do'kon</MenuItem>
+                </TextField>
+                <NumberField label="Soni (pachka)" fullWidth margin="dense" value={form.qty} onChange={(v) => setForm({ ...form, qty: v })} disabled={!!initial} />
+                <CurrencyField label="Aytilgan narx (pachka)" fullWidth margin="dense" value={form.listed_price} onChange={(v) => setForm({ ...form, listed_price: v })} disabled={!!initial} currency={form.currency} />
+                <CurrencyField label="Olingan narx (pachka)" fullWidth margin="dense" value={form.price} onChange={(v) => setForm({ ...form, price: v })} disabled={!!initial} currency={form.currency} />
+              </>
+            )}
+            {form.category !== 'elektrod' && (
+              <>
+                <NumberField label={t('qty')} fullWidth margin="dense" value={form.qty} onChange={(v) => setForm({ ...form, qty: v })} disabled={!!initial} />
+                <CurrencyField label={t('price')} fullWidth margin="dense" value={form.price} onChange={(v) => setForm({ ...form, price: v })} disabled={!!initial} currency={form.currency} />
+              </>
+            )}
             <TextField type="date" label={t('date')} fullWidth margin="dense" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} InputProps={{ style: { fontSize: { xs: '0.75rem', md: '0.875rem' } } }} />
             <Typography variant="body2" sx={{ mt: 1 }}>{t('total_amount')}: {formatMoney((Number(form.qty) || 1) * (Number(form.price) || 0))} {form.currency}</Typography>
             <Box sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mt: 2 }}>

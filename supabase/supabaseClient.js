@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_KEY
-const supabaseAuthDomain = import.meta.env.VITE_SUPABASE_AUTH_DOMAIN || 'app.local'
+// Trim env variables to avoid subtle DNS failures caused by copied whitespace/newlines
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim()
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_KEY || '').trim()
+const supabaseAuthDomain = (import.meta.env.VITE_SUPABASE_AUTH_DOMAIN || 'app.local').trim()
 
 export const isSupabaseConfigured = () => {
   return !!(supabaseUrl && supabaseAnonKey && !supabaseUrl.includes('placeholder') && !supabaseAnonKey.includes('placeholder'))

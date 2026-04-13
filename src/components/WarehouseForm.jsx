@@ -8,10 +8,13 @@ import useExchangeRate from '../hooks/useExchangeRate'
 import { v4 as uuidv4 } from 'uuid'
 import { toISODate } from '../utils/date'
 import { DEFAULT_PRODUCT_CATEGORIES, mergeCategories, normalizeCategory, isMeterCategory } from '../utils/productCategories'
+import { useLocale } from '../context/LocaleContext'
+import { translateCategoryLabel } from '../i18n/translations'
 
 export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
   const { rate: usdToUzs } = useExchangeRate()
   const { state, dispatch } = useApp()
+  const { t, locale } = useLocale()
   const [form, setForm] = useState({ name: '', qty: '', price: '', price_piece: '', price_pack: 0, pack_qty: '', meter_qty: '', electrode_size: '', stone_thickness: '', stone_size: '', date: '', note: '', category: '', currency: 'UZS' })
   const DRAFT_KEY_BASE = 'draft_warehouse_'
   const getDraftKey = useCallback(() => `${DRAFT_KEY_BASE}${initial?.id || 'new'}`, [initial?.id])
@@ -109,35 +112,35 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
   const submit = () => {
     // Validation
     if (!form.name || !form.name.trim()) {
-      window.alert('Mahsulot nomini kiriting')
+      window.alert(t('validation_name_required'))
       return
     }
     if (!form.qty || Number(form.qty) <= 0) {
-      window.alert('Mahsulot sonini 0 dan katta qiling')
+      window.alert(t('validation_qty_positive'))
       return
     }
     if (isMeter && (!form.pack_qty || Number(form.pack_qty) <= 0)) {
-      window.alert('Metrni 0 dan katta kiriting')
+      window.alert(t('validation_meter_positive'))
       return
     }
     if (isElectrode && (!form.electrode_size || !form.electrode_size.toString().trim())) {
-      window.alert('Elektrod razmerini kiriting')
+      window.alert(t('validation_electrode_size_required'))
       return
     }
     if (isElectrode && (!form.price_pack || Number(form.price_pack) <= 0)) {
-      window.alert('Pachka narxini 0 dan katta kiriting')
+      window.alert(t('validation_pack_price_positive'))
       return
     }
     if (!form.price || Number(form.price) <= 0) {
-      window.alert('Mahsulot narxini 0 dan katta qiling')
+      window.alert(t('validation_price_positive'))
       return
     }
     if (isMeter && (!form.price_piece || Number(form.price_piece) <= 0)) {
-      window.alert('Dona narxini 0 dan katta kiriting')
+      window.alert(t('validation_price_piece_positive'))
       return
     }
     if (!form.date) {
-      window.alert('Sana kiriting')
+      window.alert(t('validation_date_required'))
       return
     }
     
@@ -203,26 +206,27 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm" PaperProps={{ sx: { maxHeight: '90vh' } }}>
-      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>{initial ? 'Tahrirlash' : "Qo'shish"}</DialogTitle>
+      <DialogTitle sx={{ fontSize: { xs: '0.95rem', md: '1.15rem' }, p: { xs: 1.5, md: 2 } }}>{initial ? (t('edit_title') || t('edit')) : (t('add_title') || t('add'))}</DialogTitle>
       <DialogContent sx={{ p: { xs: 1.5, md: 2 }, overflowWrap: 'break-word', pt: { xs: 1, md: 1.5 }, overflowX: 'visible' }}>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
           <Button variant="outlined" size="small" onClick={() => setCurrencyOpen(true)} sx={{ fontSize: { xs: '0.7rem', md: '0.875rem' }, p: { xs: '4px 8px', md: '6px 12px' } }}>{form.currency || 'UZS'}</Button>
         </Box>
-        <TextField label="Nomi" fullWidth margin="dense" size="small" value={form.name} onChange={handle('name')} InputProps={{ style: { fontSize: '0.875rem' } }} />
+        <TextField label={t('productName') || t('name')} fullWidth margin="dense" size="small" value={form.name} onChange={handle('name')} InputProps={{ style: { fontSize: '0.875rem' } }} />
         <Autocomplete
           freeSolo
           fullWidth
           options={categories}
+          getOptionLabel={(opt) => translateCategoryLabel(opt, locale)}
           value={form.category}
           onChange={(_e, v) => handleCategory(v || '')}
           onInputChange={(_e, v) => handleCategory(v || '')}
-          renderInput={(params) => <TextField {...params} label="Kategoriya" margin="dense" size="small" />}
+          renderInput={(params) => <TextField {...params} label={t('category')} margin="dense" size="small" />}
           sx={{ mt: 0.5 }}
         />
-        <NumberField label={isElectrode ? "Soni (pachka)" : "Soni"} fullWidth margin="dense" value={form.qty} onChange={handleQtyChange} />
+        <NumberField label={isElectrode ? (t('quantity_pack') || t('qty')) : (t('qty') || '')} fullWidth margin="dense" value={form.qty} onChange={handleQtyChange} />
         {isMeter && (
           <NumberField
-            label="Metr (1 dona)"
+            label={t('meter_per_piece') || 'Metr'}
             fullWidth
             margin="dense"
             value={form.pack_qty}
@@ -230,11 +234,11 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
           />
         )}
         {isElectrode && (
-          <TextField label="Elektrod razmeri" fullWidth margin="dense" size="small" value={form.electrode_size} onChange={handle('electrode_size')} />
+          <TextField label={t('electrode_size')} fullWidth margin="dense" size="small" value={form.electrode_size} onChange={handle('electrode_size')} />
         )}
         {isElectrode && (
           <CurrencyField
-            label="Narxi (1 pachka)"
+            label={t('price_per_pack')}
             fullWidth
             margin="dense"
             value={form.price_pack}
@@ -244,23 +248,23 @@ export default function WarehouseForm({ open, onClose, onSubmit, initial }) {
         )}
         {isStone && (
           <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
-            <TextField label="Qalinlik razmeri" fullWidth margin="dense" size="small" value={form.stone_thickness} onChange={handle('stone_thickness')} />
-            <TextField label="Hajmi" fullWidth margin="dense" size="small" value={form.stone_size} onChange={handle('stone_size')} />
+            <TextField label={t('stone_thickness')} fullWidth margin="dense" size="small" value={form.stone_thickness} onChange={handle('stone_thickness')} />
+            <TextField label={t('stone_size')} fullWidth margin="dense" size="small" value={form.stone_size} onChange={handle('stone_size')} />
           </Box>
         )}
         {!isElectrode && (
           <>
-            <CurrencyField label={isMeter ? "Narxi (1 metr)" : "Narxi"} fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
+            <CurrencyField label={isMeter ? t('price_per_meter') : (t('price') || '')} fullWidth margin="dense" value={form.price} onChange={(v) => setForm(prev => ({ ...prev, price: v === null ? '' : v }))} currency={form.currency} />
             {isMeter && (
-              <CurrencyField label="Narxi (1 dona)" fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v }))} currency={form.currency} />
+              <CurrencyField label={t('price_per_piece')} fullWidth margin="dense" value={form.price_piece} onChange={(v) => setForm(prev => ({ ...prev, price_piece: v === null ? '' : v }))} currency={form.currency} />
             )}
           </>
         )}
-        <TextField label="Sana" type="date" fullWidth margin="dense" size="small" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
+        <TextField label={t('date')} type="date" fullWidth margin="dense" size="small" value={form.date} onChange={handle('date')} InputLabelProps={{ shrink: true }} />
       </DialogContent>
       <DialogActions sx={{ px: { xs: 1, md: 2 }, py: { xs: 1.5, md: 2 }, gap: 1 }}>
-        <Button onClick={handleClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Bekor</Button>
-        <Button variant="contained" onClick={submit} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>Saqlash</Button>
+        <Button onClick={handleClose} sx={{ minWidth: { xs: 70, md: 100 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>{t('cancel')}</Button>
+        <Button variant="contained" onClick={submit} sx={{ minWidth: { xs: 70, md: 120 }, fontSize: { xs: '0.75rem', md: '0.875rem' }, p: { xs: '6px 12px', md: '8px 16px' } }}>{t('save')}</Button>
       </DialogActions>
       <CurrencyModal open={currencyOpen} onClose={() => setCurrencyOpen(false)} current={form.currency} onConfirm={({ currency }) => {
         

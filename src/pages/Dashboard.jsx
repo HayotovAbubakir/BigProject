@@ -22,11 +22,11 @@ import {
 } from '../utils/currencyUtils';
 
 const ChartCard = ({ title, icon, children }) => (
-  <Card sx={{ height: '100%' }}>
-    <CardContent>
+  <Card sx={{ height: '100%', minHeight: 'fit-content', width: '100%' }}>
+    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
         {icon}
-        <Typography variant="h6" component="div" sx={{ ml: 1 }}>
+        <Typography variant="h6" component="div" sx={{ ml: 1, fontSize: { xs: '1rem', md: '1.05rem' } }}>
           {title}
         </Typography>
       </Box>
@@ -37,7 +37,7 @@ const ChartCard = ({ title, icon, children }) => (
 
 function Dashboard() {
   const { state } = useApp();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const theme = useTheme();
   const { rate: usdToUzs } = useExchangeRate();
   const { displayCurrency } = useDisplayCurrency();
@@ -97,7 +97,58 @@ function Dashboard() {
         }
         const productQty = {};
         const allProducts = [...(state.warehouse || []), ...(state.store || [])];
+        const productMap = new Map(allProducts.map(p => [p.id, p]));
+
+        const addProductQty = (name, qty, meta = {}) => {
+          const safeQty = Number(qty) || 0;
+          if (!name || Number.isNaN(safeQty)) return;
+          if (!productQty[name]) {
+            productQty[name] = { qty: 0, meta };
+          }
+          productQty[name].qty += safeQty;
+          // keep meta populated with any provided fields
+          productQty[name].meta = { ...productQty[name].meta, ...meta };
+        };
+
+        const toPieces = (qty, unit, packQty, productId) => {
+          const pq = Number(packQty || (productMap.get(productId)?.pack_qty ?? 0) || 0);
+          const unitLower = (unit || '').toString().toLowerCase();
+          if (unitLower === 'metr' && pq > 0) {
+            return Math.ceil(Number(qty || 0) / pq);
+          }
+          return Number(qty || 0);
+        };
+
         filteredLogs.forEach(l => {
+          const action = (l.action || '').toLowerCase();
+          // Skip counting the aggregated wholesale bundle itself; instead expand items
+          if (action === 'wholesale_sale') {
+            try {
+              const detailStr = l.detail || '';
+              const parsed = detailStr.startsWith('WHOLESALE_JSON:') ? JSON.parse(detailStr.replace('WHOLESALE_JSON:', '')) : null;
+              const items = parsed?.items || [];
+              items.forEach((item) => {
+                const name = item.name || item.id || 'Unknown';
+                const qtyPieces = toPieces(
+                  item.unit === 'metr' ? (item.meter_sold ?? item.qty) : item.qty,
+                  item.unit,
+                  item.pack_qty,
+                  item.id
+                );
+                addProductQty(name, qtyPieces, {
+                  category: item.category,
+                  size: item.electrode_size || item.stone_size || '',
+                  thickness: item.stone_thickness || '',
+                  packQty: item.pack_qty,
+                  isMeter: item.unit === 'metr' || item.isMeter
+                });
+              });
+            } catch (e) {
+              console.warn('Failed to parse wholesale detail for top products', e);
+            }
+            return;
+          }
+
           let name = l.productName || l.product_name;
           if (!name && l.productId) {
             const product = allProducts.find(p => p.id === l.productId);
@@ -108,11 +159,28 @@ function Dashboard() {
           if (!name) {
             name = 'Unknown';
           }
-          productQty[name] = (productQty[name] || 0) + (Number(l.qty) || 0);
+          const qtyPieces = toPieces(l.qty, l.unit, l.pack_qty, l.productId || l.product_id);
+          const p = productMap.get(l.productId || l.product_id);
+          addProductQty(name, qtyPieces, {
+            category: p?.category,
+            size: p?.electrode_size || p?.stone_size || '',
+            thickness: p?.stone_thickness || '',
+            packQty: p?.pack_qty,
+            isMeter: p ? !!p.meter_qty || (p.pack_qty > 0) : false
+          });
         });
-        return Object.entries(productQty)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 5);
+        // Ensure we always consider all products (even with 0 sales) to have at least 5 rows
+        allProducts.forEach(p => {
+          const name = p.name || p.title || p.id || 'Unknown';
+          if (!(name in productQty)) productQty[name] = { qty: 0, meta: { category: p.category, size: p.electrode_size || p.stone_size || '', thickness: p.stone_thickness || '', packQty: p.pack_qty, isMeter: !!p.meter_qty || !!p.pack_qty } };
+        });
+        const sorted = Object.entries(productQty)
+          .sort(([, a], [, b]) => b.qty - a.qty);
+        // If fewer than 5, pad with placeholders so chart always shows 5 bars
+        while (sorted.length < 5) {
+          sorted.push([`— ${sorted.length + 1}`, { qty: 0, meta: {} }]);
+        }
+        return sorted.slice(0, 5);
       }, [logs, period, selectedDate, state.warehouse, state.store]);
 
       const dailySalesByAccount = useMemo(() => {
@@ -210,42 +278,11 @@ function Dashboard() {
         };
       }, [logs, selectedDate, state.accounts, usdToUzs, displayCurrency]);
 
-      const topExpensiveProducts = useMemo(() => {
-        const month = selectedDate.slice(0, 7);
-        const filteredLogs = logs.filter(l => l && l.kind === 'SELL' && String(l.date || '').startsWith(month));
-        const products = {};
-        
-        filteredLogs.forEach(l => {
-          const name = l.productName || l.product_name || 'Unknown';
-          const unitPrice = Number(l.unitPrice ?? l.unit_price ?? l.price ?? 0) || 0;
-          const currency = l.currency || l.curr || 'UZS';
-          
-          // Normalize to base currency for comparison
-          const priceInUzs = normalizeToBaseUzs(unitPrice, currency, usdToUzs);
-          
-          if (!products[name]) {
-            products[name] = { name, priceInUzs, originalPrice: unitPrice, originalCurrency: currency };
-          } else if (products[name].priceInUzs < priceInUzs) {
-            products[name] = { name, priceInUzs, originalPrice: unitPrice, originalCurrency: currency };
-          }
-        });
-        
-        return Object.values(products)
-          .sort((a, b) => b.priceInUzs - a.priceInUzs)
-          .slice(0, 5)
-          .map(p => ({
-            name: p.name,
-            price: convertFromBaseUzs(p.priceInUzs, displayCurrency, usdToUzs),
-            currency: displayCurrency,
-            originalPrice: p.originalPrice,
-            originalCurrency: p.originalCurrency
-          }));
-      }, [logs, selectedDate, displayCurrency, usdToUzs]);
-
       const creditsSummary = useMemo(() => {
         // Separate credits by type
-        const givenCredits = (state.credits || []).filter(c => c.type === 'berilgan');
-        const receivedCredits = (state.credits || []).filter(c => c.type === 'olingan');
+        const direction = (c) => (c?.credit_direction || c?.type || '').toString().toLowerCase();
+        const givenCredits = (state.credits || []).filter(c => direction(c) === 'berilgan');
+        const receivedCredits = (state.credits || []).filter(c => direction(c) === 'olingan');
         const completedCredits = (state.credits || []).filter(c => c.completed);
         
         // Calculate totals in display currency
@@ -304,21 +341,22 @@ function Dashboard() {
           InputLabelProps={{ shrink: true }}
           size="small"
         />
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>{t('period') || 'Period'}</InputLabel>
-          <Select value={period} onChange={(e) => setPeriod(e.target.value)} label={t('period') || 'Period'}>
-            <MenuItem value="daily">Daily</MenuItem>
-            <MenuItem value="weekly">Weekly</MenuItem>
-            <MenuItem value="monthly">Monthly</MenuItem>
-            <MenuItem value="yearly">Yearly</MenuItem>
-            <MenuItem value="overall">Overall</MenuItem>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>{t('period')}</InputLabel>
+          <Select value={period} onChange={(e) => setPeriod(e.target.value)} label={t('period')}>
+            <MenuItem value="daily">{t('period_daily')}</MenuItem>
+            <MenuItem value="weekly">{t('period_weekly')}</MenuItem>
+            <MenuItem value="monthly">{t('period_monthly')}</MenuItem>
+            <MenuItem value="yearly">{t('period_yearly')}</MenuItem>
+            <MenuItem value="overall">{t('period_overall')}</MenuItem>
           </Select>
         </FormControl>
       </Box>
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={8}>
+      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: 'repeat(1, minmax(0, 1fr))', md: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' } }}>
+        <Box sx={{ gridColumn: { md: 'span 2', lg: 'span 2' } }}>
           <ChartCard title={t('monthly_analysis')} icon={<ShowChartIcon color="primary" />}>
             <ReactApexChart
+              key={`monthly-${locale}`}
               type="area"
               height={300}
               options={{
@@ -336,15 +374,16 @@ function Dashboard() {
                 { name: t('sold'), data: monthlyAnalysisData.map(m => m.sold) },
               ]}
             />
-            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-              {t('monthly_sales_trend') || 'Tracks monthly sales trends over time. Only outgoing sales are included. Values shown in selected currency.'}
+            <Typography variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary', fontSize: '0.75rem' }}>
+              {t('monthly_sales_trend')}
             </Typography>
           </ChartCard>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} lg={4}>
-          <ChartCard title={`${t('most_sold')} (${period})`} icon={<BarChartIcon color="secondary" />}>
+        <Box>
+          <ChartCard title={`${t('most_sold')} (${t(`period_${period}`) || period})`} icon={<BarChartIcon color="secondary" />}>
             <ReactApexChart
+              key={`most-sold-${locale}-${period}`}
               type="bar"
               height={300}
               options={{
@@ -381,7 +420,16 @@ function Dashboard() {
                 },
                 xaxis: {
                   ...chartOptions.xaxis,
-                  categories: topSoldProducts.map(([name]) => name),
+                  categories: topSoldProducts.map(([name, data]) => {
+                    const { category, size, thickness, packQty, isMeter } = data.meta || {};
+                    const parts = [];
+                    if (category) parts.push(category);
+                    if (size) parts.push(size);
+                    if (thickness) parts.push(thickness);
+                    if (isMeter && packQty) parts.push(`${packQty}m/dona`);
+                    const meta = parts.length ? ` (${parts.join(' • ')})` : '';
+                    return `${name}${meta}`;
+                  }),
                 },
                 yaxis: {
                   labels: {
@@ -404,21 +452,21 @@ function Dashboard() {
                   }
                 }
               }}
-              series={[{ name: t('quantity_sold'), data: topSoldProducts.map(([, qty]) => qty) }]}
+              series={[{ name: t('quantity_sold'), data: topSoldProducts.map(([, data]) => data.qty) }]}
             />
             <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
               {t('top_products_description') || `Top 5 products by quantity sold in the selected ${period} period.`}
             </Typography>
           </ChartCard>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} lg={6}>
+        <Box sx={{ gridColumn: { md: 'span 2', lg: 'span 2' } }}>
           <ChartCard title={`${t('daily_sales_by_account')} (${selectedDate})`} icon={<BarChartIcon color="primary" />}>
             <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold', fontSize: { xs: '0.9rem', md: '1rem' } }}>
                 {displayCurrency === 'USD' 
-                  ? `Total: $${formatMoney(dailySalesByAccount.displayTotal)}`
-                  : `Total: ${formatMoney(dailySalesByAccount.displayTotal)} UZS`
+                  ? `${t('total_label')}: $${formatMoney(dailySalesByAccount.displayTotal)}`
+                  : `${t('total_label')}: ${formatMoney(dailySalesByAccount.displayTotal)} UZS`
                 }
               </Typography>
               {displayCurrency === 'UZS' && dailySalesByAccount.totalUsd > 0 && (
@@ -463,72 +511,46 @@ function Dashboard() {
                 { name: t('percentage'), data: dailySalesByAccount.accounts.map(a => Number(a.percent)) }
               ]}
             />
-            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-              {t('sales_percentage_description') || 'Shows sales by account. Values displayed in selected currency.'}
+            <Typography variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary', fontSize: '0.75rem' }}>
+              {t('sales_percentage_description')}
             </Typography>
           </ChartCard>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} lg={6}>
-          <ChartCard title={`${t('top_expensive_products')} (${selectedDate.slice(0, 7)})`} icon={<ShowChartIcon color="error" />}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {topExpensiveProducts.map((p, idx) => (
-                <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
-                  <Typography>{p.name}</Typography>
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <Typography sx={{ fontWeight: 'bold' }}>
-                      {displayCurrency === 'USD' 
-                        ? `$${formatMoney(p.price)}`
-                        : `${formatMoney(p.price)} UZS`
-                      }
-                    </Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      ({p.originalCurrency})
-                    </Typography>
-                  </Box>
-                </Box>
-              ))}
-            </Box>
-            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-              {t('top_expensive_description') || 'Highest unit price products sold in the selected month. Prices shown in selected currency.'}
-            </Typography>
-          </ChartCard>
-        </Grid>
-
-        <Grid item xs={12} lg={4}>
+        <Box>
           <ChartCard title={t('credits_summary')} icon={<CalendarTodayIcon color="info" />}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography>{t('given')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: 'error.main' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{ fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{t('given')}</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'error.main', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                   {formatMoney(creditsSummary.given)} {displayCurrency === 'USD' ? '$' : 'UZS'}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography>{t('received')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: 'success.main' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{ fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{t('received')}</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'success.main', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                   {formatMoney(creditsSummary.received)} {displayCurrency === 'USD' ? '$' : 'UZS'}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography>{t('completed')}</Typography>
-                <Typography sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{ fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{t('completed')}</Typography>
+                <Typography sx={{ fontWeight: 'bold', color: 'primary.main', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                   {formatMoney(creditsSummary.completed)} {displayCurrency === 'USD' ? '$' : 'UZS'}
                 </Typography>
               </Box>
             </Box>
-            <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-              {t('credits_summary_description') || 'Total credits given to clients, received from suppliers, and completed payments.'}
+            <Typography variant="caption" sx={{ mt: 1, display: 'block', color: 'text.secondary', fontSize: '0.75rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {t('credits_summary_description') || t('credits_summary')}
             </Typography>
           </ChartCard>
-        </Grid>
+        </Box>
         
-        <Grid item xs={12}>
-          <Paper elevation={0} variant="outlined" sx={{p: 2}}>
+        <Box sx={{ gridColumn: '1 / -1' }}>
+          <Paper elevation={0} variant="outlined" sx={{ p: 2 }}>
              <DailySalesByDate selectedDate={selectedDate} onDateChange={setSelectedDate} />
           </Paper>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </Box>
   );
 }

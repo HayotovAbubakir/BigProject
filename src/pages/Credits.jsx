@@ -62,7 +62,7 @@ export default function Credits() {
     const unitPrice = safeNumber(payload.price || payload.amount);
     const downPayment = safeNumber(payload.bosh_toluv);
     const remaining = Math.max(0, amount - downPayment);
-    const enhancedPayload = { ...payload, created_by: username };
+    const enhancedPayload = { ...payload, created_by: username, credit_direction: payload.type };
     const logData = {
       id: uuidv4(),
       date: payload.date || new Date().toISOString().slice(0, 10),
@@ -79,6 +79,7 @@ export default function Credits() {
       down_payment: downPayment,
       remaining,
       credit_type: payload.type,
+      credit_direction: payload.type,
       detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya qo'shildi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${qty}, Narx: ${unitPrice}, Jami: ${amount}, Bosh to'lov: ${downPayment}, Qolgan: ${remaining} ${payload.currency || 'UZS'}`
     };
     addCredit(enhancedPayload, logData);
@@ -106,9 +107,10 @@ export default function Credits() {
       down_payment: downPayment,
       remaining,
       credit_type: payload.type,
+      credit_direction: payload.type,
       detail: `Kim: ${username}, Vaqt: ${new Date().toLocaleTimeString()}, Harakat: Nasiya tahrirlandi (${payload.type === 'berilgan' ? 'berildi' : 'olingan'}), Klient: ${payload.name}, Mahsulot: ${payload.product_name}, Soni: ${qty}, Narx: ${unitPrice}, Jami: ${amount}, Bosh to'lov: ${downPayment}, Qolgan: ${remaining} ${payload.currency || 'UZS'}`
     };
-    const updates = { ...payload };
+    const updates = { ...payload, credit_direction: payload.type };
     delete updates.remaining;
     updateCredit(payload.id, updates, logData);
   };

@@ -11,6 +11,7 @@ export default function CurrencyConverter() {
   const { rate: liveRate, loading, error, refresh } = useExchangeRate();
   const [anchorEl, setAnchorEl] = React.useState(null);
   const [usdAmount, setUsdAmount] = React.useState('');
+  const [uzsAmount, setUzsAmount] = React.useState('');
   const { t } = useLocale();
 
   const open = Boolean(anchorEl);
@@ -21,9 +22,36 @@ export default function CurrencyConverter() {
   const handleClose = () => setAnchorEl(null);
 
   const rate = manualRate || liveRate || null;
-  const parsedUsd = Number(usdAmount || 0);
-  const convertedUzs = rate && usdAmount !== '' ? Math.round(parsedUsd * Number(rate)) : '';
-  const formattedUzs = convertedUzs === '' ? '' : Number(convertedUzs).toLocaleString('uz-UZ');
+
+  const cleanNumber = (val) => {
+    if (val === null || val === undefined || val === '') return '';
+    const normalized = val.toString().replace(/,/g, '').trim();
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : '';
+  };
+
+  const handleUsdChange = (val) => {
+    const numUsd = cleanNumber(val);
+    setUsdAmount(val ?? '');
+    if (!rate || numUsd === '') {
+      setUzsAmount('');
+      return;
+    }
+    const uzs = Math.round(numUsd * Number(rate));
+    setUzsAmount(uzs.toLocaleString('uz-UZ'));
+  };
+
+  const handleUzsChange = (val) => {
+    const numUzs = cleanNumber(val);
+    setUzsAmount(val ?? '');
+    if (!rate || numUzs === '') {
+      setUsdAmount('');
+      return;
+    }
+    const usd = numUzs / Number(rate);
+    const usdRounded = Math.round((usd + Number.EPSILON) * 100) / 100;
+    setUsdAmount(usdRounded.toLocaleString('en-US'));
+  };
 
   return (
     <>
@@ -32,7 +60,14 @@ export default function CurrencyConverter() {
           <AttachMoneyIcon />
         </IconButton>
       </Tooltip>
-      <Popover id={id} open={open} anchorEl={anchorEl} onClose={handleClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
+      <Popover
+        id={id}
+        open={open}
+        anchorEl={anchorEl}
+        onClose={handleClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
         <Box sx={{ p: 2, width: 320, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="subtitle1">{t('exchangeRate') || 'Rate'}</Typography>
@@ -53,22 +88,25 @@ export default function CurrencyConverter() {
 
           <Divider />
 
-          <Typography variant="subtitle2">USD → UZS</Typography>
+          <Typography variant="subtitle2">{t('currencyConvert') || 'Valyuta konvertori'}</Typography>
           <NumberField
             size="small"
             value={usdAmount}
-            onChange={(val) => setUsdAmount(val == null ? '' : val)}
+            onChange={handleUsdChange}
             placeholder="USD"
             InputProps={{ endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>USD</Typography> }}
           />
           <TextField
             size="small"
-            value={formattedUzs}
+            value={uzsAmount}
+            onChange={(e) => handleUzsChange(e.target.value)}
             placeholder={rate ? 'UZS' : (t('exchangeRate') || 'Rate required')}
-            InputProps={{ readOnly: true, endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>UZS</Typography> }}
+            InputProps={{ endAdornment: <Typography variant="caption" sx={{ ml: 1 }}>UZS</Typography> }}
           />
           <Typography variant="body2">
-            {rate ? `1 USD = ${Number(rate).toLocaleString('uz-UZ')} UZS` : (t('exchangeRate') || 'Enter manual exchange rate to convert elsewhere in the app.')}
+            {rate
+              ? `1 USD = ${Number(rate).toLocaleString('uz-UZ')} UZS`
+              : (t('exchangeRate') || 'Enter manual exchange rate to convert elsewhere in the app.')}
           </Typography>
         </Box>
       </Popover>

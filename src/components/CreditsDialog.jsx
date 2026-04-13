@@ -217,9 +217,16 @@ export default function CreditsDialog({ open, onClose, clientId, clientName }) {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullScreen
+      fullWidth
+      maxWidth="xl"
+      PaperProps={{ sx: { width: '100%', height: '100%' } }}
+    >
       <DialogTitle>{clientName ? `${clientName} — ${t('credits') || 'Credits'}` : (t('credits') || 'Credits')}</DialogTitle>
-      <DialogContent>
+      <DialogContent sx={{ pb: 3 }}>
         <Box sx={{ mb: 2, display: 'flex', gap: 2 }}>
           <Select value={filter} onChange={(e) => setFilter(e.target.value)} size="small">
             <MenuItem value="active">Aktiv</MenuItem>

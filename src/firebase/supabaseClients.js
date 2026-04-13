@@ -7,7 +7,9 @@ const isSupabaseConfigured = () => {
   return url && key && !url.includes('placeholder') && !key.includes('placeholder')
 }
 
-const CLIENT_COLUMNS = 'id,name,phone,created_at,updated_at'
+// Some Supabase schemas don't have an `updated_at` column for clients.
+// Avoid requesting it directly to prevent PostgREST errors when the column is missing.
+const CLIENT_COLUMNS = 'id,name,phone,created_at'
 
 export const getClients = async (options = {}) => {
   if (!isSupabaseConfigured()) return []
@@ -19,7 +21,8 @@ export const getClients = async (options = {}) => {
     const { data, error } = await supabase
       .from('clients')
       .select(columns)
-      .order('updated_at', { ascending: false })
+      // Order by created_at if updated_at is not available in the schema
+      .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
     if (error) throw error
     return data || []

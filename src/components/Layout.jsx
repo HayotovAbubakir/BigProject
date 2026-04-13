@@ -28,8 +28,8 @@ import useDisplayCurrency from '../hooks/useDisplayCurrency';
 import CurrencyConverter from './CurrencyConverter';
 import AccountManager from './AccountManager';
 import Notifications from './Notifications';
-import MfaSetupDialog from './MfaSetupDialog';
 import ContactDialog from './ContactDialog';
+import { SUPPORTED_LANGUAGES } from '../i18n/translations';
 
 const navItems = [
   { to: '/', key: 'dashboard', icon: <DashboardIcon /> },
@@ -41,7 +41,7 @@ const navItems = [
   { to: '/calculator', key: 'calculator', icon: <CalculateIcon /> },
 ];
 
-function UserMenu({ user, onLogout, onManageAccount, onSecurity, onContact }) {
+function UserMenu({ user, onLogout, onManageAccount, onContact }) {
   const { t } = useLocale();
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -61,15 +61,12 @@ function UserMenu({ user, onLogout, onManageAccount, onSecurity, onContact }) {
       <Menu anchorEl={anchorEl} open={open} onClose={handleClose}>
       <MenuItem onClick={() => { handleClose(); onManageAccount(); }}>{user?.username || t('account') || ''}</MenuItem>
       <MenuItem onClick={() => { handleClose(); onContact(); }}>
-        <ListItemText>Contact</ListItemText>
+        <ListItemText>{t('contact') || 'Contact'}</ListItemText>
       </MenuItem>
-        <MenuItem onClick={() => { handleClose(); onSecurity(); }}>
-          <ListItemText>Security</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => { handleClose(); onLogout(); }}>
-          <ListItemIcon><LogoutIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>{t('logout') || ''}</ListItemText>
-        </MenuItem>
+      <MenuItem onClick={() => { handleClose(); onLogout(); }}>
+        <ListItemIcon><LogoutIcon fontSize="small" /></ListItemIcon>
+        <ListItemText>{t('logout') || ''}</ListItemText>
+      </MenuItem>
       </Menu>
     </>
   );
@@ -112,7 +109,6 @@ export default function Layout({ children }) {
   
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
-  const [mfaOpen, setMfaOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   
   const theme = useTheme();
@@ -136,7 +132,7 @@ export default function Layout({ children }) {
 
   const handleManageAccount = () => {
     if (!canOpenAccountSettings) {
-      window.alert("Bu bo'lim faqat admin va developerlar uchun");
+      window.alert(t('admin_only') || "Bu bo'lim faqat admin va developerlar uchun");
       return;
     }
     if (isRestricted && !isDeveloper) {
@@ -144,6 +140,12 @@ export default function Layout({ children }) {
       return;
     }
     setAccountManagerOpen(true);
+  };
+
+  const handleToggleLanguage = () => {
+    const currentIndex = SUPPORTED_LANGUAGES.indexOf(locale);
+    const next = SUPPORTED_LANGUAGES[(currentIndex + 1) % SUPPORTED_LANGUAGES.length];
+    setLocale(next);
   };
 
 
@@ -165,7 +167,7 @@ export default function Layout({ children }) {
           </Typography>
 
           <Tooltip title={t('toggleLanguage') || ''}>
-            <IconButton color="inherit" onClick={() => setLocale(locale === 'uz' ? 'en' : 'uz')}>
+            <IconButton color="inherit" onClick={handleToggleLanguage}>
               <LanguageIcon />
             </IconButton>
           </Tooltip>
@@ -190,7 +192,6 @@ export default function Layout({ children }) {
             user={user}
             onLogout={logout}
             onManageAccount={handleManageAccount}
-            onSecurity={() => setMfaOpen(true)}
             onContact={() => setContactOpen(true)}
           />
         </Toolbar>
@@ -230,12 +231,11 @@ export default function Layout({ children }) {
         {children}
       </Box>
       <AccountManager open={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
-      <MfaSetupDialog open={mfaOpen} onClose={() => setMfaOpen(false)} />
       <ContactDialog open={contactOpen} onClose={() => setContactOpen(false)} />
       
       <Box component="footer" sx={{ position: 'fixed', bottom: 12, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <Box sx={{ bgcolor: 'background.paper', color: 'text.secondary', px: 2, py: 0.5, borderRadius: 4, boxShadow: 2, pointerEvents: 'auto' }}>
-          by Khayotov Abubakir
+          {t('footer_credit') || 'by Khayotov Abubakir'}
         </Box>
       </Box>
 
