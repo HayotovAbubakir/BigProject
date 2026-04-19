@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { IconButton, Badge, Tooltip } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import NotificationsModal from './NotificationsModal';
@@ -14,63 +14,49 @@ const jokes = [
 
 const Notifications = () => {
     const [open, setOpen] = useState(false);
-    const [notifications, setNotifications] = useState([]);
     const { state } = useApp();
 
-    useEffect(() => {
-        const now = new Date();
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
+    const notifications = useMemo(() => {
+        const now = Date.now();
+        const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
         const lowStock = [];
         const overdueCredits = [];
 
-        // Low stock: qty < 5 (or meter_qty < 5m for meter category)
-        state.warehouse?.forEach(p => {
-            const isMeter = isMeterCategory(p);
-            const meterQty = Number(p?.meter_qty ?? (Number(p?.pack_qty || 0) * Number(p?.qty || 0)));
-            const qtyValue = isMeter ? meterQty : Number(p?.qty || 0);
-            if (qtyValue < 5) {
-                const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+        const collectLowStock = (items = [], suffix = '') => {
+            items.forEach((product, index) => {
+                const isMeter = isMeterCategory(product);
+                const meterQty = Number(product?.meter_qty ?? (Number(product?.pack_qty || 0) * Number(product?.qty || 0)));
+                const qtyValue = isMeter ? meterQty : Number(product?.qty || 0);
+                if (qtyValue >= 5) return;
+
                 lowStock.push({
                     type: 'low_stock',
-                    message: `${p.name} kam qoldi (${isMeter ? `${qtyValue} m` : `${qtyValue} ta`})!`,
-                    joke: randomJoke,
-                    item: p
+                    message: `${product.name}${suffix} kam qoldi (${isMeter ? `${qtyValue} m` : `${qtyValue} ta`})!`,
+                    joke: jokes[index % jokes.length],
+                    item: product
                 });
-            }
-        });
+            });
+        };
 
-        state.store?.forEach(p => {
-            const isMeter = isMeterCategory(p);
-            const meterQty = Number(p?.meter_qty ?? (Number(p?.pack_qty || 0) * Number(p?.qty || 0)));
-            const qtyValue = isMeter ? meterQty : Number(p?.qty || 0);
-            if (qtyValue < 5) {
-                const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
-                lowStock.push({
-                    type: 'low_stock',
-                    message: `${p.name} do'konda kam qoldi (${isMeter ? `${qtyValue} m` : `${qtyValue} ta`})!`,
-                    joke: randomJoke,
-                    item: p
-                });
-            }
-        });
+        collectLowStock(state.warehouse);
+        collectLowStock(state.store, " do'konda");
 
-        // Overdue credits: date > 1 week ago and remaining > 0
-        state.credits?.forEach(c => {
-            if (c.remaining > 0 && new Date(c.date) < weekAgo) {
+        (state.credits || []).forEach((credit) => {
+            const creditDate = new Date(credit.date).getTime();
+            if ((Number(credit.remaining) || 0) > 0 && creditDate < weekAgo) {
                 overdueCredits.push({
                     type: 'overdue_credit',
-                    message: `${c.name} ga berilgan nasiya muddati o'tib ketdi!`,
-                    item: c
+                    message: `${credit.name} ga berilgan nasiya muddati o'tib ketdi!`,
+                    item: credit
                 });
             }
         });
 
-        setNotifications([...lowStock, ...overdueCredits]);
+        return [...lowStock, ...overdueCredits];
     }, [state.warehouse, state.store, state.credits]);
 
-    const handleOpen = () => setOpen(true);
-    const handleClose = () => setOpen(false);
+    const handleOpen = useCallback(() => setOpen(true), []);
+    const handleClose = useCallback(() => setOpen(false), []);
 
     return (
         <>
@@ -90,4 +76,4 @@ const Notifications = () => {
     );
 };
 
-export default Notifications;
+export default React.memo(Notifications);

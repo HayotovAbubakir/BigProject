@@ -12,7 +12,7 @@ import {
   Chip
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
-import { AutoAwesome, Inventory2, LocalFireDepartment, NewReleases } from '@mui/icons-material';
+import { Inventory2, LocalFireDepartment, NewReleases } from '@mui/icons-material';
 import { isMeterCategory } from '../utils/productCategories';
 
 const getPoem = () => {
@@ -23,7 +23,7 @@ const getPoem = () => {
   return poems[Math.floor(Math.random() * poems.length)];
 };
 
-const NotificationsModal = ({ open, handleClose, notifications }) => {
+const NotificationsModal = React.memo(function NotificationsModal({ open, handleClose, notifications }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const bgSurface = theme.palette.background.paper;
@@ -101,7 +101,7 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
             sx={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              justifyContent: 'flex-start',
               gap: 2,
               position: 'relative',
               zIndex: 1
@@ -122,16 +122,6 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
                 Aql bilan saralangan signal markazi
               </Typography>
             </Box>
-            <Chip
-              icon={<AutoAwesome sx={{ color: '#0f172a' }} />}
-              label="Premium"
-              sx={{
-                bgcolor: isDark ? '#fbbf24' : '#fde68a',
-                color: '#1F2937',
-                fontWeight: 600,
-                px: 0.5
-              }}
-            />
           </Box>
           <Box
             sx={{
@@ -376,6 +366,6 @@ const NotificationsModal = ({ open, handleClose, notifications }) => {
       </DialogActions>
     </Dialog>
   );
-};
+});
 
 export default NotificationsModal;

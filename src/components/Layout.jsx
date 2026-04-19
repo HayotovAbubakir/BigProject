@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { memo, useCallback, useContext, useMemo, useState } from 'react';
 import { useLocation, NavLink } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
@@ -19,6 +19,7 @@ import {
   Language as LanguageIcon,
   AttachMoney as AttachMoneyIcon,
   Calculate as CalculateIcon,
+  SmartToy as SmartToyIcon,
 } from '@mui/icons-material';
 
 import { useAuth } from '../hooks/useAuth';
@@ -29,6 +30,7 @@ import CurrencyConverter from './CurrencyConverter';
 import AccountManager from './AccountManager';
 import Notifications from './Notifications';
 import ContactDialog from './ContactDialog';
+import AiAssistantDialog from './AiAssistantDialog';
 import { SUPPORTED_LANGUAGES } from '../i18n/translations';
 
 const navItems = [
@@ -41,13 +43,25 @@ const navItems = [
   { to: '/calculator', key: 'calculator', icon: <CalculateIcon /> },
 ];
 
-function UserMenu({ user, onLogout, onManageAccount, onContact }) {
+const UserMenu = memo(function UserMenu({ user, onLogout, onManageAccount, onContact }) {
   const { t } = useLocale();
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
 
-  const handleClick = (event) => setAnchorEl(event.currentTarget);
-  const handleClose = () => setAnchorEl(null);
+  const handleClick = useCallback((event) => setAnchorEl(event.currentTarget), []);
+  const handleClose = useCallback(() => setAnchorEl(null), []);
+  const handleManageAccountClick = useCallback(() => {
+    handleClose();
+    onManageAccount();
+  }, [handleClose, onManageAccount]);
+  const handleContactClick = useCallback(() => {
+    handleClose();
+    onContact();
+  }, [handleClose, onContact]);
+  const handleLogoutClick = useCallback(() => {
+    handleClose();
+    onLogout();
+  }, [handleClose, onLogout]);
 
   return (
     <>
@@ -59,20 +73,20 @@ function UserMenu({ user, onLogout, onManageAccount, onContact }) {
         </IconButton>
       </Tooltip>
       <Menu anchorEl={anchorEl} open={open} onClose={handleClose}>
-      <MenuItem onClick={() => { handleClose(); onManageAccount(); }}>{user?.username || t('account') || ''}</MenuItem>
-      <MenuItem onClick={() => { handleClose(); onContact(); }}>
+      <MenuItem onClick={handleManageAccountClick}>{user?.username || t('account') || ''}</MenuItem>
+      <MenuItem onClick={handleContactClick}>
         <ListItemText>{t('contact') || 'Contact'}</ListItemText>
       </MenuItem>
-      <MenuItem onClick={() => { handleClose(); onLogout(); }}>
+      <MenuItem onClick={handleLogoutClick}>
         <ListItemIcon><LogoutIcon fontSize="small" /></ListItemIcon>
         <ListItemText>{t('logout') || ''}</ListItemText>
       </MenuItem>
       </Menu>
     </>
   );
-}
+});
 
-function DrawerContent({ navItems, t }) {
+const DrawerContent = memo(function DrawerContent({ navItems }) {
   return (
     <List sx={{ p: 1 }}>
       {navItems.map((item) => (
@@ -94,12 +108,12 @@ function DrawerContent({ navItems, t }) {
           }}
         >
           <ListItemIcon>{item.icon}</ListItemIcon>
-          <ListItemText primary={t(item.key) || item.key} />
+          <ListItemText primary={item.label} />
         </ListItemButton>
       ))}
     </List>
   );
-}
+});
 
 export default function Layout({ children }) {
   const { logout, user } = useAuth();
@@ -110,6 +124,7 @@ export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -117,11 +132,14 @@ export default function Layout({ children }) {
 
   const drawerWidth = 240;
 
-  const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
+  const handleDrawerToggle = useCallback(() => setMobileOpen((prev) => !prev), []);
 
-  const translatedNavItems = navItems.map(n => ({ ...n, label: t(n.key) || n.key }));
+  const translatedNavItems = useMemo(
+    () => navItems.map((item) => ({ ...item, label: t(item.key) || item.key })),
+    [t],
+  );
 
-  const drawer = <DrawerContent navItems={translatedNavItems} t={t} />;
+  const drawer = useMemo(() => <DrawerContent navItems={translatedNavItems} />, [translatedNavItems]);
 
   const currentRole = (user?.role || '').toLowerCase();
   const isDeveloper = currentRole === 'developer';
@@ -130,7 +148,7 @@ export default function Layout({ children }) {
   // Check if user is restricted
   const isRestricted = user?.permissions?.new_account_restriction ?? false;
 
-  const handleManageAccount = () => {
+  const handleManageAccount = useCallback(() => {
     if (!canOpenAccountSettings) {
       window.alert(t('admin_only') || "Bu bo'lim faqat admin va developerlar uchun");
       return;
@@ -140,13 +158,24 @@ export default function Layout({ children }) {
       return;
     }
     setAccountManagerOpen(true);
-  };
+  }, [canOpenAccountSettings, isRestricted, isDeveloper, t]);
 
-  const handleToggleLanguage = () => {
+  const handleToggleLanguage = useCallback(() => {
     const currentIndex = SUPPORTED_LANGUAGES.indexOf(locale);
     const next = SUPPORTED_LANGUAGES[(currentIndex + 1) % SUPPORTED_LANGUAGES.length];
     setLocale(next);
-  };
+  }, [locale, setLocale]);
+
+  const handleCurrencyToggle = useCallback(() => {
+    setDisplayCurrency(displayCurrency === 'USD' ? 'UZS' : 'USD');
+  }, [displayCurrency, setDisplayCurrency]);
+
+  const handleAiAssistantOpen = useCallback(() => setAiAssistantOpen(true), []);
+  const handleContactOpen = useCallback(() => setContactOpen(true), []);
+  const handleAccountManagerClose = useCallback(() => setAccountManagerOpen(false), []);
+  const handleContactClose = useCallback(() => setContactOpen(false), []);
+  const handleAiAssistantClose = useCallback(() => setAiAssistantOpen(false), []);
+  const handleThemeToggle = useCallback(() => setIsDarkMode((prev) => !prev), [setIsDarkMode]);
 
 
   return (
@@ -173,15 +202,21 @@ export default function Layout({ children }) {
           </Tooltip>
 
           <Tooltip title={t('displayCurrencyToggle', { currency: displayCurrency === 'USD' ? 'UZS' : 'USD' }) || ''}>
-            <IconButton color="inherit" onClick={() => setDisplayCurrency(displayCurrency === 'USD' ? 'UZS' : 'USD')}>
+            <IconButton color="inherit" onClick={handleCurrencyToggle}>
               <AttachMoneyIcon />
             </IconButton>
           </Tooltip>
 
           <CurrencyConverter />
 
+          <Tooltip title="AI Operator">
+            <IconButton color="inherit" onClick={handleAiAssistantOpen}>
+              <SmartToyIcon />
+            </IconButton>
+          </Tooltip>
+
           <Tooltip title={isDarkMode ? t('lightMode') || '' : t('darkMode') || ''}>
-            <IconButton color="inherit" onClick={() => setIsDarkMode(!isDarkMode)}>
+            <IconButton color="inherit" onClick={handleThemeToggle}>
               {isDarkMode ? <Brightness7Icon /> : <Brightness4Icon />}
             </IconButton>
           </Tooltip>
@@ -192,7 +227,7 @@ export default function Layout({ children }) {
             user={user}
             onLogout={logout}
             onManageAccount={handleManageAccount}
-            onContact={() => setContactOpen(true)}
+            onContact={handleContactOpen}
           />
         </Toolbar>
       </AppBar>
@@ -230,8 +265,9 @@ export default function Layout({ children }) {
         <Toolbar />
         {children}
       </Box>
-      <AccountManager open={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
-      <ContactDialog open={contactOpen} onClose={() => setContactOpen(false)} />
+      <AccountManager open={accountManagerOpen} onClose={handleAccountManagerClose} />
+      <ContactDialog open={contactOpen} onClose={handleContactClose} />
+      <AiAssistantDialog open={aiAssistantOpen} onClose={handleAiAssistantClose} />
       
       <Box component="footer" sx={{ position: 'fixed', bottom: 12, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <Box sx={{ bgcolor: 'background.paper', color: 'text.secondary', px: 2, py: 0.5, borderRadius: 4, boxShadow: 2, pointerEvents: 'auto' }}>

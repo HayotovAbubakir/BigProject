@@ -17,6 +17,7 @@ const Logs = React.lazy(() => import("./pages/Logs"));
 const Clients = React.lazy(() => import("./pages/Clients"));
 const Credits = React.lazy(() => import("./pages/Credits"));
 const Calculator = React.lazy(() => import("./pages/Calculator"));
+const WholesaleHistory = React.lazy(() => import("./pages/WholesaleHistory"));
 
 const App = () => {
   const { t } = useLocale();
@@ -38,7 +39,8 @@ const App = () => {
 
   // Enable DevTools lock on mount
   React.useEffect(() => {
-    enableDevToolsLock();
+    const cleanupDevToolsLock = enableDevToolsLock();
+    return cleanupDevToolsLock;
   }, []);
 
   const currentTheme = isDarkMode ? darkTheme : lightTheme;
@@ -61,6 +63,7 @@ const App = () => {
                   <Route path="/clients" element={<Clients />} />
                   <Route path="/credits" element={<Credits />} />
                   <Route path="/calculator" element={<Calculator />} />
+                  <Route path="/wholesale-history" element={<WholesaleHistory />} />
                 </Routes>
               </Layout>
             </Suspense>

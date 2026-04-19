@@ -34,7 +34,7 @@ import useManualRate from '../hooks/useManualRate'
 import { useLocale } from '../context/LocaleContext'
 import { formatMoney } from '../utils/format'
 import { formatProductName } from '../utils/productDisplay'
-import { isMeterCategory } from '../utils/productCategories'
+import { isMeterCategory, normalizeCategory } from '../utils/productCategories'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { insertLog } from '../firebase/supabaseLogs'
@@ -57,8 +57,12 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
   const [savedSelections, setSavedSelections] = useState({})
   const [isProcessing, setIsProcessing] = useState(false)
   const mountedRef = useRef(true)
+  const wholesaleSelectionsStorageKey = 'wholesaleSelections'
 
   useEffect(() => () => { mountedRef.current = false }, [])
+
+  const getSelectionKey = useCallback((src, id) => `${src}:${id}`, [])
+  const getSourceLabel = useCallback((src) => (src === 'warehouse' ? 'Ombor' : "Do'kon"), [])
 
   const formatNumber = useCallback((value) => Number(value || 0).toLocaleString('en-US'), [])
 
@@ -68,13 +72,18 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     const totalUsdText = formatNumber(totals?.usd || 0)
     const totalUzsText = formatNumber(totals?.uzs || 0)
     const rateText = totals?.rate ? `1 USD = ${formatNumber(totals.rate)} UZS` : null
+    const sellerContacts = [
+      { name: 'Hamdamjon', phone: '+998 (90) 509-53-11' },
+      { name: 'Habibjon', phone: '+998 (90) 506-24-24' },
+    ]
+    const sellerAddress = "Qo'qon yangi bozor 57-do'kon"
 
     const job = () => {
       try {
         const doc = new jsPDF({ unit: 'pt', format: 'a4' })
         const margin = 24
 
-        const tableBody = safeLines.map((l) => {
+        const productRows = safeLines.map((l) => {
           const saleUnit = l?.isMeter ? (l?.unit || 'metr') : 'dona'
           const qtyNum = Number(l?.qty || 0)
           const meterSold = l?.isMeter ? (saleUnit === 'dona' ? qtyNum * Number(l?.packQty || 0) : qtyNum) : 0
@@ -82,43 +91,171 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
           const qtyLabel = `${formatNumber(qtyNum)} ${saleUnit}${meterText}`
           const unitPrice = `${formatNumber(l?.unitPrice || 0)} ${l?.currency || 'UZS'}`
           const lineTotal = `${formatNumber((l?.qty || 0) * (l?.unitPrice || 0))} ${l?.currency || 'UZS'}`
-          const attrParts = []
-          if (l?.category) attrParts.push(`Kategoriya: ${l.category}`)
-          if (l?.electrode_size) attrParts.push(`Razmer: ${l.electrode_size}`)
-          if (l?.stone_thickness) attrParts.push(`Qalinlik: ${l.stone_thickness}`)
-          if (l?.stone_size) attrParts.push(`Hajmi: ${l.stone_size}`)
-          const attrText = attrParts.length ? attrParts.join(' - ') : '--'
+          const normalizedCategory = normalizeCategory(l?.category)
+          const detailParts = []
+
+          if (normalizedCategory === 'tosh') {
+            if (l?.stone_thickness) detailParts.push(`Qalinlik: ${l.stone_thickness}`)
+            if (l?.stone_size) detailParts.push(`Hajmi: ${l.stone_size}`)
+          } else if (normalizedCategory === 'elektrod') {
+            if (l?.electrode_size) detailParts.push(`Razmer: ${l.electrode_size}`)
+          } else {
+            if (l?.electrode_size) detailParts.push(`Razmer: ${l.electrode_size}`)
+            if (l?.stone_thickness) detailParts.push(`Qalinlik: ${l.stone_thickness}`)
+            if (l?.stone_size) detailParts.push(`Hajmi: ${l.stone_size}`)
+          }
           return [
             l?.displayName || l?.name || '—',
-            `${qtyLabel}\n${attrText}`,
+            detailParts.length ? `${qtyLabel}\n${detailParts.join(' - ')}` : qtyLabel,
             unitPrice,
             lineTotal,
           ]
         })
 
         const drawDoc = (logoImage) => {
-          doc.setFontSize(14)
-          doc.text('Vasta - Wholesale Receipt', margin, margin + 12)
-          if (logoImage) {
-            doc.addImage(logoImage, 'PNG', doc.internal.pageSize.getWidth() - margin - 64, margin, 64, 64)
+          const sourceSummary = Array.from(new Set(
+            safeLines.map((line) => getSourceLabel(line?.source || 'store'))
+          )).join(' + ')
+          const formattedDateTime = new Intl.DateTimeFormat('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+          }).format(new Date(ts)).replace(',', '')
+
+          const sellerText = [
+            'Sotuvchilar',
+            ...sellerContacts.map((seller) => `${seller.name}: ${seller.phone}`),
+            `Manzil: ${sellerAddress}`,
+          ].join('\n')
+
+          const metaText = [
+            `Sana: ${formattedDateTime}`,
+            `Kassir: ${user?.username || 'Admin'}`,
+            `Manba: ${sourceSummary || getSourceLabel(source)}`,
+          ].join('\n')
+
+          const productHeaderRow = [
+            { content: 'Mahsulot' },
+            { content: 'Miqdor' },
+            { content: 'Narx' },
+            { content: 'Jami' },
+          ]
+
+          const totalsRows = [
+            [
+              { content: 'Jami (USD)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } },
+              { content: totalUsdText, styles: { fontStyle: 'bold' } },
+            ],
+            [
+              { content: 'Jami (UZS)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } },
+              { content: totalUzsText, styles: { fontStyle: 'bold' } },
+            ],
+          ]
+
+          if (rateText) {
+            totalsRows.push([
+              { content: 'Kurs', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } },
+              { content: rateText, styles: { fontStyle: 'bold' } },
+            ])
           }
-          doc.setFontSize(10)
-          doc.text(`Date: ${new Date(ts).toLocaleString()}`, margin, margin + 30)
-          doc.text(`Cashier: ${user?.username || 'Admin'}`, margin, margin + 44)
+
+          const spacerRows = [
+            [
+              {
+                content: '',
+                colSpan: 4,
+                styles: {
+                  minCellHeight: 18,
+                  fillColor: [255, 255, 255],
+                  lineColor: [255, 255, 255],
+                },
+              },
+            ],
+          ]
+
+          const infoRows = [
+            [
+              { content: '', styles: { minCellHeight: 72, valign: 'middle', halign: 'center', fillColor: [250, 250, 252] } },
+              { content: metaText, styles: { minCellHeight: 72, fontSize: 11, textColor: [24, 24, 32], fontStyle: 'bold', fillColor: [250, 250, 252] } },
+              { content: sellerText, colSpan: 2, styles: { minCellHeight: 72, fontSize: 10, textColor: [45, 55, 72], fontStyle: 'bold', fillColor: [250, 250, 252] } },
+            ],
+          ]
+
+          const tableRows = [
+            productHeaderRow,
+            ...productRows,
+            ...totalsRows,
+            ...spacerRows,
+            ...infoRows,
+          ]
+
+          const productHeaderRowIndex = 0
+          const totalsStartIndex = 1 + productRows.length
+          const spacerStartIndex = totalsStartIndex + totalsRows.length
+          const infoStartIndex = spacerStartIndex + spacerRows.length
 
           autoTable(doc, {
-            startY: margin + 60,
-            head: [['Mahsulot', 'Miqdor', 'Narx', 'Jami']],
-            body: tableBody,
-            styles: { fontSize: 10 },
-            headStyles: { fillColor: [0, 0, 0], textColor: 255 },
-          })
+            startY: margin,
+            body: tableRows,
+            theme: 'grid',
+            styles: {
+              fontSize: 10,
+              cellPadding: 8,
+              lineColor: [226, 232, 240],
+              lineWidth: 0.45,
+              textColor: [35, 35, 35],
+              valign: 'top',
+            },
+            columnStyles: {
+              0: { cellWidth: 72 },
+              1: { cellWidth: 212 },
+              2: { cellWidth: 132 },
+              3: { cellWidth: 135 },
+            },
+            didParseCell: (data) => {
+              if (data.section !== 'body') return
+              const rowIndex = data.row.index
 
-          const endY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 16 : margin + 76
-          doc.setFontSize(11)
-          doc.text(`Jami (USD): ${totalUsdText}`, margin, endY)
-          doc.text(`Jami (UZS): ${totalUzsText}`, margin, endY + 16)
-          if (rateText) doc.text(`Kurs: ${rateText}`, margin, endY + 32)
+              if (rowIndex === productHeaderRowIndex) {
+                data.cell.styles.fillColor = [12, 12, 14]
+                data.cell.styles.textColor = [255, 255, 255]
+                data.cell.styles.fontStyle = 'bold'
+                data.cell.styles.lineColor = [12, 12, 14]
+                data.cell.styles.valign = 'middle'
+              }
+
+              if (rowIndex > productHeaderRowIndex && rowIndex < totalsStartIndex && rowIndex % 2 === 1) {
+                data.cell.styles.fillColor = [248, 250, 252]
+              }
+
+              if (rowIndex >= totalsStartIndex && rowIndex < spacerStartIndex) {
+                data.cell.styles.fillColor = [244, 247, 250]
+                data.cell.styles.fontStyle = 'bold'
+              }
+
+              if (rowIndex === spacerStartIndex) {
+                data.cell.styles.fillColor = [255, 255, 255]
+                data.cell.styles.lineColor = [255, 255, 255]
+              }
+
+              if (rowIndex >= infoStartIndex) {
+                data.cell.styles.fillColor = [250, 250, 252]
+              }
+            },
+            didDrawCell: (data) => {
+              if (logoImage && data.section === 'body' && data.row.index === infoStartIndex && data.column.index === 0) {
+                const imgWidth = 42
+                const imgHeight = 42
+                const x = data.cell.x + ((data.cell.width - imgWidth) / 2)
+                const y = data.cell.y + 10
+                doc.addImage(logoImage, 'PNG', x, y, imgWidth, imgHeight)
+              }
+            },
+          })
 
           const name = `receipt_${new Date(ts).toISOString().slice(0,10)}.pdf`
           doc.save(name)
@@ -139,15 +276,19 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     } else {
       job()
     }
-  }, [formatNumber, user?.username])
+  }, [formatNumber, getSourceLabel, source, user?.username])
 
-  // Load persisted selections once
   useEffect(() => {
+    if (!open) return
+    setSelectedSource(source)
+    setIsProcessing(false)
+    setSavedSelections({})
     try {
-      const raw = localStorage.getItem('wholesaleSelections')
-      if (raw) setSavedSelections(JSON.parse(raw))
-    } catch (e) { /* ignore */ }
-  }, [])
+      localStorage.removeItem(wholesaleSelectionsStorageKey)
+    } catch (e) {
+      /* ignore */
+    }
+  }, [open, source])
 
   // Recompute item list when source or inventory changes
   useEffect(() => {
@@ -158,7 +299,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
       const isMeter = isMeterCategory(p)
       const packQty = Number(p.pack_qty || 0)
       const meterQty = isMeter ? Number(p.meter_qty ?? (Number(p.qty || 0) * packQty)) : 0
-      const sel = savedSelections[p.id]
+      const sel = savedSelections[getSelectionKey(selectedSource, p.id)]
       return {
         id: p.id,
         name: baseName,
@@ -175,22 +316,23 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
         meterQty
       }
     }))
-  }, [selectedSource, state.store, state.warehouse, savedSelections])
+  }, [getSelectionKey, selectedSource, state.store, state.warehouse, savedSelections])
 
   const persistSelections = (next) => {
     try {
-      localStorage.setItem('wholesaleSelections', JSON.stringify(next))
+      localStorage.setItem(wholesaleSelectionsStorageKey, JSON.stringify(next))
     } catch (e) { /* ignore */ }
   }
 
   const updateQty = (id, qty) => {
+    const selectionKey = getSelectionKey(selectedSource, id)
     setItems(it => it.map(i => i.id === id ? { ...i, qty: (qty == null ? '' : qty) } : i))
     setSavedSelections(prev => {
       const copy = { ...(prev || {}) }
       if (qty == null || qty === '' || Number(qty) <= 0) {
-        delete copy[id]
+        delete copy[selectionKey]
       } else {
-        copy[id] = { ...(copy[id] || {}), id, qty: Number(qty) }
+        copy[selectionKey] = { ...(copy[selectionKey] || {}), id, source: selectedSource, qty: Number(qty) }
       }
       persistSelections(copy)
       return copy
@@ -198,16 +340,18 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
   }
 
   const updatePrice = (id, price) => {
+    const selectionKey = getSelectionKey(selectedSource, id)
     setItems(it => it.map(i => i.id === id ? { ...i, unitPrice: Number(price) } : i))
     setSavedSelections(prev => {
       const copy = { ...(prev || {}) }
-      copy[id] = { ...(copy[id] || {}), id, unitPrice: Number(price) }
+      copy[selectionKey] = { ...(copy[selectionKey] || {}), id, source: selectedSource, unitPrice: Number(price) }
       persistSelections(copy)
       return copy
     })
   }
 
   const updateUnit = (id, unit) => {
+    const selectionKey = getSelectionKey(selectedSource, id)
     setItems(it => it.map(i => {
       if (i.id !== id) return i
       if (!i.isMeter) return { ...i, unit }
@@ -218,7 +362,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     }))
     setSavedSelections(prev => {
       const copy = { ...(prev || {}) }
-      copy[id] = { ...(copy[id] || {}), id, unit }
+      copy[selectionKey] = { ...(copy[selectionKey] || {}), id, source: selectedSource, unit }
       persistSelections(copy)
       return copy
     })
@@ -231,15 +375,20 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
   }
 
   const usedRate = usdToUzs || null
+  const sourceProducts = selectedSource === 'warehouse' ? (state.warehouse || []) : (state.store || [])
 
   const cartLines = Object.values(savedSelections || {}).map(sel => {
-    const prod = (state.warehouse || []).concat(state.store || []).find(p => p.id === sel.id) || {}
+    const lineSource = sel.source || 'store'
+    const productsBySource = lineSource === 'warehouse' ? (state.warehouse || []) : (state.store || [])
+    const prod = productsBySource.find(p => p.id === sel.id) || {}
     const isMeter = prod ? isMeterCategory(prod) : !!sel.isMeter
     const packQty = Number(prod?.pack_qty || sel.packQty || 0)
     const qtyPieces = Number(prod?.qty ?? sel.available ?? 0)
     const meterQty = isMeter ? Number(prod?.meter_qty ?? (qtyPieces * packQty)) : 0
     return {
       id: sel.id,
+      source: lineSource,
+      sourceLabel: getSourceLabel(lineSource),
       displayName: prod.name || prod.title || sel.displayName || '—',
       name: prod.name || prod.title || sel.displayName || '—',
       category: prod.category || sel.category || '',
@@ -259,6 +408,10 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
       available: isMeter ? meterQty : qtyPieces,
     }
   }).filter(l => l.qty > 0)
+    .sort((a, b) => {
+      if (a.source === b.source) return String(a.displayName).localeCompare(String(b.displayName))
+      return a.source.localeCompare(b.source)
+    })
   
   const subtotalUsd = cartLines.reduce((s, l) => {
     const lineTotal = l.qty * l.unitPrice
@@ -280,6 +433,22 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
     return l.qty > 0 && l.qty <= available
   })
 
+  const checkoutIssue = (() => {
+    if (isProcessing) return "Sotuv tasdiqlanmoqda, biroz kuting."
+    if (cartLines.length === 0) return "Savatchaga mahsulot qo'shing."
+    const invalidLine = cartLines.find((l) => {
+      const available = getAvailable(l)
+      if (l.isMeter && l.unit === 'dona' && l.packQty <= 0) return true
+      return !(l.qty > 0 && l.qty <= available)
+    })
+    if (!invalidLine) return ''
+    const available = getAvailable(invalidLine)
+    if (invalidLine.isMeter && invalidLine.unit === 'dona' && invalidLine.packQty <= 0) {
+      return `${invalidLine.displayName} uchun dona bo'yicha sotish sozlanmagan.`
+    }
+    return `${invalidLine.displayName} uchun miqdor noto'g'ri. Mavjud: ${formatNumber(available)} ${invalidLine.unit}.`
+  })()
+
   const handleConfirm = async () => {
     if (!canCheckout || isProcessing) return
     setIsProcessing(true)
@@ -294,6 +463,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
       const lineTotal = Number(l.qty || 0) * Number(l.unitPrice || 0)
       return {
         id: l.id,
+        source: l.source,
         name: l.displayName || l.name,
         category: l.category,
         electrode_size: l.electrode_size,
@@ -335,14 +505,14 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
 
     for (let idx = 0; idx < cartLines.length; idx++) {
       const l = cartLines[idx]
-      const productInWarehouse = (state.warehouse || []).find(p => p.id === l.id)
-      const productInStore = (state.store || []).find(p => p.id === l.id)
-      const dispatchTarget = productInWarehouse ? 'warehouse' : (productInStore ? 'store' : selectedSource)
+      const currentProducts = l.source === 'warehouse' ? (state.warehouse || []) : (state.store || [])
+      const productInSource = currentProducts.find(p => p.id === l.id)
+      const dispatchTarget = l.source
       const saleUnit = l.isMeter ? (l.unit || 'metr') : 'dona'
       const meterSold = l.isMeter ? (saleUnit === 'dona' ? l.qty * l.packQty : l.qty) : 0
       const payload = l.isMeter ? { id: l.id, qty: l.qty, meter_qty: meterSold } : { id: l.id, qty: l.qty }
       try {
-        const prod = dispatchTarget === 'warehouse' ? productInWarehouse : productInStore
+        const prod = productInSource
         if (!prod) throw new Error('Mahsulot topilmadi')
         const packQty = Number(prod?.pack_qty || 0)
         if (l.isMeter) {
@@ -382,7 +552,7 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
   
     if (onComplete) onComplete({ lines: cartLines, subtotalUsd: subtotalUsdRounded, subtotalUzs })
     setSavedSelections({})
-    try { localStorage.removeItem('wholesaleSelections') } catch (e) { /* ignore */ }
+    try { localStorage.removeItem(wholesaleSelectionsStorageKey) } catch (e) { /* ignore */ }
     setItems((prev) => prev.map((it) => ({ ...it, qty: '' })))
     if (mountedRef.current) setIsProcessing(false)
   }
@@ -501,10 +671,13 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
               </Box>
             ) : (
               cartLines.map(cl => (
-                <Box key={cl.id} sx={{ p: 1.25, borderRadius: 2, background: cardBg, boxShadow: isDark ? '0 10px 30px rgba(0,0,0,0.35)' : '0 8px 30px rgba(0,0,0,0.04)', display: 'grid', gap: 0.25 }}>
+                <Box key={`${cl.source}:${cl.id}`} sx={{ p: 1.25, borderRadius: 2, background: cardBg, boxShadow: isDark ? '0 10px 30px rgba(0,0,0,0.35)' : '0 8px 30px rgba(0,0,0,0.04)', display: 'grid', gap: 0.25 }}>
                   <Stack direction="row" alignItems="center" justifyContent="space-between">
                     <Typography sx={{ fontWeight: 700 }}>{cl.displayName}</Typography>
-                    <Chip size="small" label={`${cl.qty} ${cl.unit}`} color="primary" />
+                    <Stack direction="row" spacing={1}>
+                      <Chip size="small" label={cl.sourceLabel} variant="outlined" />
+                      <Chip size="small" label={`${cl.qty} ${cl.unit}`} color="primary" />
+                    </Stack>
                   </Stack>
                   <Typography variant="caption" color="text.secondary">
                     {cl.currency === 'USD'
@@ -522,11 +695,14 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
                     variant="text"
                     sx={{ justifySelf: 'flex-start', mt: 0.5 }}
                     onClick={() => {
+                      const selectionKey = getSelectionKey(cl.source, cl.id)
                       const copy = { ...(savedSelections || {}) }
-                      delete copy[cl.id]
-                      try { localStorage.setItem('wholesaleSelections', JSON.stringify(copy)) } catch (e) {}
+                      delete copy[selectionKey]
+                      try { localStorage.setItem(wholesaleSelectionsStorageKey, JSON.stringify(copy)) } catch (e) {}
                       setSavedSelections(copy)
-                      setItems(it => it.map(i => i.id === cl.id ? { ...i, qty: '' } : i))
+                      if (cl.source === selectedSource) {
+                        setItems(it => it.map(i => i.id === cl.id ? { ...i, qty: '' } : i))
+                      }
                     }}
                   >
                     O'chirish
@@ -557,6 +733,11 @@ export default function WholesaleSale({ open, onClose, source = 'store', onCompl
           >
             Tasdiqlash va Chek
           </Button>
+          {!canCheckout && (
+            <Typography variant="caption" color="warning.main" sx={{ mt: -0.5 }}>
+              {checkoutIssue}
+            </Typography>
+          )}
         </Paper>
       </Box>
     </Dialog>

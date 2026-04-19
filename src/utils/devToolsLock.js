@@ -1,64 +1,25 @@
-// DevTools lock — parol qo'yib DevTools ni berkitish
 const DEVTOOLS_PASSWORD = import.meta.env.VITE_DEVTOOLS_LOCK_PASSWORD || ''
-// Progressive lockout settings
-const ESCALATION_THRESH = 4 // after 4 consecutive wrong attempts escalate
-const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000] // 1 minute, then 5 minutes
+const ESCALATION_THRESH = 4
+const ESCALATION_DURATIONS = [1 * 60 * 1000, 5 * 60 * 1000]
+const DETECTION_INTERVAL_MS = 1500
+const DETECTION_THRESHOLD = 160
 
-// Control flag to enable/disable the lock
 let isDevToolsLockEnabled = import.meta.env.DEV && import.meta.env.VITE_DEVTOOLS_LOCK === 'true' && !!DEVTOOLS_PASSWORD
 
-let consecutiveFailed = 0 // consecutive wrong attempts counter
-let escalationLevel = 0 // which escalation duration to use next
+let consecutiveFailed = 0
+let escalationLevel = 0
 let lockoutUntil = null
+let cleanupCurrentLock = null
 
 function persistState() {
-  // Persistence is disabled
-}
-
-
-export function enableDevToolsLock() {
-  // Check if DevTools lock is enabled
-  if (!isDevToolsLockEnabled) {
-    console.log('DevTools lock disabled - PIN code not required')
-    return
-  }
-
-  // DevTools F12, Ctrl+Shift+I, Ctrl+Shift+C larni blokiralash
-  document.addEventListener('keydown', (e) => {
-    const isCtrlShift = (e.ctrlKey || e.metaKey) && e.shiftKey
-    if ((e.key === 'F12') || (isCtrlShift && e.key === 'I') || (isCtrlShift && e.key === 'C') || (isCtrlShift && e.key === 'J')) {
-      e.preventDefault()
-      showPasswordPrompt()
-      return false
-    }
-  }, true)
-
-  // Right-click context menu ni blokiralash
-  document.addEventListener('contextmenu', (e) => {
-    e.preventDefault()
-    showPasswordPrompt()
-    return false
-  }, true)
-
-  // DevTools ochilganini detect qilish (Detection method)
-  detectDevTools()
-}
-
-function detectDevTools() {
-  const check = () => {
-    const threshold = 160
-    if (window.outerHeight - window.innerHeight > threshold || window.outerWidth - window.innerWidth > threshold) {
-      lockScreen()
-    }
-  }
-  setInterval(check, 500)
+  // Persistence is intentionally disabled.
 }
 
 function isLockedOut() {
   if (!lockoutUntil) return false
   const now = Date.now()
   if (now < lockoutUntil) return true
-  // Lockout expired
+
   lockoutUntil = null
   consecutiveFailed = 0
   escalationLevel = 0
@@ -66,106 +27,172 @@ function isLockedOut() {
   return false
 }
 
-function showPasswordPrompt() {
-  if (isLockedOut()) {
-    const remainingMs = lockoutUntil - Date.now()
-    const remainingSeconds = Math.ceil(remainingMs / 1000)
-    alert(`❌ Juda ko'p marta notog'ri parol kiritdingiz!\n\nYangi urinish uchun ${remainingSeconds} soniya kuting.`)
-    lockScreen()
-    return
-  }
-
-  // show full-screen overlay before native prompt so background is dimmed
-  try { lockScreen() } catch (err) { /* ignore overlay errors */ }
-  const password = prompt('DevTools yopilgan. Parol kiriting:', '')
-  // if user cancelled the prompt, remove overlay and return
-  if (password === null) {
-    try { unlockScreen() } catch (err) { /* ignore */ }
-    return
-  }
-  if (password === DEVTOOLS_PASSWORD) {
-    console.log('✓ DevTools unlock qilindi')
-    // Remove overlay and reset counters
-    try { unlockScreen() } catch (e) { /* ignore */ }
-    consecutiveFailed = 0
-    escalationLevel = 0
-    lockoutUntil = null
-    persistState()
-  } else if (password !== null) {
-    // Wrong password entered
-    consecutiveFailed++
-    console.debug('devToolsLock: wrong password, consecutiveFailed=', consecutiveFailed, 'escalationLevel=', escalationLevel)
-    const remainingToEscalate = Math.max(ESCALATION_THRESH - consecutiveFailed, 0)
-
-    if (consecutiveFailed >= ESCALATION_THRESH) {
-      // apply escalation duration for current escalation level
-      const idx = Math.min(escalationLevel, ESCALATION_DURATIONS.length - 1)
-      const dur = ESCALATION_DURATIONS[idx]
-      lockoutUntil = Date.now() + dur
-      const minutes = Math.ceil(dur / 60000)
-      alert(`❌ Parol noto'g'ri!\n\nHimoya faollashtirildi: ${minutes} daqiqa kuting.`)
-      // prepare for next escalation (if further abuse)
-      escalationLevel = Math.min(escalationLevel + 1, ESCALATION_DURATIONS.length - 1)
-      consecutiveFailed = 0
-      persistState()
-    } else {
-      alert(`❌ Parol noto'g'ri!\n\nQolgan urinishlar bosqichga yetish uchun: ${remainingToEscalate}`)
+function unlockScreen() {
+  const overlay = document.querySelector('#devtools-lock-overlay')
+  if (overlay) {
+    try {
+      overlay.remove()
+    } catch (error) {
+      console.debug('unlockScreen failed', error)
     }
-    lockScreen()
   }
 }
 
 function lockScreen() {
-  // Black overlay qo'shish
-  if (!document.querySelector('#devtools-lock-overlay')) {
-    const overlay = document.createElement('div')
-    overlay.id = 'devtools-lock-overlay'
-    overlay.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.9);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 99999;
-      font-family: Arial, sans-serif;
-      color: white;
-    `
-    overlay.innerHTML = `
-      <div style="text-align: center;">
-        <h2>🔒 DevTools yopilgan</h2>
-        <p>Parol kiritish uchun F12 yoki Ctrl+Shift+I bosing</p>
-      </div>
-    `
-    document.body.appendChild(overlay)
+  if (document.querySelector('#devtools-lock-overlay')) return
+
+  const overlay = document.createElement('div')
+  overlay.id = 'devtools-lock-overlay'
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    font-family: Arial, sans-serif;
+    color: white;
+  `
+  overlay.innerHTML = `
+    <div style="text-align: center;">
+      <h2>DevTools yopilgan</h2>
+      <p>Parol kiritish uchun F12 yoki Ctrl+Shift+I bosing</p>
+    </div>
+  `
+  document.body.appendChild(overlay)
+}
+
+function showPasswordPrompt() {
+  if (isLockedOut()) {
+    const remainingMs = lockoutUntil - Date.now()
+    const remainingSeconds = Math.ceil(remainingMs / 1000)
+    alert(`Juda ko'p marta noto'g'ri parol kiritdingiz.\n\nYangi urinish uchun ${remainingSeconds} soniya kuting.`)
+    lockScreen()
+    return
+  }
+
+  try {
+    lockScreen()
+  } catch (error) {
+    console.debug('lockScreen failed', error)
+  }
+
+  const password = prompt('DevTools yopilgan. Parol kiriting:', '')
+  if (password === null) {
+    unlockScreen()
+    return
+  }
+
+  if (password === DEVTOOLS_PASSWORD) {
+    unlockScreen()
+    consecutiveFailed = 0
+    escalationLevel = 0
+    lockoutUntil = null
+    persistState()
+    return
+  }
+
+  consecutiveFailed += 1
+  const remainingToEscalate = Math.max(ESCALATION_THRESH - consecutiveFailed, 0)
+
+  if (consecutiveFailed >= ESCALATION_THRESH) {
+    const escalationIndex = Math.min(escalationLevel, ESCALATION_DURATIONS.length - 1)
+    const duration = ESCALATION_DURATIONS[escalationIndex]
+    lockoutUntil = Date.now() + duration
+    const minutes = Math.ceil(duration / 60000)
+    alert(`Parol noto'g'ri.\n\nHimoya faollashtirildi: ${minutes} daqiqa kuting.`)
+    escalationLevel = Math.min(escalationLevel + 1, ESCALATION_DURATIONS.length - 1)
+    consecutiveFailed = 0
+    persistState()
+  } else {
+    alert(`Parol noto'g'ri.\n\nQolgan urinishlar bosqichga yetish uchun: ${remainingToEscalate}`)
+  }
+
+  lockScreen()
+}
+
+function createKeydownHandler() {
+  return (event) => {
+    const isCtrlShift = (event.ctrlKey || event.metaKey) && event.shiftKey
+    const key = (event.key || '').toUpperCase()
+    const shouldIntercept =
+      key === 'F12' ||
+      (isCtrlShift && (key === 'I' || key === 'C' || key === 'J'))
+
+    if (!shouldIntercept) return
+
+    event.preventDefault()
+    showPasswordPrompt()
   }
 }
 
-function unlockScreen() {
-  const overlay = document.querySelector('#devtools-lock-overlay')
-  if (overlay) {
-    try { overlay.remove() } catch (err) { console.debug('unlockScreen failed', err) }
+function createContextMenuHandler() {
+  return (event) => {
+    event.preventDefault()
+    showPasswordPrompt()
   }
+}
+
+function createDetectionChecker() {
+  return () => {
+    const outerHeightDelta = window.outerHeight - window.innerHeight
+    const outerWidthDelta = window.outerWidth - window.innerWidth
+    if (outerHeightDelta > DETECTION_THRESHOLD || outerWidthDelta > DETECTION_THRESHOLD) {
+      lockScreen()
+    }
+  }
+}
+
+export function enableDevToolsLock() {
+  if (cleanupCurrentLock) {
+    cleanupCurrentLock()
+    cleanupCurrentLock = null
+  }
+
+  if (!isDevToolsLockEnabled || typeof document === 'undefined' || typeof window === 'undefined') {
+    return () => {}
+  }
+
+  const handleKeydown = createKeydownHandler()
+  const handleContextMenu = createContextMenuHandler()
+  const checkDevTools = createDetectionChecker()
+
+  document.addEventListener('keydown', handleKeydown, true)
+  document.addEventListener('contextmenu', handleContextMenu, true)
+  const intervalId = window.setInterval(checkDevTools, DETECTION_INTERVAL_MS)
+
+  cleanupCurrentLock = () => {
+    document.removeEventListener('keydown', handleKeydown, true)
+    document.removeEventListener('contextmenu', handleContextMenu, true)
+    window.clearInterval(intervalId)
+    unlockScreen()
+  }
+
+  return cleanupCurrentLock
 }
 
 export default enableDevToolsLock
 
-// Functions to control DevTools lock from console
 export function disableDevToolsLock() {
   isDevToolsLockEnabled = false
-  unlockScreen() // Remove any existing overlay
-  console.log('🔓 DevTools lock disabled - PIN code not required')
+  if (cleanupCurrentLock) {
+    cleanupCurrentLock()
+    cleanupCurrentLock = null
+  } else {
+    unlockScreen()
+  }
+  console.log('DevTools lock disabled - PIN code not required')
 }
 
 export function enableDevToolsLockAgain() {
   isDevToolsLockEnabled = true
-  console.log('🔒 DevTools lock enabled - PIN code required')
+  console.log('DevTools lock enabled - PIN code required')
 }
 
-// Make functions available globally for console access
 if (typeof window !== 'undefined') {
   window.disableDevToolsLock = disableDevToolsLock
   window.enableDevToolsLockAgain = enableDevToolsLockAgain
